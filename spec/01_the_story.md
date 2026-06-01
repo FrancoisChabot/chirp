@@ -190,6 +190,7 @@ let foo(s: string, v: int ) = {
 };
 ```
 
+Finally, it's pretty subtle so it's worth pointing out: In practice, a `mrp` will return `undecided` by the interpreter giving up after some cost threshold has been reached. However, if an `mrr` is just `{true, false}`, then the interpreter can be confident that there's going to be an answer eventually. This reduces the risk of cost-based decidability causing false positives.
 
 Now set-ness looks more like: "The **Member Resolution Predicate** of a set returns a member of its **Member Resolution Range**" (`mrp(S, b) ∈ mrr(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
 
