@@ -172,6 +172,15 @@ We might as well allow sets to announce `{true}`, `{false}`, `{undecided}`, whil
 
 In other words, set-ness needs a second method: one that takes a set of "candidate" values and returns the set of answers its `mrp` can produce. The technical term for "the set of values a function can return" is its range, so we'll call this the set's **Member Resolution Range** (`mrr`). That "set of candidate values" may sound nebulous, but in `b ∈ S`, that's just `b`'s `lc`!
 
+
+`mrr` is a pre-flight check. `undecided` being in it does not mean a particular membership test failed to decide. It means that, for this set of candidate values, evaluating `mrp` could produce `undecided`. At the same time, if `mrr` contains only a single value, invoking `mrp` is unnecessary.
+
+
+In practice, `mrr` does not need to be magic. A boring implementation can be conservative.
+- Is `mrp` a DAG -> `{true, false}`, otherwise `{true, false, undecided}`.
+- Some sets can do better because their answer is obvious. `any` always returns `true`, so its `mrr` is `{true}`, etc...
+- Custom sets can provide their own `mrr`, but that is a promise: “my `mrp` will only ever return one of these answers.” If that promise is false, all bets are off.
+
 Now set-ness looks more like: "The **Member Resolution Predicate** of a set returns a member of its **Member Resolution Range**" (`mrp(S, b) ∈ mrr(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
 
 The bedrock finally feels solid.
@@ -187,6 +196,7 @@ Putting all of that together, we end up with an architecture that looks like thi
                 ┌───────────────────────────────────────────────┐   │
                 │                   Computation                 │   │
                 └───────────────────────────────────────────────┘   │
+                                       ...                          |
                 ┌───────────────────────────────────────────────┐   │
                 │                     CORE                      │   │
                 │  ┌─────────┐          fc/lc/cv ┌─────────┐    │   │
@@ -202,7 +212,7 @@ Putting all of that together, we end up with an architecture that looks like thi
 ```
 
 
-That's a **lot** of circular dependencies, but seems sound enough at a glance. 
+That's a **lot** of circular dependencies, but I have yet to find a way to break it. It's not *proven* yet though.
 
 Computation is its own can of worms and may eventually get a similar companion reasoning file. But you should now be equipped with all of the intuition you need to go through the first chapters of the spec through [03_the_machine.md](03_the_machine.md).  
 
