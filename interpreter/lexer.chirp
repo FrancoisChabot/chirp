@@ -1,0 +1,258 @@
+// A modular, idiomatic Lexical Scanner implemented in Chirp
+
+// A few notes:
+// - The language is still a work in progress.
+// - everything is a value (including types)
+// - Every value has a single intrinsic type with knowable storage, traits, etc...
+// - This is all meant to compile down to C-equivalent efficient code.
+// - backtick-prefixed identifiers are intrinsics. It's just namespace reservation.
+// - the `->some_set` syntax creates a set of dereferenceable to the members of the set. i.e. if `int` is the set of all integers, then `->int` is the set of all pointers to integers.
+// - Types are not sets! Every value has a single intrinsic type. Identifier are constrained to sets of values, but those sets are not types. This is a crucial distinction.
+// - Intrinsic types have known storage and traits. If an identifier is constrainned to values of a single type, it will be optimized accordingly.
+// - This file uses unicode characters for operators and set operations to demonstrate the expressiveness of the syntax, but ascii equivalents can also be used.
+
+let strings = `import("std/strings.chirp")`;
+let containers = `import("std/containers.chirp")`;
+
+// --- Symbolic Token Types ---
+let token_type = {
+    #eof, #identifier, #number, #string, #char, #intrinsic, #symbol,
+    #let, #mut, #struct, #int, #if, #for, #else, #while, #in, #match,
+    
+    // Operators & Punctuations
+    #equal, #equal_equal, #plus, #minus, #asterisk, #slash, #semicolon, #comma,
+    #colon, #dot, #dots, #open_brace, #close_brace, #open_bracket, #close_bracket,
+    #open_paren, #close_paren, #not_equal, #plus_equal, #and, #and_and,
+    #or_or, #arrow, #fat_arrow, #bar,
+    #membership, #union, #intersection, #subset,
+    
+    #error
+};
+
+// --- Data Structures ---
+let Token = struct {
+    tok_type: token_type,
+    lexeme: string_view,
+};
+
+let ScannerState = struct {
+    cursor: Iterator(char),
+    end: Iterator(char),
+    line: int = 1,
+};
+
+// --- Char Classification Helpers (Using sets and ranges!) ---
+let ALPHA_CHARACTERS = ('a'..='z') ∪ ('A'..='Z') ∪ {'_'};
+let DIGIT_CHARACTERS = '0'..='9';
+let WS_CHARACTERS = {'\r', '\n', '\t', ' '};
+
+let is_alpha(c) = c ∈ ALPHA_CHARACTERS;
+let is_digit(c) = c ∈ DIGIT_CHARACTERS;
+let is_alphanumeric(c) = c ∈ (ALPHA_CHARACTERS ∪ DIGIT_CHARACTERS);
+let is_ws(c) = c ∈ WS_CHARACTERS;
+
+let SEPARATORS = {
+    ' ', '\t', '\n', '\r',
+    '+', '-', '*', '/', '=',
+    '<', '>', '(', ')', '[', ']', '{', '}',
+    ':', ';', ',', '.', '∈', '∪', '∩', '⊆', '\0'
+};
+
+let is_separator(c) = c ∈ SEPARATORS;
+
+// Refinement set for comment starts (pure set-theoretic lookahead!)
+let COMMENT_START = { it | it ∈ Iterator(char) && *it == '/' && it[1] == '/' };
+
+// --- Keyword Lookup Function (Finite matching function!) ---
+let check_keyword(lexeme) = match lexeme {
+    "let" => #let,
+    "mut" => #mut,
+    "struct" => #struct,
+    "int" => #int,
+    "if" => #if,
+    "for" => #for,
+    "else" => #else,
+    "while" => #while,
+    "in" => #in,
+    "match" => #match,
+    `default => #identifier
+};
+
+// --- Operator & Punctuation Lookup Function (Finite matching function!) ---
+let check_operator(lexeme) = match lexeme {
+    "=" => #equal,
+    "==" => #equal_equal,
+    "+" => #plus,
+    "-" => #minus,
+    "*" => #asterisk,
+    "/" => #slash,
+    ";" => #semicolon,
+    "," => #comma,
+    ":" => #colon,
+    "." => #dot,
+    ".." => #dots,
+    "{" => #open_brace,
+    "}" => #close_brace,
+    "[" => #open_bracket,
+    "]" => #close_bracket,
+    "(" => #open_paren,
+    ")" => #close_paren,
+    "!=" => #not_equal,
+    "+=" => #plus_equal,
+    "&&" => #and_and,
+    "||" => #or_or,
+    "->" => #arrow,
+    "=>" => #fat_arrow,
+    "|" => #bar,
+    "∈" => #membership,
+    "∪" => #union,
+    "∩" => #intersection,
+    "⊆" => #subset,
+    `default => #error
+};
+
+
+// --- Lexer Main Entry Point ---
+let scan_tokens(source: string_view ∩ strings.null_terminated) : sequence(Token) = {
+    let mut state = ScannerState { 
+        cursor: source.start, 
+        end: source.end 
+    };
+    let mut tokens = containers.Vector(Token);
+
+    // Loop until we reach the end of the source range
+    while state.cursor != state.end {
+
+        // We are matching against the iterator itself so that we can perform lookahead and handle multi-character tokens as pure set ownership checks.
+        // Because of this, we need to prefix the character sets with `->` to indicate we are matching against iterators that point to members of that set..
+        match state.cursor {
+            // Whitespace skipping and line tracking
+            ->WS_CHARACTERS => {
+                if *state.cursor == '\n' {
+                    state.line += 1;
+                }
+                state.cursor += 1;
+            }
+
+            // Comments & Slash Operator
+            COMMENT_START => {
+                while state.cursor != state.end && *state.cursor != '\n' {
+                    state.cursor += 1;
+                }
+            }
+
+            ->'/' => {
+                let start = state.cursor;
+                let op1 = start..start + 1;
+                state.cursor += 1;
+                tokens.push_back(Token{tok_type: check_operator(op1), lexeme: op1});
+            }
+
+            // Character Literals
+            ->'\'' => {
+                let start = state.cursor;
+                state.cursor += 1; // skip opening quote
+                
+                // Scan char literal contents
+                let next = if state.cursor != state.end { *state.cursor } else { '\0' };
+                if next == '\\' {
+                    state.cursor += 2; // skip escape sequence
+                } else {
+                    state.cursor += 1;
+                }
+                
+                // Slice is a range of iterators: start..state.cursor
+                tokens.push_back(Token{tok_type: #char, lexeme: start..state.cursor });
+                            
+                state.cursor += 1; // consume closing quote
+            }
+
+            // String Literals
+            ->'"' => {
+                let start = state.cursor;
+                state.cursor += 1; // skip opening quote
+                while state.cursor != state.end && *state.cursor != '"' {
+                    if *state.cursor == '\\' && (state.cursor + 1) != state.end {
+                        state.cursor += 2; // skip escape sequence
+                    } else {
+                        state.cursor += 1;
+                    }
+                }
+                if state.cursor != state.end {
+                    state.cursor += 1; // skip closing quote
+                }
+                tokens.push_back(Token{tok_type: #string, lexeme: start..state.cursor });
+            }
+
+            // Symbol Literals (prefixed with hash)
+            ->'#' => {
+                let start = state.cursor;
+                state.cursor += 1; // skip '#'
+                while state.cursor != state.end && is_alphanumeric(*state.cursor) {
+                    state.cursor += 1;
+                }
+                tokens.push_back(Token{tok_type: #symbol, lexeme: start..state.cursor });
+            }
+
+            // Intrinsic Namespace Identifiers (prefixed with backtick)
+            ->'`' => {
+                let start = state.cursor;
+                state.cursor += 1; // skip '`'
+                while state.cursor != state.end && is_alphanumeric(*state.cursor) {
+                    state.cursor += 1;
+                }
+                tokens.push_back(Token{tok_type: #intrinsic, lexeme: start..state.cursor });
+            }
+
+            // Identifiers and Keywords
+            ->ALPHA_CHARACTERS => {
+                let start = state.cursor;
+                while state.cursor != state.end && is_alphanumeric(*state.cursor) {
+                    state.cursor += 1;
+                }
+                let lexeme = start..state.cursor;
+                let tok_type = check_keyword(lexeme);
+                tokens.push_back(Token{tok_type: tok_type, lexeme: lexeme});
+            }
+
+            // Numeric Literals
+            ->DIGIT_CHARACTERS => {
+                let start = state.cursor;
+                while state.cursor != state.end && is_digit(*state.cursor) {
+                    state.cursor += 1;
+                }
+                tokens.push_back(Token{tok_type: #number, lexeme: start..state.cursor });
+            }
+
+            // Operators & Separators Lookup Map
+            `default => {
+                let start = state.cursor;
+                let mut matched = false;
+
+                // Try 2-character operator lookup
+                if (state.cursor + 1) != state.end {
+                    let op2 = start..start + 2;
+                    let tok_type = check_operator(op2);
+                    if tok_type != #error {
+                        state.cursor += 2;
+                        tokens.push_back(Token{tok_type: tok_type, lexeme: op2});
+                        matched = true;
+                    }
+                }
+
+                // Fallback to 1-character operator lookup
+                if !matched {
+                    let op1 = start..start + 1;
+                    let tok_type = check_operator(op1);
+                    state.cursor += 1;
+                    tokens.push_back(Token{tok_type: tok_type, lexeme: op1});
+                }
+            }
+        }
+    }
+
+    // Append EOF token at the end of scan
+    tokens.push_back(Token{tok_type: #eof, lexeme: state.cursor..state.cursor });
+
+    tokens
+};
