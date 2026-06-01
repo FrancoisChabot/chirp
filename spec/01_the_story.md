@@ -13,7 +13,7 @@ I want to create a programming language in the C/C++/Rust/Zig space. Not exactly
 
 I like Zig's model, and I also like TypeScript's expressiveness. It's hard to imagine two languages further apart (ok, it's pretty easy... but they are still very different beasts), so fusing them together seems like a suitable act of hubris for this vanity project. 
 
-The holy grail would be if we could get something along the lines of Rust’s lifetime cheking as an emergent feature of a more general correctness engine. I've always felt that it's a shame to have it has so much syntactical noise just to handle a very specific category of bugs.
+The holy grail would be if we could get something along the lines of Rust’s borrow checker as an emergent feature of a more general correctness engine. I've always felt that it's a shame it has so much syntactical noise just to handle a very specific category of bugs.
 
 And let's try to make this as squeaky-clean as possible. The fewer primitive building blocks and special cases, the better.
 
