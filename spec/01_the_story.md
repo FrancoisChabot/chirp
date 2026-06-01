@@ -172,14 +172,24 @@ We might as well allow sets to announce `{true}`, `{false}`, `{undecided}`, whil
 
 In other words, set-ness needs a second method: one that takes a set of "candidate" values and returns the set of answers its `mrp` can produce. The technical term for "the set of values a function can return" is its range, so we'll call this the set's **Member Resolution Range** (`mrr`). That "set of candidate values" may sound nebulous, but in `b ∈ S`, that's just `b`'s `lc`!
 
-
 `mrr` is a pre-flight check. `undecided` being in it does not mean a particular membership test failed to decide. It means that, for this set of candidate values, evaluating `mrp` could produce `undecided`. At the same time, if `mrr` contains only a single value, invoking `mrp` is unnecessary.
-
 
 In practice, `mrr` does not need to be magic. A boring implementation can be conservative.
 - Is `mrp` a DAG -> `{true, false}`, otherwise `{true, false, undecided}`.
 - Some sets can do better because their answer is obvious. `any` always returns `true`, so its `mrr` is `{true}`, etc...
 - Custom sets can provide their own `mrr`, but that is a promise: “my `mrp` will only ever return one of these answers.” If that promise is false, all bets are off.
+
+This is easilly confusing, so an example can help:
+
+```
+let EvenNumber = {x | x ∈ int && x % 2 == 0};
+
+let foo(s: string, v: int ) = {
+  let test_string = s ∈ EvenNumber; // mrr is {false} because x ∈ int is guaranteed to fail. this can be optimized out
+  let test_num = v ∈ EvenNumber;    // mrr is {true, false}, so it becomes a runtime computation.
+};
+```
+
 
 Now set-ness looks more like: "The **Member Resolution Predicate** of a set returns a member of its **Member Resolution Range**" (`mrp(S, b) ∈ mrr(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
 
@@ -190,26 +200,29 @@ The bedrock finally feels solid.
 Putting all of that together, we end up with an architecture that looks like this:
 
 ```text
-                ┌───────────────────────────────────────────────┐
-                │                     Traits                    │◄──┐
-                └───────────────────────────────────────────────┘   │
-                ┌───────────────────────────────────────────────┐   │
-                │                   Computation                 │   │
-                └───────────────────────────────────────────────┘   │
-                                       ...                          |
-                ┌───────────────────────────────────────────────┐   │
-                │                     CORE                      │   │
-                │  ┌─────────┐          fc/lc/cv ┌─────────┐    │   │
-                │  │  VALUE  │◄──────────────────│ BINDING │    │   │
-                │  └─────────┘                   └─────────┘    │   │
-                │   has│▲    ▲  mrp(S,v) ∈ mrr(S,v.lc)  │ fc/lc │   │
-                │      ││    └─────────────────────┐    │       │   │
-                │      ▼│is                        │    ▼       │   │
-                │  ┌─────────┐ can implement     ┌─────────┐    │   │ 
-                │  │  TYPE   │------------------►│ SETNESS │────┼───┘ is
-                │  └─────────┘                   └─────────┘    │
-                └───────────────────────────────────────────────┘
+                ┌────────────────────────────────────────────────────┐
+                │                     Traits                         │◄──┐
+                └────────────────────────────────────────────────────┘   │
+                ┌────────────────────────────────────────────────────┐   │
+                │                   Computation                      │   │
+                └────────────────────────────────────────────────────┘   │
+                                        ...                              │
+                ┌────────────────────────────────────────────────────┐   │
+                │                     CORE                           │   │
+                │  ┌─────────┐                        ┌─────────┐    │   │
+                │  │  VALUE  │◄───────────────────────│ BINDING │    │   │
+                │  └─────────┘                fc/lc/cv└─────────┘    │   │
+                │   has│▲   ▲                               ▲ │ fc/lc│   │
+                │      ││   │                               │ │      │   │
+                │      ││   │                    mrr uses lc│ │      │   │
+                │      ││   │mrp tests values               │ ▼      │   │
+                │      ▼│is └─────────────────────────┌─────────┐    │   │
+                │  ┌─────────┐                        │ SETNESS │────│───┘ 
+                │  │  TYPE   │-----------------------►└─────────┘    │
+                │  └─────────┘ can implement                         │
+                └────────────────────────────────────────────────────┘
 ```
+
 
 
 That's a **lot** of circular dependencies, but I have yet to find a way to break it. It's not *proven* yet though.
