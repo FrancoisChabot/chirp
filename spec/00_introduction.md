@@ -1,5 +1,11 @@
 # The Chirp Specification
 
+Behold, Chirp:
+
+```
+b ∈ S ≜ τ(S).mrp(S, b.cv : b.lc ⊆ b.fc) : τ(S).mrr(S, b.lc) ⊆ {true, false, undecided}
+```
+
 ## Preface
 
 The objective of this set of documents is to provide a single authoritative source of truth about the Chirp language for the purpose of implementors. While it may be a useful resource for users of the language from time to time, the document is not meant to be a user guide.
@@ -56,14 +62,15 @@ Throughout this specification's formal equations, we use the Greek letter **`τ`
 
 ---
 
-## The Semantic Heart
+## The Heart
 
-The entire semantics of Chirp fits in five lines:
+While the entire core mechanisms driving everything in Chirp technically fit on a single line, that's actually 5 important relations all mashed together:
+
 ```text
 b.lc ⊆ b.fc
 b.cv ∈ b.lc
-b ∈ S ≜ τ(S).mrp(S, b)
-τ(S).mrp(S, b) ∈ τ(S).mrr(S, b.lc)
+b ∈ S ≜ τ(S).mrp(S, b.cv)
+τ(S).mrp(S, b.cv) ∈ τ(S).mrr(S, b.lc)
 τ(S).mrr(S, b.lc) ⊆ {true, false, undecided}
 ```
 
