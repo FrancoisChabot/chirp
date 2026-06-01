@@ -58,28 +58,16 @@ Throughout this specification's formal equations, we use the Greek letter **`τ`
 
 ## The Semantic Heart
 
-At the beating heart of Chirp's semantics are these equations, which govern how its basic blocks interact:
+The entire semantics of Chirp fits in five lines:
 ```text
 b.lc ⊆ b.fc
 b.cv ∈ b.lc
 b ∈ S ≜ τ(S).mrp(S, b)
-```
-
-And these, making the system both stable and optimizable:
-```text
 τ(S).mrp(S, b) ∈ τ(S).mrr(S, b.lc)
 τ(S).mrr(S, b.lc) ⊆ {true, false, undecided}
 ```
 
-Or in English:
-
-- **The Space-to-Structure Law:** A binding's local constraint (`b.lc`) must always be a subset of its fundamental constraint (`b.fc`).
-- **The Time-to-Space Law:** A binding's current value (`b.cv`) must always be a member of its local constraint (`b.lc`).
-- **The Membership Dispatch Law:** Set membership (`b ∈ S`) is defined by invoking the membership resolution predicate (`mrp`) dispatched through the set value's intrinsic type (`τ(S)`).
-- **The Membership Range Law:** The result of `mrp(S, b)` must always belong to the membership resolution range `mrr(S, b.lc)`.
-- **The Ternary Bound Law:** A membership resolution range must always be a subset of `{true, false, undecided}`.
-
-The rest of the specification is either unpacking the consequences of that and building up on it.
+That probably seems cryptic to you right now, but don't worry. By the end of the next chapter, these equations will make sense. By the end of the chapter after that, they should feel inevitable.
 
 ---
 
