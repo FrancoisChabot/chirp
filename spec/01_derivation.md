@@ -226,7 +226,7 @@ Putting all of that together, we end up with an architecture that looks like thi
 
 
 
-That's a **lot** of circular dependencies, but I have yet to find a way to break it. It's not *proven* yet though.
+That's a **lot** of circular dependencies, but I have yet to find a way to break it. This could really use a proper proof, but I'm not really a theorem kind of guy. If the language works, I'm sure some grad student will be delighted to make a paper out of doing it for me :) . 
 
 Computation is its own can of worms and may eventually get a similar companion reasoning file. But you should now be equipped with all of the intuition you need to go through the rest of the spec.
 

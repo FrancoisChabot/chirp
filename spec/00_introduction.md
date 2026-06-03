@@ -6,6 +6,8 @@ Behold, Chirp:
 b ∈ S ≜ τ(S).bp(S, b.cv : b.lc ⊆ b.fc) : τ(S).br(S, b.lc) ⊆ {true, false, undecided}
 ```
 
+That probably seems cryptic to you right now, but don't worry. By the end of the next chapter, these equations will make sense. By the end of the chapter after that, they should feel inevitable.
+
 ## Preface
 
 The objective of this set of documents is to provide a single authoritative source of truth about the Chirp language for the purpose of implementors. While it may be a useful resource for users of the language from time to time, the document is not meant to be a user guide.
@@ -59,22 +61,6 @@ In Chirp code, (almost) all language intrinsics are prefixed with a backtick (e.
 ### Mathematical Notation: The Type-Of Operator (`τ`)
 
 Throughout this specification's formal equations, we use the Greek letter **`τ` (tau)** as a compact, single-character mathematical substitute for the language's `typeof(x)` operator. That is, $\tau(x) \triangleq \text{typeof}(x)$.
-
----
-
-## The Heart
-
-While the entire core mechanisms driving everything in Chirp technically fit on a single line, that's actually 5 important relations all mashed together:
-
-```text
-b.lc ⊆ b.fc
-b.cv ∈ b.lc
-b ∈ S ≜ τ(S).bp(S, b.cv)
-τ(S).bp(S, b.cv) ∈ τ(S).br(S, b.lc)
-τ(S).br(S, b.lc) ⊆ {true, false, undecided}
-```
-
-That probably seems cryptic to you right now, but don't worry. By the end of the next chapter, these equations will make sense. By the end of the chapter after that, they should feel inevitable.
 
 ---
 
