@@ -6,7 +6,7 @@ This chapter outlines how the core ontologyâ€”Values, Types, Sets, and Bindingsâ
 
 ---
 
-## 1. Representable Types
+## Representable Types
 
 During standard evaluation (the "Interpreter" phase), Chirp has no limitations on what a binding can hold. A binding's value can be a `Type`, a `Matcher`, a module, or even an infinite mathematical `set`. 
 
@@ -25,7 +25,7 @@ Non-representable types include concepts like `Type`, `Matcher`, and `Trait`. Th
 
 ---
 
-## 2. The Golden Rule of Code Generation
+## The Golden Rule of Code Generation
 
 The bridge between the Interpreter Environment and the Runtime Environment is governed by a single, unbreakable rule:
 
@@ -98,7 +98,7 @@ This conservative approach ensures absolute soundness and compiler implementatio
 
 ---
 
-## 5. Summary
+## Summary
 
 By strictly separating the boundless Interpreter environment from the bounded Runtime environment through the **Golden Rule of Code Generation**, Chirp achieves an elegant balance. It allows maximum dynamic flexibility for meta-programming and trait injection, while guaranteeing that the emitted machine code (often lowered to C) is deterministic, aligned, and blistering-fast.
 

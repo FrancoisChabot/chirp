@@ -8,19 +8,49 @@ If you are curious how in the blazes that is supposed to work, start at [`spec/0
 
 This repo is all content, little guidance for the time being, but you are still more than welcome to poke around.
 
+## Getting started
+
+There's not much you can concretely do with chirp at the moment. The interpreter's AST-dump mode works pretty well though, so you can poke around the syntax easily at least. 
+
+**Requirements**: CMake 3.20+, a C++20 compiler and a network connection for `FetchContent()` to be able to do its thing for googletest.
+
+```bash
+mkdir build
+cd build
+cmake ../bootstrap-interpreter
+make && ctest
+
+app/chirp --ast-dump ../interpreter/lexer.chirp
+```
+
+There's also a prompt mode if you invoke `chirp` without any arguments, but it's not much more than a stub at the moment.
+
+### Misleading intuition warning
+
+If you are a seasoned developer and, as I suspect will likely be the case, you go have a look at some code samples before reading the spec, you will find yourself in *almost* familiar territory, and there's a real risk of misinterpreting what's going on.
+
+```
+                This
+                 |
+                 v
+let some_var : int64 = 3;
+```
+
+Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [`spec/`](spec/). The first two chapters are approachable, so don't be shy.
+
 ## State of the project
 
 - The core language design feels stable enough that the remaining abstractions look buildable on top of it. There is still a lot of design and implementation work ahead, but I don’t currently expect any *fundamental* problems to pop up in the model.
 
-- I am very happy with the syntax as it is right now. It exposes the foundations directly, without abstraction, yet reads like Typescript-flavored zig. And it doesn't have *any* comptime/runtime flagging whatsoever.
+- I am very happy with the syntax as it is right now. It exposes the foundations directly, without abstraction, yet reads intuitively.
 
 - I currently don't foresee any major roadblocks to building an interpreter that *works*. Building one that runs *fast* and contains a smart-enough solver will be tough, but there's nothing precluding its existence. As far as I can tell, of course.
 
-- The interpreter is good enough to parse chirp code and dump it as AST. It's a far cry from a proper interpreter, but that part is currently reliable enough to build on.
+- The `chirp` executable is good enough to parse chirp code and dump it as AST. It's a far cry from a proper interpreter, but that part is currently reliable enough to build on.
 
 ### Current objective
 
-Reach the point where Chirp is useful as an interpreted scripting language, already capable of showing off how it bridges declarative and imperative programming:
+Reach the point where Chirp is useful as an interpreted scripting language, already showing off how it bridges declarative and imperative programming:
 
 ```chirp
 let fizz = { x:int | x % 3 == 0 };
@@ -39,7 +69,7 @@ for (v ∈ 1..100) do {
 ```
 
 > [!NOTE]
-> Don't let the unicode `∈` scare you. You can write `` `in `` instead and the code formatter `chirp --format` will swap it out for you.
+> Don't let the Unicode `∈` scare you. You can write `` `in `` instead and use `chirp --format` to swap it out for you. I have it hooked up as my format-on-save in VSCode. 
 
 ### Long-term direction
 
@@ -50,20 +80,8 @@ Chirp is interpreter-first, but not interpreter-only. It's ultimately meant to b
 - Step 3: Implement the Calcification process to narrow bindings down to representable types.
 - Step 4: Implement low-level code emission
 
-There is a lot of work ahead, but the path to Futamura-style projection without splitting Chirp into separate compile-time and runtime dialects is there.
+How far we can take it from there is unclear. I am reasonably confident that it will work for straightforward single-threaded computations (which is already something!). But where will the model hit a hard wall? I have no idea at the moment.
 
-## Getting started
-
-There's not much you can concretely do with chirp at the moment. The interpreter's AST-dump mode works pretty well though, so you can poke around the syntax easily at least. 
-
-```bash
-mkdir build
-cd build
-cmake ../bootstrap-interpreter
-make && ctest
-
-app/chirp --ast-dump ../interpreter/lexer.chirp
-```
 ## Repo map:
 
 [`interpreter/`](interpreter/) : Not an actual interpreter, just a sandbox for exploring syntax and semantics. What the code DOES is almost certainly out of sync, but the way it goes about it should be a good demonstration of what we're trying to accomplish, especially as far as ergonomics go.

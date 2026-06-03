@@ -226,6 +226,27 @@ You might be thinking "ok, that's a const without needing the keyword, neat I gu
 
 Let's say that you create a binding that establishes a mapping between types and functions, and that binding's constraint allows for any number of types to be matched. You can keep adding new `type => function` pairs to that mapping as you like during the interpretation phase. Calcify that mapping (by constraining a new binding to exactly the value of the final mapping) and the list becomes fixed. Congratulations, you've just implemented a runtime trait that compiles to a fixed-size dispatch table.
 
+---
+
+### Behold, Chirp, revisited
+
+The [introduction](00_introduction.md) opened with this equation:
+
+```
+b ∈ S ≜ τ(S).bp(S, b.cv : b.lc ⊆ b.fc) : τ(S).br(S, b.lc) ⊆ {true, false, undecided}
+```
+
+We can now finally unpack it.
+
+- `b.cv : b.lc ⊆ b.fc` : That's the binding funnel. A binding has a current value which belongs to the spatial constraint, which in turn is a subset of the fundamental constraint.
+- `b ∈ S ≜ τ(S).bp(...)` : This is set-ness formalized. Checking if a value belongs to a set is indirected via the set's type. 
+- `: τ(S).br(S, b.lc)` : This says that the result of `bp` must belong to the set obtained when evaluating the `br` preflight check.
+- `⊆ {true, false, undecided}` : This says that the `br` preflight check must return a subset of `{true, false, undecided}`.
+
+And at the end of the day, that *IS* what chirp is all about.
+
+---
+
 ## Next steps
 
 Make sure you've got a good grasp of all this before proceeding, because we are going to be leveraging each of these concepts *extensively* from here on in.
