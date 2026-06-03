@@ -125,3 +125,13 @@ TEST(LexerTest, LocationsAndComments) {
     EXPECT_EQ(tokens[5].line, 3);
     EXPECT_EQ(tokens[5].column, 1);
 }
+
+TEST(LexerTest, FormatText) {
+    std::string source = "let a = b `intersection c;\nlet d = e `union f;\nlet g = h `subset i;\nlet j = k `in l;";
+    std::string expected = "let a = b ∩ c;\nlet d = e ∪ f;\nlet g = h ⊆ i;\nlet j = k ∈ l;";
+    EXPECT_EQ(format_text(source), expected);
+    
+    // Verify it doesn't touch already formatted or unrelated stuff
+    std::string source2 = "let x = 1; // comment\nlet y = `any;";
+    EXPECT_EQ(format_text(source2), source2);
+}

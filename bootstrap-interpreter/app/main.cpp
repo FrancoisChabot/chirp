@@ -6,6 +6,33 @@
 #include "chirp/parser.h"
 
 bool ast_dump_mode = false;
+bool format_mode = false;
+
+void formatFile(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Could not open file: " << path << "\n";
+        return;
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    file.close();
+    
+    std::string source = buffer.str();
+    
+    try {
+        std::string formatted = chirp::parser::format_text(source);
+        if (formatted != source) {
+            std::ofstream out_file(path);
+            out_file << formatted;
+            std::cout << "Formatted " << path << "\n";
+        } else {
+            std::cout << "Already formatted " << path << "\n";
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Formatting error in " << path << ": " << e.what() << "\n";
+    }
+}
 
 void run(const std::string& source) {
     try {
@@ -56,18 +83,28 @@ int main(int argc, char* argv[]) {
     for (const auto& arg : args) {
         if (arg == "--ast-dump") {
             ast_dump_mode = true;
+        } else if (arg == "--format") {
+            format_mode = true;
         } else if (arg[0] != '-') {
             script_path = arg;
         } else {
             std::cerr << "Unknown flag: " << arg << "\n";
-            std::cerr << "Usage: chirp_app [--ast-dump] [script]\n";
+            std::cerr << "Usage: chirp_app [--ast-dump] [--format] [script]\n";
             return 1;
         }
     }
 
     if (!script_path.empty()) {
-        runFile(script_path);
+        if (format_mode) {
+            formatFile(script_path);
+        } else {
+            runFile(script_path);
+        }
     } else {
+        if (format_mode) {
+            std::cerr << "Error: --format requires a file path.\n";
+            return 1;
+        }
         runPrompt();
     }
     return 0;

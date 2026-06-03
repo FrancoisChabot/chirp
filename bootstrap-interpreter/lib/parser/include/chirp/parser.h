@@ -74,9 +74,11 @@ struct token {
     std::string_view lexeme;
     int line;
     int column;
+    std::string_view leading_trivia;
 };
 
 std::vector<token> tokenize(std::string_view input);
+std::string format_text(std::string_view source);
 
 class Expr;
 std::unique_ptr<Expr> parse_expression(const std::vector<token>& tokens);

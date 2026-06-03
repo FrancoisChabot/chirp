@@ -17,9 +17,10 @@ Chirp fully embraces Unicode to support clean, expressive mathematical set opera
 ## Whitespace and Comments
 
 ### Whitespace
-Whitespace separates tokens and is otherwise discarded by the scanner, except within string literals.
+Whitespace separates tokens and is otherwise discarded by the core parser, except within string literals.
 * Standard whitespace characters are: space (`' '`), horizontal tab (`'\t'`), carriage return (`'\r'`), and newline (`'\n'`).
 * Newlines increment the source compiler's internal line tracker for diagnostics and error reporting.
+* *Tooling Note:* For the sake of the `--format` tool and future language servers, the lexer may retain whitespace and comments as "Trivia" attached to structural tokens, allowing for lossless source reconstruction.
 
 ### Comments
 Chirp supports single-line comments starting with double slashes `//`. 
@@ -39,7 +40,7 @@ Keywords are reserved identifiers that have special meaning in the language gram
 
 The core keywords are:
 ```chirp
-let    mut    struct    int    if    for    else    while    in    match    true    false    break    do
+let    mut    struct    int    if    for    else    while    match    true    false    break    do
 ```
 
 ---
@@ -113,10 +114,10 @@ The following character sequences are recognized as operators or punctuation:
 | `]`              | N/A              | `#close_bracket`     | End of sequence / index |
 | `(`              | N/A              | `#open_paren`        | Start of parameters / grouping |
 | `)`              | N/A              | `#close_paren`       | End of parameters / grouping |
-| **`∈`**          | **`in`**         | `#belonging`         | Set belonging test  |
-| **`∪`**          | **`union`**      | `#union`             | Set union |
-| **`∩`**          | **`intersection`**| `#intersection`     | Set intersection |
-| **`⊆`**          | **`subset`**     | `#subset`            | Set subset test |
+| **`∈`**          | **`` `in` ``**         | `#belonging`         | Set belonging test (or loop) |
+| **`∪`**          | **`` `union` ``**      | `#union`             | Set union |
+| **`∩`**          | **`` `intersection` ``**| `#intersection`     | Set intersection |
+| **`⊆`**          | **`` `subset` ``**     | `#subset`            | Set subset test |
 
 ---
 
@@ -127,7 +128,7 @@ The following character sequences are recognized as operators or punctuation:
 * **Namespace Isolation via Backticks:** 
   By reserving the backtick `` ` `` prefix for compiler intrinsics, Chirp ensures that user-defined code can never accidentally conflict with compiler-provided functions or type definitions. Even if the compiler introduces a new intrinsic in a future release, it will be namespaced behind `` ` ``, guaranteeing absolute backward compatibility for user identifiers.
 * **Ergonomic ASCII Equivalents:** 
-  While mathematical notation like `∈` and `∪` looks gorgeous in specifications and documentation, they can be tedious to type on standard QWERTY keyboards. The scanner automatically lowers words like `in` or `union` into `#belonging` and `#union` tokens respectively, allowing developers to write ASCII code that compiles to the exact same AST representation.
+  While mathematical notation like `∈` and `∪` looks gorgeous in specifications and documentation, they can be tedious to type on standard QWERTY keyboards. By utilizing the Intrinsics namespace (e.g., `` `in` `` or `` `union` ``), developers can type ASCII equivalents that parse to the exact same AST representation. This also allows the `chirp --format` tool to automatically perform in-place replacement of these ASCII fallbacks into their proper Unicode forms, upgrading the code aesthetics without polluting the user namespace.
 
 ---
 

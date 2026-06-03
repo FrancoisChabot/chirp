@@ -13,6 +13,7 @@ class Lexer {
     int line = 1;
     int column = 1;
     int start_column = 1;
+    std::string_view pending_trivia;
     std::vector<token> tokens;
 
     bool is_at_end() const { 
@@ -194,8 +195,10 @@ class Lexer {
             type,
             source.substr(start, current - start),
             line,
-            start_column
+            start_column,
+            pending_trivia
         });
+        pending_trivia = "";
     }
 
     void skip_whitespace() {
@@ -252,7 +255,12 @@ class Lexer {
         if (current - start == 1) {
             add_token(token_type::error);
         } else {
-            add_token(token_type::intrinsic);
+            std::string_view text = source.substr(start, current - start);
+            if (text == "`in") add_token(token_type::in_op);
+            else if (text == "`union") add_token(token_type::union_op);
+            else if (text == "`intersection") add_token(token_type::intersection_op);
+            else if (text == "`subset") add_token(token_type::subset_op);
+            else add_token(token_type::intrinsic);
         }
     }
 
@@ -312,7 +320,10 @@ class Lexer {
     }
 
     void scan_token() {
+        size_t trivia_start = current;
         skip_whitespace();
+        pending_trivia = source.substr(trivia_start, current - trivia_start);
+        
         if (is_at_end()) return;
 
         start = current;
@@ -413,7 +424,7 @@ public:
         while (!is_at_end()) {
             scan_token();
         }
-        tokens.push_back(token{token_type::eof, "", line, column});
+        tokens.push_back(token{token_type::eof, "", line, column, pending_trivia});
         return tokens;
     }
 };
@@ -423,6 +434,30 @@ public:
 std::vector<token> tokenize(std::string_view input) {
     Lexer lexer(input);
     return lexer.scan_tokens();
+}
+
+std::string format_text(std::string_view source) {
+    std::string out;
+    auto tokens = tokenize(source);
+    for (const auto& t : tokens) {
+        out.append(t.leading_trivia);
+        if (t.type == token_type::eof) {
+            break;
+        }
+        
+        if (t.type == token_type::in_op && t.lexeme == "`in") {
+            out.append("∈");
+        } else if (t.type == token_type::union_op && t.lexeme == "`union") {
+            out.append("∪");
+        } else if (t.type == token_type::intersection_op && t.lexeme == "`intersection") {
+            out.append("∩");
+        } else if (t.type == token_type::subset_op && t.lexeme == "`subset") {
+            out.append("⊆");
+        } else {
+            out.append(t.lexeme);
+        }
+    }
+    return out;
 }
 
 } // namespace chirp::parser
