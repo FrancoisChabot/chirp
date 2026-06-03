@@ -21,11 +21,11 @@ Using LLMs as a brainstorming tool to populate a pool of design ideas can happen
 
 ### LLMs are (sometimes) used to *realize* designs
 
-The rule: For any block of code, the human author associated to it MUST be able to explain that code as if they had written it. If you want to contribute to this project but are intimidated by that, reduce the scope of your contribution until you can. I will **not** budge on this.
+The rule: For any block of code, the human author associated to it MUST be able to explain that code as if they had written it. If you want to contribute to this project but are intimidated by that, reduce the scope of your contribution until you can.
 
 > [!NOTE]
 > Counterintuitively, this means that in-code comments pointing out that a block of code was AI-generated are **explicitly** disallowed from the codebase.
-> If you submit code to this repo, I will treat it as if you wrote it. End of story. 
+> If you submit code to this repo, I will treat it as if you wrote it. If you cannot explain it, defend it, and maintain it at that standard, it does not belong here.
 
 In practice, I use the following set of constraints to achieve that, and would encourage everyone to follow along:
 

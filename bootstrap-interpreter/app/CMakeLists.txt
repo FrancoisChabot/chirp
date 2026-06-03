@@ -1,3 +1,3 @@
-add_executable(chirp_app main.cpp)
-target_link_libraries(chirp_app PRIVATE chirp_parser chirp_interpreter)
-target_compile_features(chirp_app PUBLIC cxx_std_20)
+add_executable(chirp main.cpp)
+target_link_libraries(chirp PRIVATE chirp_parser chirp_interpreter)
+target_compile_features(chirp PUBLIC cxx_std_20)

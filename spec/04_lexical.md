@@ -136,4 +136,4 @@ The following character sequences are recognized as operators or punctuation:
 
 Having laid out the concrete characters and tokens that make up Chirp source code, we can now explore how user-defined types are endowed with custom behaviors.
 
-Next up: [Grammar](05grammar.md), it's the grammar!
+Next up: [Grammar](05_grammar.md), it's the grammar!

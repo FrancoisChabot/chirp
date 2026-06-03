@@ -6,7 +6,7 @@ If you want to see what that looks like, check out [`interpreter/lexer.chirp`](i
 
 If you are curious how in the blazes that is supposed to work, start at [`spec/00_introduction.md`](spec/00_introduction.md).
 
-This repo is all content, no structure for the time being, but you are still more than welcome to poke around.
+This repo is all content, little guidance for the time being, but you are still more than welcome to poke around.
 
 ## State of the project
 
@@ -15,6 +15,8 @@ This repo is all content, no structure for the time being, but you are still mor
 - I am very happy with the syntax as it is right now. It exposes the foundations directly, without abstraction, yet reads like Typescript-flavored zig. And it doesn't have *any* comptime/runtime flagging whatsoever.
 
 - I currently don't foresee any major roadblocks to building an interpreter that *works*. Building one that runs *fast* and contains a smart-enough solver will be tough, but there's nothing precluding its existence. As far as I can tell, of course.
+
+- The interpreter is good enough to parse chirp code and dump it as AST. It's a far cry from a proper interpreter, but that part is currently reliable enough to build on.
 
 ### Current objective
 
@@ -50,9 +52,23 @@ Chirp is interpreter-first, but not interpreter-only. It's ultimately meant to b
 
 There is a lot of work ahead, but the path to Futamura-style projection without splitting Chirp into separate compile-time and runtime dialects is there.
 
+## Getting started
+
+There's not much you can concretely do with chirp at the moment. The interpreter's AST-dump mode works pretty well though, so you can poke around the syntax easily at least. 
+
+```bash
+mkdir build
+cd build
+cmake ../bootstrap-interpreter
+make && ctest
+
+app/chirp --ast-dump ../interpreter/lexer.chirp
+```
 ## Repo map:
 
 [`interpreter/`](interpreter/) : Not an actual interpreter, just a sandbox for exploring syntax and semantics. What the code DOES is almost certainly out of sync, but the way it goes about it should be a good demonstration of what we're trying to accomplish, especially as far as ergonomics go.
+
+[`bootstrap-interpreter/`](bootstrap-interpreter/) : A work-in-progress C++ interpreter. At the moment, it can parse chirp code and dump it as AST, as well as do the in-place ASCII->unicode operator replacement.
 
 [`spec/`](spec/) : This is where the focus is at the moment. It's not trying to be a legalese-style spec at the moment. Formalism will happen once the dust settles a bit.
 

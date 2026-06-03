@@ -8,6 +8,15 @@
 bool ast_dump_mode = false;
 bool format_mode = false;
 
+void printUsage(std::ostream& out) {
+    out << "Usage: chirp [--ast-dump] [--format] [script]\n"
+        << "\n"
+        << "Options:\n"
+        << "  --ast-dump  Parse the input and print its AST.\n"
+        << "  --format    Rewrite ASCII operator aliases to Unicode in-place.\n"
+        << "  --help      Show this help message.\n";
+}
+
 void formatFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
@@ -81,15 +90,18 @@ int main(int argc, char* argv[]) {
     std::string script_path = "";
 
     for (const auto& arg : args) {
-        if (arg == "--ast-dump") {
+        if (arg == "--help" || arg == "-h") {
+            printUsage(std::cout);
+            return 0;
+        } else if (arg == "--ast-dump") {
             ast_dump_mode = true;
         } else if (arg == "--format") {
             format_mode = true;
-        } else if (arg[0] != '-') {
+        } else if (!arg.empty() && arg[0] != '-') {
             script_path = arg;
         } else {
             std::cerr << "Unknown flag: " << arg << "\n";
-            std::cerr << "Usage: chirp_app [--ast-dump] [--format] [script]\n";
+            printUsage(std::cerr);
             return 1;
         }
     }
