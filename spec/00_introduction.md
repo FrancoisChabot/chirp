@@ -3,7 +3,7 @@
 Behold, Chirp:
 
 ```
-b ∈ S ≜ τ(S).mrp(S, b.cv : b.lc ⊆ b.fc) : τ(S).mrr(S, b.lc) ⊆ {true, false, undecided}
+b ∈ S ≜ τ(S).bp(S, b.cv : b.lc ⊆ b.fc) : τ(S).br(S, b.lc) ⊆ {true, false, undecided}
 ```
 
 ## Preface
@@ -69,9 +69,9 @@ While the entire core mechanisms driving everything in Chirp technically fit on 
 ```text
 b.lc ⊆ b.fc
 b.cv ∈ b.lc
-b ∈ S ≜ τ(S).mrp(S, b.cv)
-τ(S).mrp(S, b.cv) ∈ τ(S).mrr(S, b.lc)
-τ(S).mrr(S, b.lc) ⊆ {true, false, undecided}
+b ∈ S ≜ τ(S).bp(S, b.cv)
+τ(S).bp(S, b.cv) ∈ τ(S).br(S, b.lc)
+τ(S).br(S, b.lc) ⊆ {true, false, undecided}
 ```
 
 That probably seems cryptic to you right now, but don't worry. By the end of the next chapter, these equations will make sense. By the end of the chapter after that, they should feel inevitable.
@@ -82,6 +82,8 @@ That probably seems cryptic to you right now, but don't worry. By the end of the
 
 This specification is organized to guide you step-by-step through the mechanics of the language:
 
-- **[01_the_story.md](01_the_story.md):** A Socratic derivation of the core ontology.
-- **[02_the_core.md](02_the_core.md):** Bindings, Sets, Values, and Types. That's all we need.
-- **[03_the_machine.md](03_the_machine.md):** How code becomes emmitable to C. 
+- **[01_derivation.md](01_derivation.md):** Why Chirp is the way that it is.
+- **[02_core.md](02_core.md):** Bindings, Sets, Values, and Types. That's all we need.
+- **[03_machine.md](03_machine.md):** How code becomes emmitable to C. 
+- **[04_lexical.md](04_lexical.md):** Boring but necessary details about how to parse code. 
+- **[05_grammar.md](05_grammar.md):** Less boring, but still becessary, details about how to read the code. 

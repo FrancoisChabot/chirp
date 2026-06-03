@@ -51,7 +51,7 @@ This paradigm elegantly formalizes the concept of "Traits". A trait in Chirp is 
 
 For example, a `convertible_to_string` trait is just `domain(to_string)`. 
 
-"Implementing a trait" for a new type is simply the act of using `.add()` to inject a new mapping arm into that global `Matcher`. Doing so naturally expands the function's domain to include the new type, making it a member of the trait.
+"Implementing a trait" for a new type is simply the act of using `.add()` to inject a new mapping arm into that global `Matcher`. Doing so naturally expands the function's domain to include the new type, making it belong to the trait.
 
 ## Lambdas and Anonymous Functions
 
@@ -74,47 +74,8 @@ let square = (x: int) => x * x;
 Chirp's foundation is built on a strict, self-referential ontology of four concepts: Types, Values, Sets, and Bindings.
 
 1. **Values & Types:** Every value has exactly 1 intrinsic type. Types are themselves values. The type of every type is `Type`.
-2. **Sets:** Any value whose type has set-ness can act as a Set. Any value can be checked for membership in a Set. The universal set is `any`.
+2. **Sets:** Any value whose type has set-ness can act as a Set. Any value can be checked for belonging in a Set. The universal set is `any`.
 3. **Bindings:** A binding (variable) has a current value and is constrained by a set of possible values. This constraint can become narrower over time (Flow-sensitive typing).
-
-```mermaid
-graph TD
-    classDef entity fill:#1e1e2e,stroke:#a6accd,stroke-width:2px,color:#cdd6f4;
-    classDef literal fill:#313244,stroke:#cba6f7,stroke-width:2px,color:#cba6f7;
-    classDef abstract fill:#1e1e2e,stroke:#f38ba8,stroke-width:2px,color:#f38ba8,stroke-dasharray: 5 5;
-
-    %% Nodes
-    Binding(["Binding"]):::entity
-    Value(["Value"]):::entity
-    T_Type(["Type"]):::entity
-    Set(["Set (Concept)"]):::abstract
-
-    T_TypeLit["Type (The Type of Types)"]:::literal
-    S_Set["set (The Set of Set-Types)"]:::literal
-    V_Any["any (The Universal Set)"]:::literal
-    T_AnyType["AnyType (The Type of `any`)"]:::literal
-
-    %% Binding Rules
-    Binding -- "1. has current" --> Value
-    Binding -- "2. constrained by (can narrow over time)" --> Set
-    
-    %% Value & Type Rules
-    Value -- "3. has exactly 1 intrinsic" --> T_Type
-    T_Type -- "4. is a" --> Value
-    T_Type -- "5. has intrinsic type" --> T_TypeLit
-    T_TypeLit -- "loops: has intrinsic type" --> T_TypeLit
-
-    %% Set Rules
-    Set -- "6. is implemented by any" --> Value
-    T_Type -- "7. if member of" --> S_Set
-    S_Set -- "8. enables its Values to act as" --> Set
-
-    %% The `any` Rules
-    V_Any -- "9. is a" --> Value
-    V_Any -- "10. has intrinsic type" --> T_AnyType
-    V_Any -- "11. is a member of" --> S_Set
-    Value -- "12. is always a member of" --> V_Any
-```
 
 ## The Three-Shell Execution Model (Concept)
 
@@ -165,17 +126,17 @@ Because Atoms are conceptually pre-bound, the set of all identifiers in a scope 
 
 For example:
 ```chirp
-for id in std.enumerable(some_scope.identifiers) { ... }
+for (id in std.enumerable(some_scope.identifiers)) { ... }
 ```
 Using a standard library function rather than a dedicated operator (like `~`) reserves single-character operators for high-frequency business logic, prevents confusion with standard C operators (like bitwise NOT), and keeps the core compiler namespace small.
 
-## The Cost-Driven Constraint Solver & Ternary Set Membership
+## The Cost-Driven Constraint Solver & Ternary Set Belonging
 
 To unify systems-level performance predictability with high-level constraint expressiveness, Chirp implements a cost-driven constraint solver that bounds undecidability.
 
 ### 1. Bounding the Solver: Computational Budgeting
 
-Proving set membership for arbitrary predicates is equivalent to general theorem proving, which is mathematically undecidable (the Halting Problem). Rather than treating non-termination as a compiler hang or a fatal logical contradiction, the compiler assigns a deterministic **computational budget** (e.g., a precise VM execution step count or recursion limit) to each proof attempt.
+Proving set belonging for arbitrary predicates is equivalent to general theorem proving, which is mathematically undecidable (the Halting Problem). Rather than treating non-termination as a compiler hang or a fatal logical contradiction, the compiler assigns a deterministic **computational budget** (e.g., a precise VM execution step count or recursion limit) to each proof attempt.
 
 This budget acts as a developer-facing "Build Time vs. Elision" dial:
 *   **High Budget:** The compiler spends more time executing complex or recursive compile-time proofs to maximize **Runtime Check Elision** (generating zero-overhead native code).

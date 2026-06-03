@@ -1,66 +1,63 @@
 # The Chirp Specification: The Computation Model
 
-With the static ontology of Chirp established—Values, Types, Sets, and Bindings—we can now introduce the execution engine that brings these elements to life. 
+With the static ontology of Chirp established -- Values, Types, Sets, and Bindings -- we can describe how dynamic calculation settles into values.
 
-Computation in Chirp is not modeled as standard imperative AST traversal. Instead, it is modeled as the recursive, coinductive resolution of active computations until they settle into stable values.
+Computation in Chirp is not modeled as ordinary imperative AST traversal. It is modeled as the recursive resolution of active computations until the current evaluation context can treat the result as terminal.
 
 ---
 
-## 1. Computation and the Yielder
+## 1. Computation and Yielders
 
-In Chirp, all dynamic calculation is represented by a simple, elegant set relationship:
+In Chirp, dynamic calculation is represented by a set relationship:
 
 ```text
-computation ≜ terminal ∪ yielder
+computation := terminal union yielder
 ```
 
-*   A **terminal** is a value that is already a completed result in the current evaluation context. The set of terminal values is therefore contextual (for instance, inside a standard math expression, a raw integer is terminal).
-*   A **yielder** is a value whose Type has **yield-ness**: the capability to advance a computation by producing another computation.
+A **terminal** is a value that is already a completed result for the current evaluation context. Terminal-ness is contextual: a raw integer may be terminal for arithmetic, while a callable value may remain passive unless the surrounding operation asks it to yield.
 
-### Coinductive Evaluation
+A **yielder** is a value whose Type provides yield-ness: the capability to advance a computation by producing another computation.
 
-Terminal-ness and yield-ness are not mutually exclusive. A value may be both terminal and yielder. In that case, terminal-ness wins unless the surrounding operation explicitly asks for the value to be yielded. This is what allows a function, matcher, or other executable value to be handled as an ordinary, passive value in one context, and as an active computation in another.
+Terminal-ness and yield-ness are not mutually exclusive. If a value is both terminal and yield-capable, terminal-ness wins unless the surrounding operation explicitly invokes yield behavior.
 
-For a Type to have **yield-ness**, it must fulfill three criteria:
+For a Type to provide yield-ness, it must supply:
 
-1.  **Parameter Domain:** There has to be an operation that provides the parameter domain (as a set) of the value.
-2.  **Result Domain:** There has to be an operation that provides the result domain (as a set of computations) of the value *as a function of a subset of the parameter domain*.
-3.  **Yield Function:** There has to be an operation that, given a value of a subset of its parameter domain, yields a computation of the corresponding result domain.
+1. **Parameter Domain:** the set of accepted parameters.
+2. **Result Domain:** the set of computations produced for a subset of the parameter domain.
+3. **Yield Function:** the operation that maps a value plus parameters to the next computation.
 
 ---
 
 ## 2. Conceptual Evaluation Flow
 
-Evaluation is conceptually a recursive loop that continuously resolves yielders:
+Evaluation is conceptually a recursive loop:
 
 ```text
 evaluate(c, p):
-  if c ∈ terminal(p):
+  if c is terminal in context p:
     return c
 
-  if c ∈ yielder:
+  if c has yield-ness:
     return evaluate(yield(c, p), p)
 ```
 
-This is only a semantic sketch, not surface syntax. The crucial point is the exit condition: a yielder does not need to produce a final, terminal value in one step. It only needs to produce *another computation*, and the process continues recursively until that computation evaluates to a terminal value.
+This is a semantic sketch, not surface syntax. A yielder does not need to produce a final value in one step. It only needs to produce the next computation, and evaluation continues until the result is terminal for the active context.
 
 ---
 
-## 3. Unifying Expressions, Functions, and Blocks
+## 3. Unified Computation Values
 
-By modeling all execution as a generalized yielder-resolution loop, Chirp unifies language constructs that are normally treated as entirely separate concepts in other compilers:
+Several language-level concepts can be understood as values with yield-like behavior:
 
-*   **Functions & Closures:** Traditional callables that map a parameter domain to a result domain.
-*   **Expressions:** Lazy calculations whose parameter domain is simply the current evaluation scope, yielding their evaluated result.
-*   **Code Blocks:** Ordered sequences of computations that yield the result of their final statement.
-*   **Matchers (Pattern Matching):** Piecewise functions that map matching subjects (parameter domain) to their corresponding branch outputs.
+- Functions and closures map a parameter domain to a result domain.
+- Expression computations depend on the current evaluation scope and yield an evaluated value.
+- Block-like computations sequence work and yield according to their semantic rules.
+- Matcher-like computations model piecewise mappings from accepted inputs to branch outputs.
 
-All of these share the same fundamental mechanism: they map a parameter domain to a result domain, step-by-step, until a terminal result is produced.
+The exact surface syntax for constructing these values belongs in the grammar, not in this semantic chapter.
 
 ---
 
 ## 4. Next Steps
 
-Now that we have covered the static core and the dynamic computation model, we are ready to cross the boundary into physical memory layouts and hardware compilation.
-
-Next up: [Lexical](05_lexical.md), Where we begin to start expressing this architecture as concrete code.
+This chapter only describes the computation model. Concrete lexical and grammar details are maintained separately in [05_lexical.md](05_lexical.md) and [grammar.md](grammar.md).

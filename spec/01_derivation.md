@@ -1,15 +1,19 @@
-# Chirp
+# Deriving Chirp’s Core Model
 
 ## Preamble
 
 Do not take anything in here to the letter. The goal of this document is to contextualize the Chirp spec.
 
-I am going to rebuild some familiar ideas from first principles because I find going through every step of the logic chain helps understand WHY things work the way they do.
+I am also going to rebuild some familiar ideas from first principles and intentionally avoid jargon for two reasons:
+
+- I want this to be understandable by systems-level coders without a glossary attached to it.
+- I find going through every step of the logic chain helps understand WHY things work the way they do.
 
 ## The Setup
-### The goal
 
-I want to create a programming language in the C/C++/Rust/Zig space. Not exactly novel, but inoffensive as long as I remind myself that this is a hobby. 
+Chirp is an engineered language. So to trace back where it comes from, we need to approach this from an engineering angle: We are building something that's meant to achieve a goal, under some constraints, by following a strategy. With a lot of rigor and a bit of creativity, that should lead us to something that works.
+
+### The goal
 
 I like Zig's model, and I also like TypeScript's expressiveness. It's hard to imagine two languages further apart (ok, it's pretty easy... but they are still very different beasts), so fusing them together seems like a suitable act of hubris for this vanity project. 
 
@@ -25,7 +29,7 @@ At the end of the day, this needs to compile down to machine code. I will be sho
 
 ### Constraint 2: Polymorphism
 
-Unions, traits, protocols, etc... are just *too* useful to be left on the table. This clashes against constraint 1, so it bears calling out.
+Unions, traits, protocols, etc... are just too useful to be left on the table. This clashes against constraint 1, so it bears calling out.
 
 ### Constraint 3: Top-to-bottom semantic consistency
 
@@ -56,11 +60,9 @@ Taking this to the extreme would be "any variable can hold a value of any type" 
 
 Walking it back a bit would be "A variable can hold some values, but not necessarily all of them", which is really just a fancy way to say that a variable has a **set** of values it's allowed to have. That's nice because it allows for anything between a single value (a const), all the way to `any` if we ever need it. 
 
-Nevertheless, practically speaking (constraint 1), I still need to have control over the type of a variable. I must be able to say `let x:int64 = 3;` and be able to *trust* that this optimizes all the way down to registers. So... types are sets, I guess.  
+Nevertheless, practically speaking (constraint 1), I still need to have control over the type of a variable. I must be able to say `let x: int64 = 3;` and be able to *trust* that this optimizes all the way down to registers. So... types are sets, I guess.  
 
-Leaning into types-as-sets, I immediately see `let x: int64 ∪ bool = foo();` as a pretty sweet syntax for declaring unions. 
-
-(Jumping the gun for a second to something I only landed on much much later, but it best fits here) Let's make sure to not make any assumptions. e.g. in C++, this is done by creating a new type that can represent values of different types. But that's a *choice*, not something that HAS to be. The principle that needs to hold is "A variable needs to be able to refer to values of different types", nothing more.
+Leaning into types-as-sets, we can immediately see `let x: int64 ∪ bool = foo();` as a pretty sweet syntax for declaring unions. 
 
 Actually... if we also assume types are values (which is sort-of required for constraint 3 anyways), we get:
 
@@ -86,7 +88,7 @@ let v : point_list = point_list(); // Roughly
 
 Nothing new under the sun here. We are in clear TypeScript land. But I do like the look and feel of it, and constraint 3 is on the right track. The compilation rules needed for this to bake down reliably to machine code will be tricky, but them's the breaks. If I want constraint 3, I'll have to reckon with that sooner or later, so there's no reason to toss this. I *like* it.
 
-If `int_or_bool` is *just* a set by joining two types, can we just generalize?
+If `int_or_bool` is *just* a set by joining two types, can we just generalize and throw in arbitrary sets where a type normally fits?
 
 ```
 let u : {1,2,3} = 1;
@@ -95,31 +97,33 @@ let v : 0..9 = 3;
 
 Looks like it! And it looks *slick*. I can already see the curly brace set literals causing grammar issues (especially if I want to support expression blocks). But this is so *good* that I have to see where it goes.
 
-(insert part-time years of throwing spaghetti at the wall, I'll spare you the endless dead-ends). 
+(insert part-time years of throwing spaghetti at the wall, I'll spare you the endless dead-ends).
 
-This is a complete local minimum. I had to get over a hill.
+This is a complete local minimum. We have to get over a hill.
 
 ### The epiphany: Actually types are NOT sets (except when we need them to be)
 
-You know what? This whole Type <-> Set equivalency is suspect. It doesn't even make practical sense. There are a myriad of situations where I'd use a set as a value instead of a type. So sets are value-like first and foremost, using them in a type or variable constraint context is secondary. But at the same time, I still need to be able to express "the set of all ints" cleanly, and types are well suited for that. 
+You know what? This whole Type <-> Set equivalency is suspect. 
 
-Let's pull on that: `{1,2,3}` is a *value*, which means it has a *type* (that type being StaticallyEnumeratedSet or something along these lines). Same goes for `0..9`, which is a *value* of *type* IntRange or whatever. So right off the bat, I have two different types whose values behave like sets, so I need these types to have a property that allows their instances to be used as sets. A sort of set-ness, defined by a function that determines if a value is a member of the set: A *Member Resolution Predicate* (`mrp`). 
+It doesn't even make practical sense. There are a myriad of situations where I'd use a set as a value instead of a type. So sets are value-like first and foremost, using them in a type-ish context is secondary. But at the same time, I still need to be able to express "the set of all ints" cleanly, and types are well suited for that. 
+
+Let's pull on that: `{1,2,3}` is a *value*, which means it has a *type* (that type being StaticallyEnumeratedSet or something along these lines). Same goes for `0..9`, which is a *value* of *type* IntRange or whatever. So right off the bat, I have two different types whose values behave like sets, so I need these types to have a property that allows their instances to be used as sets. A sort of set-ness, defined by a function that determines if a value belongs to the set: A *Belonging Predicate* (`bp`). 
 
 SPOILERS: Later we'll realize this can't be a predicate in every single case, but we'll stick to it by convention.
 
-That's basically a trait (Rust)/interface (Java)/protocol (ObjC) etc... I know those! And they are explicitly something I'm supposed to support eventually (see Constraint #2). Nothing stops me from recursively using trait-like capabilities as part of the definition of the system itself, as long as the loop closes.
+That's basically a trait (Rust)/interface (Java)/protocol (ObjC) etc... I know those! And they are explicitly something I'm supposed to support eventually (see Constraint #2). Nothing stops me from recursively using trait-like capabilities as part of the definition of the system itself, as long as the loop closes. That's not any different than a garden-variety recursive function.
 
-So... What **if** sets weren't a *thing*, and set-ness (not sure about that name...) was instead a capability that certain Types provide for their instances? Then types don't *have* to **be** sets, they only need to supply membership behavior when used as sets. It would also mean that sets don't **have** to be types either. That opens some doors... Let's keep pulling on that thread and see what happens.
+So... What **if** sets weren't a *thing*, and set-ness was instead a capability that certain Types provide for their instances? Then types don't have to be sets, they only need to supply belonging behavior when used as sets. It would also mean that sets don't have to be types either. Let's keep pulling on that thread and see what happens.
 
 We can start laying down some rules.
 
 - Every Value has an intrinsic type
-- Sets are values whose intrinsic Type supplies a `mrp`, roughly (this, v: any) -> bool (that's what "is something part of a set" reduces down to at the end of the day...)
+- Sets are values whose intrinsic Type supplies a `bp`, roughly a function from `(this, v: any) : bool` (that's what "does something belong to a set" reduces down to at the end of the day...)
 - Variables (or whatever the fundamental building block they are made of, let's call that **bindings**) have a *current value* and *a set of values they can have*
 
 ### Bindings
 
-Whoops, stop the presses. I've written enough TypeScript to know that we can generalize this even more. In TS, which value can be assigned to a Binding doesn't depend only on how it's declared, but also *where* in the code that assignment happens. 
+I've written enough TypeScript to know that we can generalize this even more. In TS, which value can be assigned to a Binding doesn't depend only on how it's declared, but also *where* in the code that assignment happens. 
 
 So really, a Binding has:
 - A set of values it can have *in general*
@@ -145,11 +149,9 @@ Wait a sec! There's another thing that seems backwards. The shape is not a stick
 
 I wonder what else I can generalize with this model? If I combine it with the set-ness capability model for `fc` and `lc`, I might be able to take this surprisingly far...
 
-And this is where everything pretty much falls into place, it's just a matter of pulling on that thread from that point on.
+From here, we can plausibly satisfy contraint #1:
 
-We can satisfy contraint #1 pretty easily:
-
-"If the set of values a Binding can hold just happens to be of a single type, then the compiler can completely erase the set-membership predicate checks at compile-time and emit a direct, zero-overhead machine read, achieving the performance of raw C."
+"If the set of values a Binding can hold just happens to be of a single type, then the compiler can treat it the same way C treats a variable."
 
 **Note to self:**
 `fc` `lc` and `cv` are "properties of bindings". We could *technically* generalize the idea and give bindings an open-ended set of properties, but this is where we are hitting diminishing abstraction returns. We've already seen mutability can emerge from the three we have so far, so I say let's pin that and revisit it if/when a motivating example can be found.
@@ -164,37 +166,35 @@ I'm not going to go over the whole derivation here, but if you try and lay this 
 
 For example, imagine a set whose rule is "it contains every set that does not contain itself". Now ask whether that set contains itself. If the answer is `true`, then by its own rule it should be `false`. If the answer is `false`, then by its own rule it should be `true`.
 
-That means set-ness needs to operate on ternary (`true`/`false`/`undecided`) logic in *some* cases. That would be too much of a pain-in-the-butt to force on users when all they want to do is `if some_char ∈ {' ', '\t', '\r', '\n'}`. We'd definitely be into "Syntax starts breaking down" territory if that didn't evaluate to a bool. 
+That means set-ness needs to operate on ternary (`true`/`false`/`undecided`) logic in *some* cases. That would be too much of a pain-in-the-butt to force on users when all they want to do is `if (some_char ∈ {' ', '\t', '\r', '\n'})`. We'd definitely be into "Syntax starts breaking down" territory if that didn't evaluate to a bool. 
 
-So **most** `mrp`s evaluate to a `{true, false}` set, and **some** evaluate to `{true, false, undecided}`, and sets must be able to announce which ahead of time. 
+So **most** `bp`s evaluate to a `{true, false}` set, and **some** evaluate to `{true, false, undecided}`, and sets must be able to announce which ahead of time. 
 
 We might as well allow sets to announce `{true}`, `{false}`, `{undecided}`, while we are at it. That's probably useful for optimization. 
 
-In other words, set-ness needs a second method: one that takes a set of "candidate" values and returns the set of answers its `mrp` can produce. The technical term for "the set of values a function can return" is its range, so we'll call this the set's **Member Resolution Range** (`mrr`). That "set of candidate values" may sound nebulous, but in `b ∈ S`, that's just `b`'s `lc`!
+In other words, set-ness needs a second method: one that takes a set of "candidate" values and returns the set of answers its `bp` can produce. The technical term for "the set of values a function can return" is its range, so we'll call this the set's **Belonging Range** (`br`). That "set of candidate values" may sound nebulous, but in `b ∈ S`, that's just `b`'s `lc`!
 
-`mrr` is a pre-flight check. `undecided` being in it does not mean a particular membership test failed to decide. It means that, for this set of candidate values, evaluating `mrp` could produce `undecided`. At the same time, if `mrr` contains only a single value, invoking `mrp` is unnecessary.
+`br` is a pre-flight check. `undecided` being in it does not mean a particular belonging test failed to decide. It means that, for this set of candidate values, evaluating `bp` could produce `undecided`. At the same time, if `br` contains only a single value, invoking `bp` is unnecessary.
 
-In practice, `mrr` does not need to be magic. A boring implementation can be conservative.
-- Is `mrp` a DAG -> `{true, false}`, otherwise `{true, false, undecided}`.
-- Some sets can do better because their answer is obvious. `any` always returns `true`, so its `mrr` is `{true}`, etc...
-- Custom sets can provide their own `mrr`, but that is a promise: “my `mrp` will only ever return one of these answers.” If that promise is false, all bets are off.
+In practice, `br` does not need to be magic. A boring implementation can be conservative.
+- Is `bp` a DAG -> `{true, false}`, otherwise `{true, false, undecided}`.
+- Some sets can do better because their answer is obvious. `any` always returns `true`, so its `br` is `{true}`, etc...
+- Custom sets can provide their own `br`, but that is a promise: “my `bp` will only ever return one of these answers.” If that promise is false, all bets are off.
 
 This is easilly confusing, so an example can help:
 
 ```
 let EvenNumber = {x | x ∈ int && x % 2 == 0};
 
-let foo(s: string, v: int ) = {
-  let test_string = s ∈ EvenNumber; // mrr is {false} because x ∈ int is guaranteed to fail. this can be optimized out
-  let test_num = v ∈ EvenNumber;    // mrr is {true, false}, so it becomes a runtime computation.
+let foo(s: string, v: int ) = do {
+  let test_string = s ∈ EvenNumber; // br is {false} because x ∈ int is guaranteed to fail. this can be optimized out
+  let test_num = v ∈ EvenNumber;    // br is {true, false}, so it becomes a runtime computation.
 };
 ```
 
-Finally, it's pretty subtle so it's worth pointing out: In practice, a `mrp` will return `undecided` by the interpreter giving up after some cost threshold has been reached. However, if an `mrr` is just `{true, false}`, then the interpreter can be confident that there's going to be an answer eventually. This reduces the risk of cost-based decidability causing false positives.
+Finally, it's pretty subtle so it's worth pointing out: In practice, a `bp` will return `undecided` by the interpreter giving up after some cost threshold has been reached. However, if a `br` is just `{true, false}`, then the interpreter can be confident that there's going to be an answer eventually. This reduces the risk of cost-based decidability causing false positives.
 
-Now set-ness looks more like: "The **Member Resolution Predicate** of a set returns a member of its **Member Resolution Range**" (`mrp(S, b) ∈ mrr(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
-
-The bedrock finally feels solid.
+Now set-ness looks more like: "The **Belonging Predicate** of a set returns an element of its **Belonging Range**" (`bp(S, b) ∈ br(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
 
 ## Conclusion
 
@@ -215,10 +215,10 @@ Putting all of that together, we end up with an architecture that looks like thi
                 │  └─────────┘                fc/lc/cv└─────────┘    │   │
                 │   has│▲   ▲                               ▲ │ fc/lc│   │
                 │      ││   │                               │ │      │   │
-                │      ││   │                    mrr uses lc│ │      │   │
-                │      ││   │mrp tests values               │ ▼      │   │
+                │      ││   │                    br uses lc │ │      │   │
+                │      ││   │ bp tests values               │ ▼      │   │
                 │      ▼│is └─────────────────────────┌─────────┐    │   │
-                │  ┌─────────┐                        │ SETNESS │────│───┘ 
+                │  ┌─────────┐                        │ SETNESS │────│───┘ is
                 │  │  TYPE   │-----------------------►└─────────┘    │
                 │  └─────────┘ can implement                         │
                 └────────────────────────────────────────────────────┘
@@ -228,6 +228,6 @@ Putting all of that together, we end up with an architecture that looks like thi
 
 That's a **lot** of circular dependencies, but I have yet to find a way to break it. It's not *proven* yet though.
 
-Computation is its own can of worms and may eventually get a similar companion reasoning file. But you should now be equipped with all of the intuition you need to go through the first chapters of the spec through [03_the_machine.md](03_the_machine.md).  
+Computation is its own can of worms and may eventually get a similar companion reasoning file. But you should now be equipped with all of the intuition you need to go through the rest of the spec.
 
-Next up: [The Core](02_the_core.md), where we'll see a more tightly formalized version of this architecture.
+Next up: [The Core](02_core.md), where we'll see a more tightly formalized version of this architecture.

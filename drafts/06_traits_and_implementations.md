@@ -10,7 +10,7 @@ In Chirp, we avoid introducing complex, dedicated keywords or type-system machin
 
 1. **Everything is a Value:** User-defined types (e.g. `struct` definitions) are first-class values of type `Type`.
 2. **Traits are Matcher Domains:** Mathematically, a trait is simply the **domain** (the set of valid inputs) of a first-class `Matcher` object (piecewise function). Implementing a trait means adding a new mapping arm to that global matcher.
-3. **Set-ness and Yield-ness as Primitives:** Special operators like `∈` (membership) and `()` (callable invocation) on non-function values are simply syntactic sugar for invoking built-in matchers.
+3. **Set-ness and Yield-ness as Primitives:** Special operators like `∈` (belonging) and `()` (callable invocation) on non-function values are simply syntactic sugar for invoking built-in matchers.
 
 To make implementing traits cohesive and readable, we define an `implement` method on the `Type` type value itself. This avoids introducing new syntax or keywords, maintaining parser purity while providing a high-level, elegant interface.
 
@@ -27,8 +27,9 @@ let Trait = struct {
 };
 
 // Implement is a method on the `Type` value, which delegates registration to the Trait
-let Type.implement(self: Type, trait: Trait, impl: any) : void = {
+let Type.implement(self: Type, trait: Trait, impl: any) : void = do {
     trait.register(self, impl);
+    yield;
 };
 ```
 
@@ -36,18 +37,19 @@ let Type.implement(self: Type, trait: Trait, impl: any) : void = {
 
 ## 3. Endowing Set-ness (Single-Method Trait)
 
-**Set-ness** allows instances of a user-defined type to act as sets, making them compatible with the membership operator `∈`. 
+**Set-ness** allows instances of a user-defined type to act as sets, making them compatible with the belonging operator `∈`. 
 
-Because set-ness is defined by a single membership predicate, we implement it by passing a lambda or a function.
+Because set-ness is defined by a single belonging predicate, we implement it by passing a lambda or a function.
 
 ### Standard Library Definition (`std.setness`)
 
 ```chirp
 let std.setness = Trait {
     name: "setness",
-    register: (t: Type, predicate: (any, any) => bool) => {
+    register: (t: Type, predicate: (any, any) => bool) => do {
         // Add a new branch to the global contains Matcher
         std.contains.add({ (any, t) }, predicate);
+        yield;
     }
 };
 ```
@@ -58,16 +60,16 @@ let std.setness = Trait {
 let my_cool_thing = struct { x: int, y: int };
 
 // Endow my_cool_thing with set-ness
-my_cool_thing.implement(std.setness, (v: any, s: my_cool_thing) => {
-    match v {
+my_cool_thing.implement(std.setness, (v: any, s: my_cool_thing) => do {
+    yield match v {
         pt: Point => pt.x >= 0 && pt.x <= s.x && pt.y >= 0 && pt.y <= s.y,
-        `default  => false
-    }
+        `any  => false
+    };
 });
 
 // Using the set-ness!
-let boundary = my_cool_thing { x: 10, y: 10 };
-let pt = Point { x: 5, y: 5 };
+let boundary = my_cool_thing(x=10, y=10);
+let pt = Point(x=5, y=5);
 
 let inside = pt ∈ boundary; // Evaluates to true
 ```
@@ -92,11 +94,12 @@ let YieldnessImpl = struct {
 
 let std.yieldness = Trait {
     name: "yieldness",
-    register: (t: Type, impl: YieldnessImpl) => {
+    register: (t: Type, impl: YieldnessImpl) => do {
         // Register each capability to its respective global Matcher
         std.parameter_domain.add({ t }, impl.parameter_domain);
         std.result_domain.add({ (t, any) }, impl.result_domain);
         std.yield.add({ (t, any) }, impl.yield);
+        yield;
     }
 };
 ```
@@ -112,13 +115,13 @@ my_cool_thing.implement(std.yieldness, YieldnessImpl {
     
     result_domain: (s: my_cool_thing, param: int) => int,
     
-    yield: (s: my_cool_thing, param: int) => {
-        s.x * param + s.y // Evaluates linear equation
+    yield: (s: my_cool_thing, param: int) => do {
+        yield s.x * param + s.y; // Evaluates linear equation
     }
 });
 
 // Using the yield-ness!
-let f = my_cool_thing { x: 2, y: 3 };
+let f = my_cool_thing(x=2, y=3);
 let result = f(5); // Evaluates to 13
 ```
 
@@ -142,7 +145,7 @@ When compiling operations on values, the compiler devirtualizes them directly:
 
 * **Lowering `v ∈ s`:**
   1. The compiler infers the static type `T` of `s`.
-  2. If `T` has registered a `std.setness` predicate, it replaces the membership check with a direct, static function call to that predicate:
+  2. If `T` has registered a `std.setness` predicate, it replaces the belonging check with a direct, static function call to that predicate:
      ```c
      // v ∈ s  ==> Lowered directly to:
      my_cool_thing_contains(s, v);
@@ -168,7 +171,7 @@ In a fully refined implementation, specifying `parameter_domain` and `result_dom
 For instance, when implementing `std.yieldness` with an annotated lambda:
 ```chirp
 my_cool_thing.implement(std.yieldness, YieldnessImpl {
-    yield: (s: my_cool_thing, param: int) : string => {
+    yield: (s: my_cool_thing, param: int) : string => do {
         // ...
     }
 });
@@ -179,4 +182,3 @@ Because the `yield` function's parameter and return constraints are already expl
 * `result_domain` is inferred as `string`.
 
 This eliminates boilerplate, enabling a shorthand registration syntax where only the `yield` implementation needs to be provided, and its domains are derived automatically.
-

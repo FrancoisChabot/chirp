@@ -50,11 +50,10 @@ let GroupExpr      = struct { inner: ->Expr };
 let SetExpr        = struct { elements: sequence(->Expr) };
 let CompExpr       = struct { term: ->Expr, predicate: ->Expr };
 let SeqExpr        = struct { elements: sequence(->Expr) };
-let BlockExpr      = struct { stmts: sequence(->Stmt), tail: ->Expr };
+let BlockExpr      = struct { stmts: sequence(->Stmt) };
 let IfExpr         = struct { cond: ->Expr, then_body: ->Expr, else_body: ->Expr };
 let WhileExpr      = struct { cond: ->Expr, body: ->Expr };
 let MatchExpr      = struct { subject: ->Expr, arms: sequence(MatchArm) };
-let StructLitExpr  = struct { type_expr: ->Expr, fields: sequence(Param) };
 let StructTypeExpr = struct { fields: sequence(Param) };
 let DerefSetExpr   = struct { inner: ->Expr };
 
@@ -63,7 +62,7 @@ let Expr = LiteralExpr ∪ IdentExpr ∪ IntrinsicExpr ∪ SymbolExpr
          ∪ CallExpr ∪ RangeExpr ∪ GroupExpr
          ∪ SetExpr ∪ CompExpr ∪ SeqExpr
          ∪ BlockExpr ∪ IfExpr ∪ WhileExpr ∪ MatchExpr
-         ∪ StructLitExpr ∪ StructTypeExpr ∪ DerefSetExpr;
+         ∪ StructTypeExpr ∪ DerefSetExpr;
 
 // --- Statement AST Nodes ---
 
@@ -77,24 +76,25 @@ let LetStmt = struct {
 
 let ExprStmt = struct { expr: ->Expr };
 
-let Stmt = LetStmt ∪ ExprStmt;
+let BreakStmt = struct { value: ->Expr };
+let AssignStmt = struct { target: ->Expr, op: Token, value: ->Expr };
+
+let Stmt = LetStmt ∪ ExprStmt ∪ BreakStmt ∪ AssignStmt;
 
 let Program = struct { stmts: sequence(->Stmt) };
 
 // --- Token Classification Sets ---
-// Same idiom as the lexer: define categories as sets, dispatch via membership.
+// Same idiom as the lexer: define categories as sets, dispatch via belonging.
 
 let LITERAL_TOKENS = { #number, #string, #char };
 
 // Operators that can appear in infix position with binding power > 0
-// TODO: #equal (=) should be removed from here and treated as a non-expression statement
-// (AssignmentStmt) to prevent accidental assignment-in-conditional bugs and match the interpreter's correct behavior.
 let INFIX_OPS = {
     #plus, #minus, #asterisk, #slash,
-    #equal_equal, #not_equal, #plus_equal,
+    #equal_equal, #not_equal,
     #and_and, #or_or,
-    #membership, #union, #intersection, #subset,
-    #dots, #equal,
+    #belonging, #union, #intersection, #subset,
+    #dots,
 };
 
 // Tokens that can begin an expression
@@ -102,7 +102,7 @@ let EXPR_STARTERS = LITERAL_TOKENS ∪ {
     #identifier, #intrinsic, #symbol,
     #minus, #asterisk, #arrow,
     #if, #while, #match,
-    #open_brace, #open_bracket, #open_paren,
+    #do, #open_brace, #open_bracket, #open_paren,
     #struct,
 };
 
@@ -113,20 +113,17 @@ let DECL_STARTERS = { #let };
 // Non-operators fall through to BP 0, which stops the Pratt loop.
 
 let BP(op_type) = match op_type {
-    #equal =>                        2,
     #or_or =>                        4,
     #and_and =>                      6,
     {#equal_equal,  #not_equal} =>   8, 
-    {#membership,  #subset} =>       10,
+    {#belonging,  #subset} =>       10,
     #union =>                        12,
     #intersection =>                 14,
-    {#plus, #minus, #plus_equal} =>  16,
+    {#plus, #minus} =>               16,
     {#asterisk,  #slash} =>          18,
     #dots =>                         20,
-    `default =>                      0
+    `any =>                          0
 };
-
-let RIGHT_ASSOC = { #equal };
 
 // --- Parser State ---
 
@@ -137,28 +134,28 @@ let Parser = struct {
 };
 
 // Refinement set: parser has remaining non-EOF tokens
-let alive = { p | p ∈ Parser && p.cursor != p.end && p.cursor->tok_type != #eof };
+let alive = { p | p ∈ Parser && p.cursor != p.end && (*p.cursor).tok_type != #eof };
 
 // --- Parser Helpers ---
 
-let peek(p: Parser) : token_type = p.cursor->tok_type;
+let peek(p: Parser) : token_type = (*p.cursor).tok_type;
 let current(p: Parser) : Token = *p.cursor;
 
-let advance(p: ->Parser ∩ ->alive) : Token = {
-    let tok = *p->cursor;
-    p->cursor += 1;
-    tok
+let advance(p: ->Parser ∩ ->alive) : Token = do {
+    let tok = *(*p).cursor;
+    (*p).cursor += 1;
+    break tok;
 };
 
-let expect(p: ->Parser, expected: token_type) : Token = {
+let expect(p: ->Parser, expected: token_type) : Token = do {
     // TODO: emit diagnostic when peek(*p) != expected
-    advance(p)
+    break advance(p);
 };
 
 let at(p: Parser, tt: token_type) : bool = p ∈ alive && peek(p) == tt;
 let at_any(p: Parser, tts) : bool = p ∈ alive && peek(p) ∈ tts;
-let eat_if(p: ->Parser, tt: token_type) : bool = {
-    if at(*p, tt) { advance(p); true } else { false }
+let eat_if(p: ->Parser, tt: token_type) : bool = do {
+    if (at(*p, tt)) do { advance(p); break true; } else do { break false; };
 };
 
 // Allocate a node in the parser's arena and return a pointer to it.
@@ -168,425 +165,339 @@ let alloc(p: Parser, node) = arena_new(p.arena, node);
 
 // --- Entry Point ---
 
-let parse(tokens: sequence(Token), arena: ->Arena) : Program = {
-    let mut p = Parser { cursor: tokens.start, end: tokens.end, arena: arena };
+let parse(tokens: sequence(Token), arena: ->Arena) : Program = do {
+    let mut p = Parser(cursor=tokens.start, end=tokens.end, arena=arena);
     let mut stmts : sequence(->Stmt) = [];
-    while p ∈ alive {
+    while (p ∈ alive) do {
         stmts.push_back(parse_decl(&p));
-    }
-    Program { stmts: stmts }
+    };
+    break Program(stmts=stmts);
 };
 
 // --- Declaration Parsing ---
 
-let parse_decl(p: ->Parser) : ->Stmt = {
-    match peek(*p) {
+let parse_decl(p: ->Parser) : ->Stmt = do {
+    break match peek(*p) {
         #let    => parse_let(p),
-        `default => {
-            let expr = parse_expr(p);
+        #break  => do {
+            advance(p);
+            let expr : ->Expr = if (!at(*p, #semicolon)) parse_expr(p) else null;
             eat_if(p, #semicolon);
-            alloc(*p, ExprStmt { expr: expr })
+            break alloc(*p, BreakStmt(value=expr));
+        },
+        `any => do {
+            let expr = parse_expr(p);
+            if (at_any(*p, {#equal, #plus_equal})) do {
+                let op = advance(p);
+                let value = parse_expr(p);
+                eat_if(p, #semicolon);
+                break alloc(*p, AssignStmt(target=expr, op=op, value=value));
+            } else do {
+                eat_if(p, #semicolon);
+                break alloc(*p, ExprStmt(expr=expr));
+            };
         }
-    }
+    };
 };
 
 // let [mut] name[(params)] [: constraint] = initializer;
-let parse_let(p: ->Parser) : ->Stmt = {
+let parse_let(p: ->Parser) : ->Stmt = do {
     expect(p, #let);
     let is_mut = eat_if(p, #mut);
     let name = expect(p, #identifier);
 
     // Optional parameter list (function definition form)
-    let params = if at(*p, #open_paren) { parse_params(p) } else { [] };
+    let params = if (at(*p, #open_paren)) parse_params(p) else [];
 
     // Optional constraint annotation
-    let constraint : ->Expr = if eat_if(p, #colon) { parse_expr(p) } else { null };
+    let constraint : ->Expr = if (eat_if(p, #colon)) parse_expr(p) else null;
 
     expect(p, #equal);
     let init = parse_expr(p);
     eat_if(p, #semicolon);
 
-    alloc(*p, LetStmt {
-        name: name, is_mut: is_mut,
-        constraint: constraint, params: params,
-        initializer: init,
-    })
+    break alloc(*p, LetStmt(
+        name=name, is_mut=is_mut,
+        constraint=constraint, params=params,
+        initializer=init
+    ));
 };
 
-let parse_params(p: ->Parser) : sequence(Param) = {
+let parse_params(p: ->Parser) : sequence(Param) = do {
     expect(p, #open_paren);
     let mut params : sequence(Param) = [];
-    while !at(*p, #close_paren) {
+    while (!at(*p, #close_paren)) do {
         let name = expect(p, #identifier);
-        let constraint : ->Expr = if eat_if(p, #colon) { parse_expr(p) } else { null };
-        let default_val : ->Expr = if eat_if(p, #equal) { parse_expr(p) } else { null };
-        params.push_back(Param {
-            name: name, constraint: constraint, default_val: default_val,
-        });
+        let constraint : ->Expr = if (eat_if(p, #colon)) parse_expr(p) else null;
+        let default_val : ->Expr = if (eat_if(p, #equal)) parse_expr(p) else null;
+        params.push_back(Param(
+            name=name, constraint=constraint, default_val=default_val
+        ));
         eat_if(p, #comma);
-    }
+    };
     expect(p, #close_paren);
-    params
+    break params;
 };
 
 // --- Expression Parsing (Pratt) ---
 
 let parse_expr(p: ->Parser) : ->Expr = parse_pratt(p, 0);
 
-let parse_pratt(p: ->Parser, min_bp: int) : ->Expr = {
+let parse_pratt(p: ->Parser, min_bp: int) : ->Expr = do {
     let mut left = parse_atom(p);
 
-    // --- Postfix: calls, indexing, member access, struct literals ---
-    while *p ∈ alive {
+    // --- Postfix: calls, indexing, member access ---
+    while (*p ∈ alive) do {
         match peek(*p) {
             // Function call: expr(args...)
-            #open_paren => {
+            #open_paren => do {
                 expect(p, #open_paren);
                 let mut args : sequence(->Expr) = [];
-                while !at(*p, #close_paren) {
+                while (!at(*p, #close_paren)) do {
                     args.push_back(parse_expr(p));
                     eat_if(p, #comma);
-                }
+                };
                 expect(p, #close_paren);
-                left = alloc(*p, CallExpr { callee: left, args: args });
-            }
+                left = alloc(*p, CallExpr(callee=left, args=args));
+            },
 
             // Indexing: expr[key]
-            #open_bracket => {
+            #open_bracket => do {
                 expect(p, #open_bracket);
                 let key = parse_expr(p);
                 expect(p, #close_bracket);
-                left = alloc(*p, IndexExpr { object: left, key: key });
-            }
+                left = alloc(*p, IndexExpr(object=left, key=key));
+            },
 
             // Member access: expr.field
-            #dot => {
+            #dot => do {
                 expect(p, #dot);
                 let field = expect(p, #identifier);
-                left = alloc(*p, MemberExpr { object: left, field: field });
-            }
+                left = alloc(*p, MemberExpr(object=left, field=field));
+            },
 
-            // Struct literal: TypeExpr { field: value, ... }
-            // Only when left looks like a type expression (ident, call, member)
-            #open_brace => {
-                match *left {
-                    IdentExpr   => { left = parse_struct_lit(p, left); }
-                    CallExpr    => { left = parse_struct_lit(p, left); }
-                    MemberExpr  => { left = parse_struct_lit(p, left); }
-                    `default    => { break; }
-                }
-            }
-
-            `default => { break; }
-        }
-    }
+            `any => do { break; }
+        };
+    };
 
     // --- Infix: binary operators with precedence climbing ---
-    while *p ∈ alive && peek(*p) ∈ INFIX_OPS {
+    while (*p ∈ alive && peek(*p) ∈ INFIX_OPS) do {
         let op_type = peek(*p);
         let bp = BP(op_type);
-        if bp <= min_bp { break; }
+        if (bp <= min_bp) do { break; };
 
         let op = advance(p);
 
         // Range special case: `..` may be followed by `=` for inclusive range (`..=`)
-        if op_type == #dots {
+        if (op_type == #dots) do {
             let inclusive = eat_if(p, #equal);
             let right = parse_pratt(p, bp);
-            left = alloc(*p, RangeExpr { start: left, end: right, inclusive: inclusive });
-        } else {
-            let rbp = if op_type ∈ RIGHT_ASSOC { bp - 1 } else { bp };
-            let right = parse_pratt(p, rbp);
-            left = alloc(*p, BinaryExpr { op: op, left: left, right: right });
-        }
-    }
+            left = alloc(*p, RangeExpr(start=left, end=right, inclusive=inclusive));
+        } else do {
+            let right = parse_pratt(p, bp);
+            left = alloc(*p, BinaryExpr(op=op, left=left, right=right));
+        };
+    };
 
-    left
+    break left;
 };
 
 // --- Atom / Prefix Parsing ---
 
-let parse_atom(p: ->Parser) : ->Expr = {
-    match peek(*p) {
+let parse_atom(p: ->Parser) : ->Expr = do {
+    break match peek(*p) {
         // Literals: numbers, strings, chars
-        LITERAL_TOKENS => {
+        LITERAL_TOKENS => do {
             let tok = advance(p);
-            alloc(*p, LiteralExpr { token: tok })
-        }
+            break alloc(*p, LiteralExpr(token=tok));
+        },
 
         // Symbol literals: #name
-        #symbol => {
+        #symbol => do {
             let tok = advance(p);
-            alloc(*p, SymbolExpr { token: tok })
-        }
+            break alloc(*p, SymbolExpr(token=tok));
+        },
 
         // Identifiers
-        #identifier => {
+        #identifier => do {
             let tok = advance(p);
-            alloc(*p, IdentExpr { name: tok })
-        }
+            break alloc(*p, IdentExpr(name=tok));
+        },
 
         // Match Expression
-        #match => {
+        #match => do {
             expect(p, #match);
             let subject = parse_expr(p);
-            parse_match_expr(p, subject)
-        }
+            break parse_match_expr(p, subject);
+        },
 
         // Struct Type Expression: struct { field: type [= default], ... }
-        #struct => {
+        #struct => do {
             expect(p, #struct);
             expect(p, #open_brace);
             let mut fields : sequence(Param) = [];
-            while !at(*p, #close_brace) {
+            while (!at(*p, #close_brace)) do {
                 let fname = expect(p, #identifier);
                 expect(p, #colon);
                 let constraint = parse_expr(p);
-                let default_val : ->Expr = if eat_if(p, #equal) { parse_expr(p) } else { null };
-                fields.push_back(Param { name: fname, constraint: constraint, default_val: default_val });
+                let default_val : ->Expr = if (eat_if(p, #equal)) parse_expr(p) else null;
+                fields.push_back(Param(name=fname, constraint=constraint, default_val=default_val));
                 eat_if(p, #comma);
-            }
+            };
             expect(p, #close_brace);
-            alloc(*p, StructTypeExpr { fields: fields })
-        }
+            break alloc(*p, StructTypeExpr(fields=fields));
+        },
 
         // Intrinsics: `name
-        #intrinsic => {
+        #intrinsic => do {
             let tok = advance(p);
-            alloc(*p, IntrinsicExpr { name: tok })
-        }
+            break alloc(*p, IntrinsicExpr(name=tok));
+        },
 
         // Grouped expression: (expr)
-        #open_paren => {
+        #open_paren => do {
             expect(p, #open_paren);
             let inner = parse_expr(p);
             expect(p, #close_paren);
-            alloc(*p, GroupExpr { inner: inner })
-        }
+            break alloc(*p, GroupExpr(inner=inner));
+        },
 
-        // Brace expressions: set / map / comprehension / block
+        // Brace expressions: sets
         #open_brace => parse_brace_expr(p),
 
         // Sequence literal: [a, b, c]
         #open_bracket => parse_bracket_expr(p),
 
         // Prefix unary: -expr, *expr
-        { #minus, #asterisk } => {
+        { #minus, #asterisk } => do {
             let op = advance(p);
             let operand = parse_pratt(p, 22);  // high BP for tight unary binding
-            alloc(*p, UnaryExpr { op: op, operand: operand })
-        }
+            break alloc(*p, UnaryExpr(op=op, operand=operand));
+        },
 
         // Deref-set prefix: ->expr (creates set of dereferenceable)
-        #arrow => {
+        #arrow => do {
             advance(p);
             let inner = parse_pratt(p, 22);
-            alloc(*p, DerefSetExpr { inner: inner })
-        }
+            break alloc(*p, DerefSetExpr(inner=inner));
+        },
 
         // Control flow expressions
         #if    => parse_if_expr(p),
         #while => parse_while_expr(p),
+        #do    => parse_do_expr(p),
 
-        `default => {
+        `any => do {
             // Error recovery: consume and wrap in a literal node
             let tok = advance(p);
-            alloc(*p, LiteralExpr { token: tok })
+            break alloc(*p, LiteralExpr(token=tok));
         }
-    }
+    };
 };
 
 // --- Compound Expression Parsers ---
 
-let parse_if_expr(p: ->Parser) : ->Expr = {
+let parse_if_expr(p: ->Parser) : ->Expr = do {
     expect(p, #if);
     let cond = parse_expr(p);
-    let then_body = parse_brace_expr(p);
-    let else_body : ->Expr = if eat_if(p, #else) {
-        if at(*p, #if) { parse_if_expr(p) } else { parse_brace_expr(p) }
-    } else { null };
-    alloc(*p, IfExpr { cond: cond, then_body: then_body, else_body: else_body })
+    let then_body = parse_expr(p);
+    let else_body : ->Expr = if (eat_if(p, #else)) parse_expr(p) else null;
+    break alloc(*p, IfExpr(cond=cond, then_body=then_body, else_body=else_body));
 };
 
-let parse_while_expr(p: ->Parser) : ->Expr = {
+let parse_while_expr(p: ->Parser) : ->Expr = do {
     expect(p, #while);
     let cond = parse_expr(p);
-    let body = parse_brace_expr(p);
-    alloc(*p, WhileExpr { cond: cond, body: body })
+    let body = parse_expr(p);
+    break alloc(*p, WhileExpr(cond=cond, body=body));
 };
 
 // match subject { pattern => body, ... }
-let parse_match_expr(p: ->Parser, subject: ->Expr) : ->Expr = {
+let parse_match_expr(p: ->Parser, subject: ->Expr) : ->Expr = do {
     expect(p, #open_brace);
     let mut arms : sequence(MatchArm) = [];
-    while !at(*p, #close_brace) {
+    while (!at(*p, #close_brace)) do {
         let pattern = parse_expr(p);
         expect(p, #fat_arrow);
         let body = parse_expr(p);
-        arms.push_back(MatchArm { pattern: pattern, body: body });
+        arms.push_back(MatchArm(pattern=pattern, body=body));
         eat_if(p, #comma);
-    }
+    };
     expect(p, #close_brace);
-    alloc(*p, MatchExpr { subject: subject, arms: arms })
+    break alloc(*p, MatchExpr(subject=subject, arms=arms));
 };
 
-// --- Brace Expression Disambiguation ---
-//
-// A `{` can introduce three different constructs in Chirp:
-//   { elem, elem, ... }                 → set literal
-//   { term | predicate }                → set comprehension
-//   { stmt; stmt; tail_expr }           → block expression
-//
-// Disambiguation strategy after consuming `{`:
-//   1. `}` immediately                  → empty set
-//   2. First token is #let, #struct     → block (starts with declaration)
-//   3. Parse first sub-expression, then inspect what follows:
-//      `|`                              → comprehension
-//      `,`                              → set literal
-//      `;`                              → block (first expr was a statement)
-//      `}`                              → single-expression block (tail only)
-
-let parse_brace_expr(p: ->Parser) : ->Expr = {
+// --- Sets and comprehensions ---
+let parse_brace_expr(p: ->Parser) : ->Expr = do {
     expect(p, #open_brace);
 
     // Empty braces
-    if at(*p, #close_brace) {
+    if (at(*p, #close_brace)) do {
         expect(p, #close_brace);
-        return alloc(*p, SetExpr { elements: [] });
-    }
-
-    // Block: starts with a declaration keyword
-    if at_any(*p, DECL_STARTERS) {
-        return parse_block_body(p);
-    }
+        break alloc(*p, SetExpr(elements=[]));
+    };
 
     // Parse first sub-expression, then branch on what follows (LL(1) parsing)
     let first = parse_expr(p);
 
-    match peek(*p) {
+    break match peek(*p) {
         // Bar: SetComprehension: { term | predicate }
-        #bar => {
+        #bar => do {
             expect(p, #bar);
             let pred = parse_expr(p);
             expect(p, #close_brace);
-            alloc(*p, CompExpr { term: first, predicate: pred })
-        }
+            break alloc(*p, CompExpr(term=first, predicate=pred));
+        },
 
-        // Comma: SetLiteral (trailing comma is a syntax error)
-        #comma => {
+        // Comma: SetLiteral
+        #comma => do {
             let mut elements : sequence(->Expr) = [first];
-            while eat_if(p, #comma) {
-                if at(*p, #close_brace) {
+            while (eat_if(p, #comma)) do {
+                if (at(*p, #close_brace)) do {
                     // Trailing comma syntax error
                     expect(p, #identifier);
                     break;
-                }
+                };
                 elements.push_back(parse_expr(p));
-            }
+            };
             expect(p, #close_brace);
-            alloc(*p, SetExpr { elements: elements })
-        }
-
-        // Semicolon: Block Expression
-        #semicolon => {
-            expect(p, #semicolon);
-            parse_block_rest(p, first)
-        }
+            break alloc(*p, SetExpr(elements=elements));
+        },
 
         // Close brace: Single-element SetLiteral (always a set!)
-        `default => {
+        `any => do {
             expect(p, #close_brace);
-            alloc(*p, SetExpr { elements: [first] })
+            break alloc(*p, SetExpr(elements=[first]));
         }
-    }
+    };
 };
 
 // Sequence literal: [elem, elem, ...]
-let parse_bracket_expr(p: ->Parser) : ->Expr = {
+let parse_bracket_expr(p: ->Parser) : ->Expr = do {
     expect(p, #open_bracket);
     let mut elements : sequence(->Expr) = [];
-    while !at(*p, #close_bracket) {
+    while (!at(*p, #close_bracket)) do {
         elements.push_back(parse_expr(p));
         eat_if(p, #comma);
-    }
+    };
     expect(p, #close_bracket);
-    alloc(*p, SeqExpr { elements: elements })
-};
-
-// Struct literal: TypeExpr { field: value [= default], ... }
-let parse_struct_lit(p: ->Parser, type_expr: ->Expr) : ->Expr = {
-    expect(p, #open_brace);
-    let mut fields : sequence(Param) = [];
-    while !at(*p, #close_brace) {
-        let name = expect(p, #identifier);
-        expect(p, #colon);
-        let value = parse_expr(p);
-        fields.push_back(Param { name: name, constraint: value, default_val: null });
-        eat_if(p, #comma);
-    }
-    expect(p, #close_brace);
-    alloc(*p, StructLitExpr { type_expr: type_expr, fields: fields })
+    break alloc(*p, SeqExpr(elements=elements));
 };
 
 // --- Block Parsing ---
-// A block is a sequence of statements with an optional trailing expression (the
-// block's value). Expression-statements need `;`. Block-bodied expressions
-// (if, while, match) do not.
-
-let BLOCK_BODIED = IfExpr ∪ WhileExpr ∪ MatchExpr ∪ BlockExpr;
-
-let parse_block_body(p: ->Parser) : ->Expr = {
+let parse_do_expr(p: ->Parser) : ->Expr = do {
+    expect(p, #do);
+    expect(p, #open_brace);
     let mut stmts : sequence(->Stmt) = [];
-    let mut tail : ->Expr = null;
-
-    while !at(*p, #close_brace) {
-        // Declarations
-        if at_any(*p, DECL_STARTERS) {
+    while (!at(*p, #close_brace)) do {
+        if (at_any(*p, DECL_STARTERS) || at(*p, #break)) do {
             stmts.push_back(parse_decl(p));
-        } else {
+        } else do {
             let expr = parse_expr(p);
-            if eat_if(p, #semicolon) {
-                // Explicit semicolon: expression statement
-                stmts.push_back(alloc(*p, ExprStmt { expr: expr }));
-            } else if at(*p, #close_brace) {
-                // No semicolon before `}`: this is the tail expression
-                tail = expr;
-                break;
-            } else {
-                // Block-bodied expression (while, if, match) used as statement
-                stmts.push_back(alloc(*p, ExprStmt { expr: expr }));
-            }
-        }
-    }
-
+            eat_if(p, #semicolon);
+            stmts.push_back(alloc(*p, ExprStmt(expr=expr)));
+        };
+    };
     expect(p, #close_brace);
-    alloc(*p, BlockExpr { stmts: stmts, tail: tail })
-};
-
-// Continue block parsing after the first expression was already consumed
-// (called when brace disambiguation determined we're in a block)
-let parse_block_rest(p: ->Parser, first_expr: ->Expr) : ->Expr = {
-    let mut stmts : sequence(->Stmt) = [
-        alloc(*p, ExprStmt { expr: first_expr }),
-    ];
-    let mut tail : ->Expr = null;
-
-    while !at(*p, #close_brace) {
-        if at_any(*p, DECL_STARTERS) {
-            stmts.push_back(parse_decl(p));
-        } else {
-            let expr = parse_expr(p);
-            if eat_if(p, #semicolon) {
-                stmts.push_back(alloc(*p, ExprStmt { expr: expr }));
-            } else if at(*p, #close_brace) {
-                tail = expr;
-                break;
-            } else {
-                stmts.push_back(alloc(*p, ExprStmt { expr: expr }));
-            }
-        }
-    }
-
-    expect(p, #close_brace);
-    alloc(*p, BlockExpr { stmts: stmts, tail: tail })
+    break alloc(*p, BlockExpr(stmts=stmts));
 };

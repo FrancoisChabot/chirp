@@ -14,11 +14,11 @@ To achieve this, every Binding exists across **three distinct domains**:
 
 - **The Structural**:
    * Represented by its **Fundamental Constraint** (`fc`), which is a **Set**.
-   * Whatever `Value` is assigned to `cv`, it will always, at any point in time, be a member of this set.
+   * Whatever `Value` is assigned to `cv`, it will always, at any point in time, belong to this set.
 
 - **The Spatial**:
    * Represented by its **Local Constraint** (`lc`), which is also a **Set**.
-   * The content of `lc` is contextual. Each and every reference to the binding in the program's control flow can have a different `lc`. Whatever `Value` is assigned to `cv` **at that place in the program**, it will always be a member of this set. 
+   * The content of `lc` is contextual. Each and every reference to the binding in the program's control flow can have a different `lc`. Whatever `Value` is assigned to `cv` **at that place in the program**, it will always belong to this set. 
 
 - **The Temporal**:
    * Represented by the **Current Value** (`cv`)
@@ -34,7 +34,7 @@ The relationship between these three domains is governed by two simple, unbreaka
 
 - **The Time-to-Space Law**:
    `cv ∈ lc`
-   *At any tick of execution time, the chronological value (`cv`) must be a member of the local constraint (`lc`) inferred for that specific point in space.* Runtime execution can never violate compile-time spatial proofs.
+   *At any tick of execution time, the chronological value (`cv`) must belong to the local constraint (`lc`) inferred for that specific point in space.* Runtime execution can never violate compile-time spatial proofs.
 
 #### Creating a binding
 
@@ -55,21 +55,21 @@ let foo = (param: {1,2,3}) => {};
 
 Chirp sets are defined *computationally*:
 - *Some*, but crucially not all, values can play the role of a set. Being a set is not part of the identity of a value. It is a *capability*. 
-- Sets can be interrogated as to what the membership of **any** value is against themselves via their membership resolution predicate (`mrp`).
-- The range of a set's `mrp` against a set of candidate values is called its **membership resolution range** (`mrr`). 
-- `mrr` must be computable or statically approximable without executing arbitrary `mrp`.
-- `mrr` are always subsets of `{true, false, undecided}`. 
+- Sets can be interrogated as to what the belonging of **any** value is against themselves via their belonging predicate (`bp`).
+- The range of a set's `bp` against a set of candidate values is called its **belonging range** (`br`). 
+- `br` must be computable or statically approximable without executing arbitrary `bp`.
+- `br` are always subsets of `{true, false, undecided}`. 
 
 Examples of sets: (don't overthink `int` at the moment. We'll cover how that works soon enough). 
 
 ```chirp
-0..3                        : mrp = (v) -> v ∈ int && v >= 0 && v < 3;   mrr = {true, false} 
-{true, false}               : mrp = (v) -> v == true || v == false;      mrr = {true, false}
-{x | x ∈ int && x % 2 == 0} : mrp = (v) -> x ∈ int && x % 2 == 0;        mrr = {true, false}
-`any                        : mrp = (_) -> true;                         mrr = {true}
+0..3                        : bp = (v) => v ∈ int && v >= 0 && v < 3;   br = {true, false} 
+{true, false}               : bp = (v) => v == true || v == false;      br = {true, false}
+{x | x ∈ int && x % 2 == 0} : bp = (v) => x ∈ int && x % 2 == 0;        br = {true, false}
+`any                        : bp = (_) => true;                         br = {true}
 
 // spicy:   
-{x | !(x ∈ x)}              : mrp = (v) -> !(v ∈ v)                      mrr = {true, false, undecided} // evaluates to `undecided` in degenerate cases
+{x | !(x ∈ x)}              : bp = (v) => !(v ∈ v)                      br = {true, false, undecided} // evaluates to `undecided` in degenerate cases
 ```
 
 In chirp, sets are not defined by the fact they are used as `fc` and `lc`. They are garden variety values with certain properties that bindings happen to use:
@@ -108,8 +108,10 @@ The following **values** are predefined as part of the core:
 - `EmptyType` - the type of `empty`
 - `set`       - the set of values whose type has set-ness
 - `SetType`   - the type of `set`
+- `Void`      - The type of the void value
+- `` `void `` - a fundamentally useless value that isn't even equal to itself
 
-**Auxiliary notes:** Why do `any` and `empty` need their own unique types? Because a set's membership logic depends on its **Type**. If `any` were simply of type `Type` (like `Bool`), checking `v ∈ any` would be checking `typeof(v) == any`, which is not what we want. `AnyType` and `EmptyType` exist to provide custom set-ness predicates that always return `true` and `false`, respectively. The same logic applies to `set` with `SetType`.
+**Auxiliary notes:** Why do `any` and `empty` need their own unique types? Because a set's belonging logic depends on its **Type**. If `any` were simply of type `Type` (like `Bool`), checking `v ∈ any` would be checking `typeof(v) == any`, which is not what we want. `AnyType` and `EmptyType` exist to provide custom set-ness predicates that always return `true` and `false`, respectively. The same logic applies to `set` with `SetType`.
 
 ---
 
@@ -130,14 +132,14 @@ In Chirp, every **Value** has exactly one intrinsic **Type** tag associated with
 
 Recall that in the Sets section, we said a set is just a capability that a value *can* have. The way a value gains that capability is through its Type.
 
-When you write the set-membership check `v ∈ S`, you are not invoking a magic property on `S`. The `∈` operator is actually syntactic sugar that dispatches the membership check to the **Type** of `S`. 
+When you write the set-belonging check `v ∈ S`, you are not invoking a magic property on `S`. The `∈` operator is actually syntactic sugar that dispatches the belonging check to the **Type** of `S`. 
 
 Specifically, it desugars to:
 ```chirp
-typeof(S).mrp(S, v)
+typeof(S).bp(S, v)
 ```
 
-If `typeof(S)` does not define an `mrp` (membership resolution predicate), then `S` simply cannot be used as a set, and attempting to do so is a an error.
+If `typeof(S)` does not define a `bp` (belonging predicate), then `S` simply cannot be used as a set, and attempting to do so is a an error.
 
 This is where the elegance of the system crystallizes. Let's look at how the sets from our earlier examples actually work under the hood:
 
@@ -146,9 +148,9 @@ This is where the elegance of the system crystallizes. Let's look at how the set
 let x : 0..3 = 2;
 
 // `0..3` is a value of type `IntRange`. 
-// `IntRange` implements `mrp(range, v)` as `v ∈ int && v >= range.start && v < range.end`.
+// `IntRange` implements `bp(range, v)` as `v ∈ int && v >= range.start && v < range.end`.
 // So `2 ∈ 0..3` desugars to:
-typeof(0..3).mrp(0..3, 2)
+typeof(0..3).bp(0..3, 2)
 ```
 
 #### Types as Sets
@@ -157,23 +159,23 @@ If types are values, then types themselves must have a type! In Chirp, the type 
 
 This unlocks one of Chirp's most powerful emergent behaviors: **Types can be used as sets themselves.**
 
-How? Because `Type` (the type of all types) defines its own `mrp`. 
+How? Because `Type` (the type of all types) defines its own `bp`. 
 
 When you use a type like `int` as a constraint, the exact same desugaring rules apply:
 ```chirp
 let x : int = 5;
 
-// The membership check `5 ∈ int` desugars to:
-typeof(int).mrp(int, 5)
+// The belonging check `5 ∈ int` desugars to:
+typeof(int).bp(int, 5)
 
 // Since typeof(int) is `Type`, this evaluates to:
-Type.mrp(int, 5)
+Type.bp(int, 5)
 ```
 
-The `mrp` implementation for `Type` is trivial: it simply checks if the value's intrinsic type tag matches the instance. 
+The `bp` implementation for `Type` is trivial: it simply checks if the value's intrinsic type tag matches the instance. 
 ```chirp
-// Conceptual implementation of Type's mrp:
-Type.mrp = (type_instance, v) => typeof(v) == type_instance;
+// Conceptual implementation of Type's bp:
+Type.bp = (type_instance, v) => typeof(v) == type_instance;
 ```
 
 This means "types as sets" requires absolutely zero special casing in the compiler. A type acts as a set of its own instances strictly as a natural consequence of the universal `v ∈ S` dispatch rule.
@@ -190,7 +192,7 @@ Bindings are (unless constrained via a singleton set) mutable. Both the current 
 
 ```chirp
 let mut x : {1, 2, 3} = foo();
-if x != 1 {
+if (x != 1) do {
   // The local constraint (`lc`) of `x` can be inferred as {2, 3} here.
   x = 1; // Legal, because 1 satisfies the binding's invariant structural constraint `fc` {1, 2, 3}.
   // The local constraint (`lc`) of `x` is now exactly {1}.
@@ -228,4 +230,4 @@ Let's say that you create a binding that establishes a mapping between types and
 
 Make sure you've got a good grasp of all this before proceeding, because we are going to be leveraging each of these concepts *extensively* from here on in.
 
-Next up: [The Machine](03_the_machine.md), where we will see this all maps down to actual hardware.
+Next up: [The Machine](03_machine.md), where we will see this all maps down to actual hardware.

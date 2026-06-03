@@ -111,7 +111,7 @@ Potential rule shape:
 ```
 
 There may also need to be operations for identity/equality, lifetime, region
-membership, and capability restriction, but those should not be assumed yet.
+belonging, and capability restriction, but those should not be assumed yet.
 
 ## Address spaces
 
@@ -205,7 +205,7 @@ Span<S>:
   element domain: S
 ```
 
-As a derived behavior, a span can expose set-like membership:
+As a derived behavior, a span can expose set-like belonging:
 
 ```text
 p in span iff

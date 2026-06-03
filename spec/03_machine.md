@@ -55,7 +55,7 @@ let ptr : ->int = &x; // ptr is a memory location pointing to an integer
 
 ### Pointer Dereferencing and Ranges
 
-* **Dereferencing (`*ptr`):** Accesses the Value currently residing at the memory location. The compiler guarantees at calcification time that the fetched Value is a member of the location's constraint set.
+* **Dereferencing (`*ptr`):** Accesses the Value currently residing at the memory location. The compiler guarantees at calcification time that the fetched Value belongs to the location's constraint set.
 * **Ranges:** A contiguous slice of Memory Locations. Ranges allow arrays and buffers to be represented safely without decaying to raw, unconstrained addresses.
 
 ### Mutability Across Function Boundaries
@@ -77,11 +77,12 @@ Consider the following example:
 let mut x : {1, 2, 3} = 2;
 let x_ptr : ->{1, 2, 3} = &mut x; // x's address is taken; refinement is locked!
 
-let mutate_under_the_hood(x_ptr : ->{1, 2, 3}) = {
+let mutate_under_the_hood(x_ptr : ->{1, 2, 3}) = do {
     *x_ptr = 1; // mutates x to 1 via the pointer
+    yield;
 }
 
-if x != 1 {
+if (x != 1) do {
     // Under standard occurrence typing, x's lc would be refined to {2, 3}.
     // However, because x_ptr is an active alias, x's lc is locked to {1, 2, 3}.
     
@@ -106,3 +107,5 @@ By strictly separating the boundless Interpreter environment from the bounded Ru
 ## Next Steps
 
 With the core mechanics, the evaluation engine, and the physical machine representation fully specified, we have a complete picture of the semantics of Chirp.
+
+Next up: [Lexical](04_lexical.md), the meat and potatoes.
