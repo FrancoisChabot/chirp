@@ -23,6 +23,16 @@ make && ctest
 app/chirp --ast-dump ../interpreter/lexer.chirp
 ```
 
+### Running the test suite
+
+The [`tests/`](tests/) directory contains a bunch of chirp-written tests,
+
+To run the suite, you need to make sure you've built the chirp interpreter in the exact location the above instructions specified, and launch the python script.
+
+```bash
+python tests/run_tests.py
+``` 
+
 There's also a prompt mode if you invoke `chirp` without any arguments, but it's not much more than a stub at the moment.
 
 ### Misleading intuition warning

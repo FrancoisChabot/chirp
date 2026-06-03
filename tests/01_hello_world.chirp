@@ -1,0 +1,7 @@
+//It has to be done
+
+`expect_stdout("Hello World\n");
+`expect_exit(0);
+`expect_failure;
+
+`print("Hello World");

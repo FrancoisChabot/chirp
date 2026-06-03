@@ -1,9 +1,45 @@
 #pragma once
 
-namespace chirp {
-namespace interpreter {
+#include "value.h"
+#include "type.h"
+#include "binding.h"
 
-// TODO: Interpreter API
+namespace chirp::interpreter {
 
-} // namespace interpreter
-} // namespace chirp
+// Getters for the 12 core predefined interpreter values and types
+
+// Core Types (as std::shared_ptr<const Type>)
+std::shared_ptr<const Type> getBoolType();
+std::shared_ptr<const Type> getMetaType(); // represents the "Type" type
+std::shared_ptr<const Type> getAnyType();
+std::shared_ptr<const Type> getEmptyType();
+std::shared_ptr<const Type> getSetType();
+std::shared_ptr<const Type> getVoidType();
+std::shared_ptr<const Type> getEnumeratedSetType();
+std::shared_ptr<const Type> getBindingType();
+
+// Convenient types for literals
+std::shared_ptr<const Type> getIntType();
+std::shared_ptr<const Type> getStringType();
+
+// Core Values (as Value objects)
+const Value& Bool();
+const Value& True();
+const Value& False();
+const Value& TypeVal();
+const Value& Any();
+const Value& AnyTypeVal();
+const Value& Empty();
+const Value& EmptyTypeVal();
+const Value& Set();
+const Value& SetTypeVal();
+const Value& Void();
+const Value& VoidVal();
+
+// Set belonging helper: typeof(S).bp(S, v)
+Value belongsTo(const Value& S, const Value& v);
+
+// Set range helper: typeof(S).br(S, lc)
+Value belongsRange(const Value& S, const Value& lc);
+
+} // namespace chirp::interpreter

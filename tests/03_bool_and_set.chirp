@@ -1,0 +1,7 @@
+`expect_stdout("true\nfalse\n");
+`expect_exit(0);
+`expect_failure;
+
+let x : {1, 2, 3} = 2;
+`print(x == 2);
+`print(x == 3);

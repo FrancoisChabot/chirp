@@ -1,0 +1,4 @@
+// The interpreter should just no-op on an empty file.
+
+`expect_stdout("");
+`expect_exit(0);

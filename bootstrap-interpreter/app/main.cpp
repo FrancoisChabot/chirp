@@ -43,7 +43,7 @@ void formatFile(const std::string& path) {
     }
 }
 
-void run(const std::string& source) {
+bool run(const std::string& source) {
     try {
         auto tokens = chirp::parser::tokenize(source);
         auto stmts = chirp::parser::parse(tokens);
@@ -53,8 +53,10 @@ void run(const std::string& source) {
         } else {
             std::cout << "Parsed " << stmts.size() << " statement(s) successfully. (Use --ast-dump to view AST)\n";
         }
+        return true;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
+        return false;
     }
 }
 
@@ -74,15 +76,15 @@ void runPrompt() {
     }
 }
 
-void runFile(const std::string& path) {
+bool runFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
         std::cerr << "Could not open file: " << path << "\n";
-        return;
+        return false;
     }
     std::stringstream buffer;
     buffer << file.rdbuf();
-    run(buffer.str());
+    return run(buffer.str());
 }
 
 int main(int argc, char* argv[]) {
@@ -109,8 +111,9 @@ int main(int argc, char* argv[]) {
     if (!script_path.empty()) {
         if (format_mode) {
             formatFile(script_path);
+            return 0;
         } else {
-            runFile(script_path);
+            return runFile(script_path) ? 0 : 1;
         }
     } else {
         if (format_mode) {
