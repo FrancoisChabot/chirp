@@ -2,9 +2,9 @@
 
 Chirp reads like TypeScript-annotated Zig, and it does so with an absurdly small semantic surface. Really.
 
-If you want to see what that looks like, check out [`interpreter/lexer.chirp`](interpreter/lexer.chirp).
+If you want to see what that looks like, check out [`examples/lexer.chirp`](examples/lexer.chirp).
 
-If you are curious how in the blazes that is supposed to work, start at [`spec/00_introduction.md`](spec/00_introduction.md).
+If you are curious how in the blazes that is supposed to work, start at [`docs/spec/00_introduction.md`](docs/spec/00_introduction.md).
 
 This repo is all content, little guidance for the time being, but you are still more than welcome to poke around.
 
@@ -15,25 +15,23 @@ There's not much you can concretely do with chirp at the moment. The interpreter
 **Requirements**: CMake 3.20+, a C++20 compiler and a network connection for `FetchContent()` to be able to do its thing for googletest.
 
 ```bash
-mkdir build
-cd build
-cmake ../bootstrap-interpreter
-make && ctest
+cmake -B build
+cmake --build build && ctest --test-dir build
 
-app/chirp --ast-dump ../interpreter/lexer.chirp
+build/interpreter/chirp --ast-dump examples/lexer.chirp
 ```
+
+There's also a prompt mode if you invoke `chirp` without any arguments, but it's not much more than a stub at the moment.
 
 ### Running the test suite
 
 The [`tests/`](tests/) directory contains a bunch of chirp-written tests,
 
-To run the suite, you need to make sure you've built the chirp interpreter in the exact location the above instructions specified, and launch the python script.
+To run the suite, launch the python script, passing it the chirp executable as parameter.
 
 ```bash
-python tests/run_tests.py
-``` 
-
-There's also a prompt mode if you invoke `chirp` without any arguments, but it's not much more than a stub at the moment.
+python scripts/test_conformance.py path/to/chirp
+```
 
 ### Misleading intuition warning
 
@@ -46,7 +44,7 @@ If you are a seasoned developer and, as I suspect will likely be the case, you g
 let some_var : int64 = 3;
 ```
 
-Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [`spec/`](spec/). The first two chapters are approachable, so don't be shy.
+Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [`docs/spec/`](docs/spec/). The first two chapters are approachable, so don't be shy.
 
 ## State of the project
 
@@ -90,14 +88,18 @@ Chirp is interpreter-first, but not interpreter-only. It's ultimately meant to b
 - Step 3: Implement the Calcification process to narrow bindings down to representable types.
 - Step 4: Implement low-level code emission
 
-How far we can take it from there is unclear. I am reasonably confident that it will work for straightforward single-threaded computations (which is already something!). But where will the model hit a hard wall? I have no idea at the moment.
+How far we can take it from there is unclear. I am reasonably confident that it will work for straightforward single-threaded computations (which is already something!). But where will the framework hit a hard wall? I have no idea at the moment.
 
 ## Repo map:
 
-[`interpreter/`](interpreter/) : Not an actual interpreter, just a sandbox for exploring syntax and semantics. What the code DOES is almost certainly out of sync, but the way it goes about it should be a good demonstration of what we're trying to accomplish, especially as far as ergonomics go.
+[`examples/`](examples/) : A collection of non-trivial examples of chirp code. 
 
-[`bootstrap-interpreter/`](bootstrap-interpreter/) : A work-in-progress C++ interpreter. At the moment, it can parse chirp code and dump it as AST, as well as do the in-place ASCII->unicode operator replacement.
+[`interpreter/`](interpreter/) : A work-in-progress C++ interpreter. At the moment, it can parse chirp code and dump it as AST, as well as do the in-place ASCII->unicode operator replacement.
 
-[`spec/`](spec/) : This is where the focus is at the moment. It's not trying to be a legalese-style spec at the moment. Formalism will happen once the dust settles a bit.
+[`docs/spec/`](docs/spec/) : It's not trying to be a legalese-style spec at the moment. Formalism will happen once the dust settles a bit.
 
-[`drafts/`](drafts/) : partially baked ideas that aren't locked down enough to put in the spec yet.
+[`docs/design/drafts/`](docs/design/drafts/) : partially baked ideas that aren't locked down enough to put in the spec yet.
+
+[`scripts/`](scripts/) : Developer utilities, including the conformance test runner.
+
+[`tests/`](tests/) : A chirp-based test/conformance suite. Run via `scripts/test_conformance.py`.

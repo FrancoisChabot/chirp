@@ -60,4 +60,4 @@ The exact surface syntax for constructing these values belongs in the grammar, n
 
 ## 4. Next Steps
 
-This chapter only describes the computation model. Concrete lexical and grammar details are maintained separately in [04_lexical.md](../spec/04_lexical.md) and [05_grammar.md](../spec/05_grammar.md).
+This chapter only describes the computation model. Concrete lexical and grammar details are maintained separately in [04_lexical.md](../../spec/04_lexical.md) and [05_grammar.md](../../spec/05_grammar.md).

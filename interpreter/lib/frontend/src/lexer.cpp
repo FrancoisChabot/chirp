@@ -1,8 +1,8 @@
-#include "chirp/parser.h"
+#include "chirp/frontend.h"
 #include <cctype>
 #include <cstdint>
 
-namespace chirp::parser {
+namespace chirp::frontend {
 
 namespace {
 
@@ -460,4 +460,4 @@ std::string format_text(std::string_view source) {
     return out;
 }
 
-} // namespace chirp::parser
+} // namespace chirp::frontend

@@ -1,6 +1,6 @@
-#include "chirp/parser.h"
+#include "chirp/frontend.h"
 
-namespace chirp::parser {
+namespace chirp::frontend {
 
 namespace {
 
@@ -299,4 +299,4 @@ std::string print_ast(const std::vector<std::unique_ptr<Stmt>>& stmts) {
     return result;
 }
 
-} // namespace chirp::parser
+} // namespace chirp::frontend

@@ -1,16 +1,3 @@
-// A modular, idiomatic Lexical Scanner implemented in Chirp
-
-// A few notes:
-// - The language is still a work in progress.
-// - everything is a value (including types)
-// - Every value has a single intrinsic type with knowable storage, traits, etc...
-// - This is all meant to compile down to C-equivalent efficient code.
-// - backtick-prefixed identifiers are intrinsics. It's just namespace reservation.
-// - the `->some_set` syntax creates a set of dereferenceable to the members of the set. i.e. if (`int` is the set of all integers, then `->int` is the set of all pointers to integers.
-// - Types are not sets! Every value has a single intrinsic type. Identifier are constrained to sets of values, but those sets are not types. This is a crucial distinction.
-// - Intrinsic types have known storage and traits. If an identifier is constrainned to values of a single type, it will be optimized accordingly.
-// - This file uses unicode characters for operators and set operations to demonstrate the expressiveness of the syntax, but ascii equivalents can also be used.
-
 let strings = `import("std/strings.chirp");
 let containers = `import("std/containers.chirp");
 

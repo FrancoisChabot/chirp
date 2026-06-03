@@ -1,18 +1,3 @@
-// A recursive descent parser with Pratt expression parsing for Chirp
-//
-// A few notes:
-// - Builds on lexer.chirp's Token and token_type definitions.
-// - The AST is a set-union of individually typed structs. Each expression variant
-//   has its own intrinsic type; Expr is their union. A ->Expr is always pointer-sized
-//   regardless of which variant it references — the intrinsic type of the pointee
-//   tells you which variant you have. This is Chirp's answer to tagged unions.
-// - Pratt parsing maps naturally to the map-with-default pattern: the binding power
-//   table is just a total map from token types to integers, exactly like the keyword
-//   table in the lexer.
-// - All AST nodes are arena-allocated for bulk deallocation.
-// - `match` is a first-class keyword.
-// - Error recovery is minimal. This is a language showcase, not a production parser.
-
 // --- Arena Allocation (externally provided) ---
 let extern = `import("extern");
 let Arena = extern.type("Arena");
@@ -33,8 +18,6 @@ let MatchArm = struct {
 
 // --- Expression AST Nodes ---
 // Each variant is a distinct struct. Their union forms the Expr set.
-// Since every value has a single intrinsic type, the compiler knows the variant
-// behind a ->Expr at match-dispatch time — no manual tag field needed.
 
 let LiteralExpr    = struct { token: Token };
 let IdentExpr      = struct { name: Token };

@@ -1,8 +1,8 @@
-#include "chirp/parser.h"
+#include "chirp/frontend.h"
 
 #include <stdexcept>
 
-namespace chirp::parser {
+namespace chirp::frontend {
 
 namespace {
 
@@ -645,4 +645,4 @@ std::vector<std::unique_ptr<Stmt>> parse(const std::vector<token>& tokens) {
     return parser.parse();
 }
 
-} // namespace chirp::parser
+} // namespace chirp::frontend

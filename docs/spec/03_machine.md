@@ -37,7 +37,7 @@ If a binding used in the compiled execution path can only be proven down to a no
 
 ## 3. Memory Locations and Mutability
 
-N.B. [pointers.md](../drafts/pointers.md) will probably replace this once it's been finalized.
+N.B. [pointers.md](../design/drafts/pointers.md) will probably replace this once it's been finalized.
 
 Because Chirp's core ontology dictates that "Values are immutable," imperative programming and state mutation are introduced via physical **Memory Locations**.
 

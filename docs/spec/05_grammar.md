@@ -7,7 +7,7 @@
 > contain constructs that are guaranteed to be rejected later, such as
 > `(1 + 3) = 5;`.
 
-This file describes the current C++ bootstrap parser POC in `bootstrap-interpreter/lib/parser`. It is not a complete language grammar for every draft idea in this repository.
+This file describes the parser behavior in the current C++ bootstrap frontend at `interpreter/lib/frontend`. It is not a complete language grammar for every draft idea in this repository.
 
 ## Lexical Notes
 
@@ -220,4 +220,3 @@ No-op function bodies should be explicit rather than overloading `{}` as an empt
 let noop_block() = do {}; // empty block implicitly yields `void
 let noop_value() = `void;
 ```
-

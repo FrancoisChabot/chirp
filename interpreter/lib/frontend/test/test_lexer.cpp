@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "chirp/parser.h"
+#include "chirp/frontend.h"
 
-using namespace chirp::parser;
+using namespace chirp::frontend;
 
 TEST(LexerTest, BasicTokens) {
     auto tokens = tokenize("let mut x = 0..3;");

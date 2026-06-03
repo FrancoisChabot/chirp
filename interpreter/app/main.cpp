@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include "chirp/parser.h"
+#include "chirp/frontend.h"
 
 bool ast_dump_mode = false;
 bool format_mode = false;
@@ -30,7 +30,7 @@ void formatFile(const std::string& path) {
     std::string source = buffer.str();
     
     try {
-        std::string formatted = chirp::parser::format_text(source);
+        std::string formatted = chirp::frontend::format_text(source);
         if (formatted != source) {
             std::ofstream out_file(path);
             out_file << formatted;
@@ -45,14 +45,13 @@ void formatFile(const std::string& path) {
 
 bool run(const std::string& source) {
     try {
-        auto tokens = chirp::parser::tokenize(source);
-        auto stmts = chirp::parser::parse(tokens);
+        auto tokens = chirp::frontend::tokenize(source);
+        auto stmts = chirp::frontend::parse(tokens);
         
         if (ast_dump_mode) {
-            std::cout << chirp::parser::print_ast(stmts);
-        } else {
-            std::cout << "Parsed " << stmts.size() << " statement(s) successfully. (Use --ast-dump to view AST)\n";
+            std::cout << chirp::frontend::print_ast(stmts);
         }
+        
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
@@ -62,7 +61,8 @@ bool run(const std::string& source) {
 
 void runPrompt() {
     std::string line;
-    std::cout << "Chirp REPL (Type 'exit' to quit)\n";
+    std::cout << "Chirp REPL (Experimental Syntax Stub)\n"
+              << "Type 'exit' or 'quit' to exit. Use '--ast-dump' when running a script to view ASTs.\n";
     while (true) {
         std::cout << "> ";
         if (!std::getline(std::cin, line)) {

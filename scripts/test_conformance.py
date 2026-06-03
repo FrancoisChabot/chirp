@@ -8,24 +8,34 @@ def parse_expectations(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     
+    # Strip line comments (// ...) while preserving double-quoted string literals.
+    comment_pattern = r'("(?:[^"\\]|\\.)*")|(//[^\n]*)'
+    def strip_comment(match):
+        if match.group(1):
+            return match.group(1)
+        return ""
+    clean_content = re.sub(comment_pattern, strip_comment, content)
+    
     # Extract expected stdout. Can be multiple calls, which we concatenate.
-    stdout_matches = re.findall(r'`expect_stdout\("((?:[^"\\]|\\.)*)"\);', content)
-    expected_stdout = ""
-    for match in stdout_matches:
-        decoded = match.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
-        expected_stdout += decoded
+    stdout_matches = re.findall(r'`expect_stdout\("((?:[^"\\]|\\.)*)"\);', clean_content)
+    expected_stdout = None
+    if stdout_matches:
+        expected_stdout = ""
+        for match in stdout_matches:
+            decoded = match.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
+            expected_stdout += decoded
         
     # Extract expected exit code (defaults to 0 if not specified)
-    exit_match = re.search(r'`expect_exit\((\d+)\);', content)
+    exit_match = re.search(r'`expect_exit\((\d+)\);', clean_content)
     expected_exit = int(exit_match.group(1)) if exit_match else 0
     
-    # Check for `expect_failure; tag
-    expect_failure = bool(re.search(r'`expect_failure\s*;', content))
+    # Check for `expect_test_failure; tag
+    expect_test_failure = bool(re.search(r'`expect_test_failure\s*;', clean_content))
     
-    return expected_stdout, expected_exit, expect_failure
+    return expected_stdout, expected_exit, expect_test_failure
 
 def run_test(chirp_bin, file_path):
-    expected_stdout, expected_exit, expect_failure = parse_expectations(file_path)
+    expected_stdout, expected_exit, expect_test_failure = parse_expectations(file_path)
     
     # Run the interpreter
     try:
@@ -37,7 +47,7 @@ def run_test(chirp_bin, file_path):
             timeout=5
         )
     except subprocess.TimeoutExpired:
-        return False, f"Execution timed out after 5 seconds", expect_failure
+        return False, f"Execution timed out after 5 seconds", expect_test_failure
     
     actual_exit = result.returncode
     actual_stdout = result.stdout
@@ -49,27 +59,32 @@ def run_test(chirp_bin, file_path):
         if actual_stderr:
             failures.append(f"Stderr output:\n{actual_stderr.strip()}")
             
-    if expected_stdout != "" and actual_stdout != expected_stdout:
+    if expected_stdout is not None and actual_stdout != expected_stdout:
         failures.append(f"Stdout mismatch:\n  Expected: {repr(expected_stdout)}\n  Actual:   {repr(actual_stdout)}")
         
     if failures:
-        return False, "\n".join(failures), expect_failure
-    return True, "", expect_failure
+        return False, "\n".join(failures), expect_test_failure
+    return True, "", expect_test_failure
 
 def main():
     # Find chirp executable
+    if len(sys.argv) <= 1:
+        print("Usage: test_conformance.py <path_to_chirp_executable>")
+        sys.exit(1)
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
-    chirp_bin = os.path.join(root_dir, "build", "app", "chirp")
+    chirp_bin = sys.argv[1]
     
     if not os.path.exists(chirp_bin):
         print(f"Error: Chirp executable not found at '{chirp_bin}'. Did you build the project?")
         sys.exit(1)
         
+    tests_dir = os.path.join(root_dir, "tests")
     # Find all test files
     test_files = sorted([
-        os.path.join(script_dir, f)
-        for f in os.listdir(script_dir)
+        os.path.join(tests_dir, f)
+        for f in os.listdir(tests_dir)
         if f.endswith(".chirp")
     ])
     
@@ -94,18 +109,18 @@ def main():
     
     for test_file in test_files:
         name = os.path.basename(test_file)
-        passed, detail, expect_failure = run_test(chirp_bin, test_file)
+        passed, detail, expect_test_failure = run_test(chirp_bin, test_file)
         
         if passed:
-            if expect_failure:
-                print(f"{COLOR_RED}[XPASS] {name}{COLOR_RESET} (Unexpectedly passed; please remove `expect_failure;)")
+            if expect_test_failure:
+                print(f"{COLOR_RED}[XPASS] {name}{COLOR_RESET} (Unexpectedly passed; please remove `expect_test_failure;)")
                 xpass_count += 1
             else:
                 # N.B. extra space is for alignment with [XFAIL] and [XPASS]
                 print(f"{COLOR_GREEN}[PASS]  {name}{COLOR_RESET}")
                 passed_count += 1
         else:
-            if expect_failure:
+            if expect_test_failure:
                 print(f"{COLOR_YELLOW}[XFAIL] {name}{COLOR_RESET}")
                 xfail_count += 1
             else:

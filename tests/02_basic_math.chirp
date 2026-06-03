@@ -1,6 +1,6 @@
 `expect_stdout("3\n");
 `expect_exit(0);
-`expect_failure;
+`expect_test_failure;
 
 
 `print(1 + 2);

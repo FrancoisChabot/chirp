@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
-#include "chirp/parser.h"
+#include "chirp/frontend.h"
 
 
 
-using namespace chirp::parser;
+using namespace chirp::frontend;
 
 TEST(ParserTest, BinaryPrecedence) {
     auto tokens = tokenize("x % 2 == 0");

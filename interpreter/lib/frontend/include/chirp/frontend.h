@@ -6,7 +6,7 @@
 #include <optional>
 #include <string>
 
-namespace chirp::parser {
+namespace chirp::frontend {
 
 enum class token_type {
     // Single-character tokens
@@ -541,4 +541,4 @@ std::string print_ast(const Expr& expr);
 std::string print_ast(const Stmt& stmt);
 std::string print_ast(const std::vector<std::unique_ptr<Stmt>>& stmts);
 
-} // namespace chirp::parser
+} // namespace chirp::frontend
