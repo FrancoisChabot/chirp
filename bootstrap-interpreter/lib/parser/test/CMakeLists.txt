@@ -1,0 +1,6 @@
+add_executable(chirp_parser_test test_lexer.cpp test_parser.cpp)
+target_link_libraries(chirp_parser_test PRIVATE chirp_parser gtest_main)
+target_compile_features(chirp_parser_test PUBLIC cxx_std_20)
+
+include(GoogleTest)
+gtest_discover_tests(chirp_parser_test)

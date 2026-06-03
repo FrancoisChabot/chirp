@@ -1,0 +1,6 @@
+add_executable(chirp_interpreter_test test_value.cpp)
+target_link_libraries(chirp_interpreter_test PRIVATE chirp_interpreter gtest_main)
+target_compile_features(chirp_interpreter_test PUBLIC cxx_std_20)
+
+include(GoogleTest)
+gtest_discover_tests(chirp_interpreter_test)
