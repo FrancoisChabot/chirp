@@ -5,11 +5,53 @@ import sys
 import json
 import subprocess
 import tempfile
+import concurrent.futures
+import threading
+import argparse
 
-def run_test(chirp_bin, file_path, report_path):
-    # Run the interpreter
-    # Truncate the report file to prevent reading stale data if the interpreter crashes early
-    open(report_path, 'w').close()
+# Thread-local storage to recycle report files per thread/worker and minimize filesystem metadata churn.
+# To ensure maximum portability across Linux, macOS, BSD, and Windows (avoiding sharing violations/locks),
+# we do not keep the file open in Python during the interpreter's run. Instead, we create a single persistent
+# file path per thread, and open/close it in Python before and after the run. This completely avoids directory
+# metadata allocation/deallocation churn while ensuring clean concurrency boundaries.
+thread_local = threading.local()
+temp_files_registry = []
+registry_lock = threading.Lock()
+runner_counter = 0
+counter_lock = threading.Lock()
+
+# ANSI Escape Codes for Colors
+COLOR_GREEN = "\033[92m"
+COLOR_RED = "\033[91m"
+COLOR_YELLOW = "\033[93m"
+COLOR_RESET = "\033[0m"
+
+def print_test_status(status, name, color, extra=""):
+    status_padded = status.ljust(7)
+    print(f"{color}{status_padded} {name}{COLOR_RESET}{extra}")
+
+def get_thread_info():
+    if not hasattr(thread_local, "report_path"):
+        global runner_counter
+        report_fd, report_path = tempfile.mkstemp(suffix=".json", prefix="chirp_report_")
+        os.close(report_fd)
+        thread_local.report_path = report_path
+        with counter_lock:
+            runner_counter += 1
+            thread_local.runner_id = runner_counter
+        with registry_lock:
+            temp_files_registry.append(report_path)
+    return thread_local.report_path, thread_local.runner_id
+
+def run_test(chirp_bin, file_path):
+    report_path, runner_id = get_thread_info()
+    
+    # Truncate the report file to prevent reading stale data from a previous test run on this thread
+    try:
+        with open(report_path, 'w') as f:
+            pass
+    except OSError as e:
+        return False, f"Could not truncate report file {report_path}: {e}", False, runner_id
     
     expected_stdout = None
     expected_exit = None
@@ -23,9 +65,9 @@ def run_test(chirp_bin, file_path, report_path):
             text=True,
             timeout=5
         )
-        with open(report_path, "r", encoding="utf-8") as f:
-            try:
-                report = {"diagnostics": []}
+        report = {"diagnostics": []}
+        if os.path.exists(report_path):
+            with open(report_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line: continue
@@ -39,10 +81,10 @@ def run_test(chirp_bin, file_path, report_path):
                         expected_stdout = event.get("expected_stdout")
                         expected_exit = event.get("expected_exit")
                         expect_test_failure = event.get("expect_test_failure", False)
-            except json.JSONDecodeError as e:
-                return False, f"Could not read run report: {e}", expect_test_failure
+    except json.JSONDecodeError as e:
+        return False, f"Could not read run report: {e}", expect_test_failure, runner_id
     except subprocess.TimeoutExpired:
-        return False, f"Execution timed out after 5 seconds", expect_test_failure
+        return False, f"Execution timed out after 5 seconds", expect_test_failure, runner_id
     
     is_syntax_test = "/syntax/" in file_path.replace(os.sep, "/")
     if is_syntax_test:
@@ -70,8 +112,8 @@ def run_test(chirp_bin, file_path, report_path):
         failures.append(f"Stdout mismatch:\n  Expected: {repr(expected_stdout)}\n  Actual:   {repr(actual_stdout)}")
         
     if failures:
-        return False, "\n".join(failures), expect_test_failure
-    return True, "", expect_test_failure
+        return False, "\n".join(failures), expect_test_failure, runner_id
+    return True, "", expect_test_failure, runner_id
 
 def find_test_files(tests_dir):
     test_files = []
@@ -82,36 +124,43 @@ def find_test_files(tests_dir):
                 test_files.append(os.path.join(dirpath, filename))
     return sorted(test_files, key=lambda path: os.path.relpath(path, tests_dir))
 
-def print_usage():
-    print("Usage: test_conformance.py <path_to_chirp_executable> [--filter TEXT]")
-
-def parse_args(argv):
-    if len(argv) <= 1:
-        print_usage()
-        sys.exit(1)
-
-    chirp_bin = argv[1]
-    test_filter = None
-
-    i = 2
-    while i < len(argv):
-        arg = argv[i]
-        if arg == "--filter":
-            if i + 1 >= len(argv):
-                print("Error: --filter requires a value.")
-                print_usage()
-                sys.exit(1)
-            test_filter = argv[i + 1]
-            i += 2
-        else:
-            print(f"Unknown argument: {arg}")
-            print_usage()
-            sys.exit(1)
-
-    return chirp_bin, test_filter
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run Chirp conformance test suite in sequential or parallel mode."
+    )
+    parser.add_argument(
+        "--filter",
+        help="Filter tests by name substring"
+    )
+    parser.add_argument(
+        "-j", "--jobs",
+        default="1",
+        help="Run tests in parallel. Can be an integer or 'auto' (which uses the system CPU count). Defaults to 1."
+    )
+    parser.add_argument(
+        "--suite",
+        help="Path to a custom test suite directory (defaults to the project's tests/ directory)"
+    )
+    parser.add_argument(
+        "chirp_bin",
+        help="Path to the Chirp executable under test"
+    )
+    
+    args = parser.parse_args()
+    
+    # Process jobs parameter
+    if args.jobs == "auto":
+        cpu_count = os.cpu_count()
+        jobs = cpu_count if cpu_count is not None else 2
+    elif re.match(r'^\d+$', args.jobs):
+        jobs = int(args.jobs)
+    else:
+        jobs = 1
+        
+    return args.chirp_bin, args.filter, jobs, args.suite
 
 def main():
-    chirp_bin, test_filter = parse_args(sys.argv)
+    chirp_bin, test_filter, jobs, suite_dir = parse_args()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
     
@@ -119,7 +168,11 @@ def main():
         print(f"Error: Chirp executable not found at '{chirp_bin}'. Did you build the project?")
         sys.exit(1)
         
-    tests_dir = os.path.join(root_dir, "tests")
+    if suite_dir:
+        tests_dir = os.path.abspath(suite_dir)
+    else:
+        tests_dir = os.path.join(root_dir, "tests")
+        
     test_files = find_test_files(tests_dir)
     if test_filter is not None:
         test_files = [
@@ -146,50 +199,81 @@ def main():
     xfail_count = 0
     xpass_count = 0
     
-    # ANSI Escape Codes for Colors
-    COLOR_GREEN = "\033[92m"
-    COLOR_RED = "\033[91m"
-    COLOR_YELLOW = "\033[93m"
-    COLOR_RESET = "\033[0m"
-    
-    report_fd, report_path = tempfile.mkstemp(suffix=".json", prefix="chirp_report_")
-    os.close(report_fd)
-    
     try:
-        for test_file in test_files:
-            name = os.path.relpath(test_file, tests_dir)
-            passed, detail, expect_test_failure = run_test(chirp_bin, test_file, report_path)
-            
-            if passed:
-                if expect_test_failure:
-                    print(f"{COLOR_RED}[XPASS] {name}{COLOR_RESET} (Unexpectedly passed; please remove `expect_test_failure;)")
-                    xpass_count += 1
-                else:
-                    # N.B. extra space is for alignment with [XFAIL] and [XPASS]
-                    print(f"{COLOR_GREEN}[PASS]  {name}{COLOR_RESET}")
-                    passed_count += 1
-            else:
-                if expect_test_failure:
-                    print(f"{COLOR_YELLOW}[XFAIL] {name}{COLOR_RESET}")
-                    xfail_count += 1
-                else:
-                    # N.B. extra space is for alignment with [XFAIL] and [XPASS]
-                    print(f"{COLOR_RED}[FAIL]  {name}{COLOR_RESET}")
-                    print("-" * 40)
-                    print(detail)
-                    print("-" * 40)
-                    failed_count += 1
+        if jobs > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+                future_to_name = {
+                    executor.submit(run_test, chirp_bin, test_file): os.path.relpath(test_file, tests_dir)
+                    for test_file in test_files
+                }
                 
-        print("=" * 60)
-        print(f"Summary: {passed_count} passed, {xfail_count} expected failures (XFAIL)")
-        if xpass_count > 0 or failed_count > 0:
-            print(f"Errors: {failed_count} unexpected failures, {xpass_count} unexpected passes (XPASS)")
-            sys.exit(1)
+                for future in concurrent.futures.as_completed(future_to_name):
+                    name = future_to_name[future]
+                    runner_id = "?"
+                    try:
+                        passed, detail, expect_test_failure, runner_id = future.result()
+                        if passed:
+                            if expect_test_failure:
+                                print_test_status("[XPASS]", name, COLOR_RED, " (Unexpectedly passed; please remove `expect_test_failure;)")
+                                xpass_count += 1
+                            else:
+                                print_test_status("[PASS]", name, COLOR_GREEN)
+                                passed_count += 1
+                        else:
+                            if expect_test_failure:
+                                print_test_status("[XFAIL]", name, COLOR_YELLOW)
+                                xfail_count += 1
+                            else:
+                                print_test_status("[FAIL]", name, COLOR_RED)
+                                print("-" * 40)
+                                print(detail)
+                                print("-" * 40)
+                                failed_count += 1
+                    except Exception as exc:
+                        print_test_status("[ERROR]", name, COLOR_RED, f" raised an exception: {exc}")
+                        failed_count += 1
         else:
-            sys.exit(0)
+            for test_file in test_files:
+                name = os.path.relpath(test_file, tests_dir)
+                runner_id = "?"
+                try:
+                    passed, detail, expect_test_failure, runner_id = run_test(chirp_bin, test_file)
+                    if passed:
+                        if expect_test_failure:
+                            print_test_status("[XPASS]", name, COLOR_RED, " (Unexpectedly passed; please remove `expect_test_failure;)")
+                            xpass_count += 1
+                        else:
+                            print_test_status("[PASS]", name, COLOR_GREEN)
+                            passed_count += 1
+                    else:
+                        if expect_test_failure:
+                            print_test_status("[XFAIL]", name, COLOR_YELLOW)
+                            xfail_count += 1
+                        else:
+                            print_test_status("[FAIL]", name, COLOR_RED)
+                            print("-" * 40)
+                            print(detail)
+                            print("-" * 40)
+                            failed_count += 1
+                except Exception as exc:
+                    print_test_status("[ERROR]", name, COLOR_RED, f" raised an exception: {exc}")
+                    failed_count += 1
     finally:
-        if os.path.exists(report_path):
-            os.remove(report_path)
+        with registry_lock:
+            for path in temp_files_registry:
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                
+    print("=" * 60)
+    print(f"Summary: {passed_count} passed, {xfail_count} expected failures (XFAIL)")
+    if xpass_count > 0 or failed_count > 0:
+        print(f"Errors: {failed_count} unexpected failures, {xpass_count} unexpected passes (XPASS)")
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
