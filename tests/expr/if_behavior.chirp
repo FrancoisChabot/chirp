@@ -1,5 +1,5 @@
 `expect_stdout("11\n2\n2\nyes\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let expr_value = if (false) 10 else 11;
 `print(expr_value);

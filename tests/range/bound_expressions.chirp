@@ -1,5 +1,5 @@
 `expect_stdout("true\nfalse\ntrue\nfalse\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let start = 1 + 1;
 let stop = 2 * 4;

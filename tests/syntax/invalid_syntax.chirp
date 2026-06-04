@@ -1,0 +1,3 @@
+// This file is expected to fail parsing (syntax error)
+// Under directory-based routing, any file under /syntax/ expects exit code 1 and syntax_failure outcome.
+let x = ;

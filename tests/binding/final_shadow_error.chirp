@@ -1,7 +1,7 @@
-`expect_interpreter_exit(1);
+`expect_exit(1);
 
 let final x = 1;
 
 do {
     let x = 2;
-}
+};

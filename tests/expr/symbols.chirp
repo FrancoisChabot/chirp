@@ -1,5 +1,5 @@
 `expect_stdout("#foo\n#foo\ntrue\nfalse\ntrue\nfalse\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let x = #foo;
 `print(x);

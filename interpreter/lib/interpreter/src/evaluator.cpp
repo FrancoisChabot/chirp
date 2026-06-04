@@ -112,8 +112,7 @@ bool is_name(std::string_view actual, std::string_view expected) {
 
 bool is_harness_intrinsic(std::string_view name) {
     return is_name(name, "`expect_stdout") ||
-        is_name(name, "`expect_interpreter_exit") ||
-        is_name(name, "`expect_script_exit") ||
+        is_name(name, "`expect_exit") ||
         is_name(name, "`expect_test_failure");
 }
 
@@ -849,20 +848,12 @@ private:
                             }
                         }
                     }
-                } else if (is_name(intrinsic->name, "`expect_interpreter_exit")) {
+                } else if (is_name(intrinsic->name, "`expect_exit")) {
                     if (expr.args.size() == 1) {
                         Value arg = evaluate(*expr.args.front().value);
                         if (arg.isInt()) {
                             expectations.has_expectations = true;
-                            expectations.expected_interpreter_exit = static_cast<int>(arg.asInt());
-                        }
-                    }
-                } else if (is_name(intrinsic->name, "`expect_script_exit")) {
-                    if (expr.args.size() == 1) {
-                        Value arg = evaluate(*expr.args.front().value);
-                        if (arg.isInt()) {
-                            expectations.has_expectations = true;
-                            expectations.expected_script_exit = static_cast<int>(arg.asInt());
+                            expectations.expected_exit = static_cast<int>(arg.asInt());
                         }
                     }
                 }

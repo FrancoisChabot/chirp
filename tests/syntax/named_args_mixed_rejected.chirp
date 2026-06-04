@@ -1,4 +1,2 @@
-`expect_interpreter_exit(1);
-
 let sum = (x : int, y : int) : int => x + y;
 `print(sum(1, y=2));

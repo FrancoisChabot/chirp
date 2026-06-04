@@ -1,6 +1,6 @@
 //It has to be done
 
 `expect_stdout("Hello World\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 `print("Hello World");

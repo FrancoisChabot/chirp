@@ -1,5 +1,5 @@
 `expect_stdout("1\nloop finished\n");
-`expect_interpreter_exit(1);
+`expect_exit(1);
 
 for (n ∈ 1..=1) do {
     `print(n);

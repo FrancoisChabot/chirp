@@ -76,8 +76,7 @@ Value belongsRange(const Value& S, const Value& lc);
 
 struct SessionExpectations {
     std::optional<std::string> expected_stdout;
-    std::optional<int> expected_interpreter_exit;
-    std::optional<int> expected_script_exit;
+    std::optional<int> expected_exit;
     bool expect_test_failure = false;
     bool has_expectations = false;
 };

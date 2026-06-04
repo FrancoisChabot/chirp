@@ -10,32 +10,27 @@ If the script doesn't work for you as-is, feel free to open a ticket and we will
 
 The script relies on the reference interpreter's `--run-report` mechanism. If you are writing an interpreter, we **strongly** encourage you to provide that facility verbatim so that it can be tested against this suite by the script.
 
-## Test File Format
-
 Each test is an ordinary `.chirp` file with optional harness directives:
 
 ```chirp
 `expect_stdout("Hello World\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 `print("Hello World");
 ```
 
-Supported directives:
+### Directory-Based Routing
+To verify syntactical, lexical, or parse-phase failures, place the test script in a directory whose path contains `/syntax/` (e.g. `tests/syntax/`). 
+* The test runner automatically expects these files to fail parsing (yielding a `syntax_failure` outcome and exiting with code `1`).
+* This eliminates the need to specify any exit expectations inside the file itself.
 
-- `` `expect_stdout("..."); `` sets the exact expected stdout. Multiple
-  directives are concatenated in file order. If omitted, stdout has no impact on the test passing/failing.
+### Supported Directives
+For successful compilations (VM runtime tests), you can specify expectations dynamically:
 
-- `` `expect_interpreter_exit(n); `` sets the expected interpreter process
-  exit code. If omitted, the expected exit code is `0`, unless
-  `` `expect_script_exit(n); `` is present.
+- `` `expect_stdout("..."); `` sets the exact expected stdout. Multiple directives are concatenated in file order. If omitted, stdout has no impact on the test passing/failing.
 
-- `` `expect_script_exit(n); `` expects the script to exit by calling
-  `` `exit(n); ``. If `` `expect_interpreter_exit(n); `` is omitted, the
-  interpreter process is expected to forward the script exit code.
+- `` `expect_exit(n); `` sets the expected process exit code of the interpreter (regardless of whether it exits via normal execution, a runtime error, or an explicit `` `exit(n) `` intrinsic). Defaults to `0` if omitted.
 
-- `` `expect_test_failure; `` marks the test as an expected failure. This is a TDD tool, not a way to unbreak builds. Please do not make future-me regret adding it.
+- `` `expect_test_failure; `` marks the test as an expected runtime failure (XFAIL). This is a TDD tool, not a way to unbreak builds. Please do not make future-me regret adding it.
 
-Since the directives are proper chirp intrinsics, the python script will respect commenting them out.
-
-The distinction between `expect_interpreter_exit()` and `expect_script_exit()` exists to make sure that a test that's expecting a syntactical error doesn't accidentally pass because the script mistakenly parsed well, but exited with a 1.
+Since the directives are proper chirp intrinsics, commenting them out works as expected.

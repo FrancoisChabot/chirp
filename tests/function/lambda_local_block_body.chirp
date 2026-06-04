@@ -1,5 +1,5 @@
 `expect_stdout("8\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let add_one(x : int) : int = do {
     let one : int = 1;

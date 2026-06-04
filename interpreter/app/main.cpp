@@ -202,100 +202,10 @@ struct RunReport {
     std::optional<int> script_exit;
     std::vector<Diagnostic> diagnostics;
     std::optional<std::string> expected_stdout;
-    std::optional<int> expected_interpreter_exit;
-    std::optional<int> expected_script_exit;
+    std::optional<int> expected_exit;
     bool expect_test_failure = false;
 };
 
-struct TestExpectations {
-    std::optional<std::string> expected_stdout;
-    std::optional<int> expected_interpreter_exit;
-    std::optional<int> expected_script_exit;
-    bool expect_test_failure = false;
-    bool has_expectations = false;
-};
-
-std::string unescapeString(std::string_view literal) {
-    if (literal.size() < 2) return "";
-    std::string out;
-    for (size_t i = 1; i + 1 < literal.size(); ++i) {
-        char c = literal[i];
-        if (c == '\\') {
-            if (i + 1 < literal.size() - 1) {
-                char next = literal[++i];
-                switch (next) {
-                    case 'n': out.push_back('\n'); break;
-                    case 'r': out.push_back('\r'); break;
-                    case 't': out.push_back('\t'); break;
-                    case '0': out.push_back('\0'); break;
-                    case '\\': out.push_back('\\'); break;
-                    case '"': out.push_back('"'); break;
-                    case '\'': out.push_back('\''); break;
-                    default: out.push_back(next); break;
-                }
-            }
-        } else {
-            out.push_back(c);
-        }
-    }
-    return out;
-}
-
-TestExpectations scanExpectationsFromTokens(const std::vector<chirp::frontend::token>& tokens) {
-    TestExpectations exps;
-    for (size_t i = 0; i < tokens.size(); ++i) {
-        if (tokens[i].type == chirp::frontend::token_type::intrinsic) {
-            if (tokens[i].lexeme == "`expect_stdout") {
-                if (i + 4 < tokens.size() &&
-                    tokens[i+1].type == chirp::frontend::token_type::left_paren &&
-                    tokens[i+2].type == chirp::frontend::token_type::string &&
-                    tokens[i+3].type == chirp::frontend::token_type::right_paren &&
-                    tokens[i+4].type == chirp::frontend::token_type::semicolon) {
-                    
-                    exps.has_expectations = true;
-                    std::string decoded = unescapeString(tokens[i+2].lexeme);
-                    if (!exps.expected_stdout.has_value()) {
-                        exps.expected_stdout = decoded;
-                    } else {
-                        *exps.expected_stdout += decoded;
-                    }
-                    i += 4;
-                }
-            } else if (tokens[i].lexeme == "`expect_interpreter_exit") {
-                if (i + 4 < tokens.size() &&
-                    tokens[i+1].type == chirp::frontend::token_type::left_paren &&
-                    tokens[i+2].type == chirp::frontend::token_type::number &&
-                    tokens[i+3].type == chirp::frontend::token_type::right_paren &&
-                    tokens[i+4].type == chirp::frontend::token_type::semicolon) {
-                    
-                    exps.has_expectations = true;
-                    exps.expected_interpreter_exit = std::stoi(std::string(tokens[i+2].lexeme));
-                    i += 4;
-                }
-            } else if (tokens[i].lexeme == "`expect_script_exit") {
-                if (i + 4 < tokens.size() &&
-                    tokens[i+1].type == chirp::frontend::token_type::left_paren &&
-                    tokens[i+2].type == chirp::frontend::token_type::number &&
-                    tokens[i+3].type == chirp::frontend::token_type::right_paren &&
-                    tokens[i+4].type == chirp::frontend::token_type::semicolon) {
-                    
-                    exps.has_expectations = true;
-                    exps.expected_script_exit = std::stoi(std::string(tokens[i+2].lexeme));
-                    i += 4;
-                }
-            } else if (tokens[i].lexeme == "`expect_test_failure") {
-                if (i + 1 < tokens.size() &&
-                    tokens[i+1].type == chirp::frontend::token_type::semicolon) {
-                    
-                    exps.has_expectations = true;
-                    exps.expect_test_failure = true;
-                    i += 1;
-                }
-            }
-        }
-    }
-    return exps;
-}
 
 void writeJsonString(std::ostream& out, std::string_view text) {
     static constexpr char hex[] = "0123456789abcdef";
@@ -340,15 +250,9 @@ bool writeRunReport(std::ostream& out, const RunReport& report) {
     } else {
         out << "null";
     }
-    out << ", \"expected_interpreter_exit\": ";
-    if (report.expected_interpreter_exit.has_value()) {
-        out << *report.expected_interpreter_exit;
-    } else {
-        out << "null";
-    }
-    out << ", \"expected_script_exit\": ";
-    if (report.expected_script_exit.has_value()) {
-        out << *report.expected_script_exit;
+    out << ", \"expected_exit\": ";
+    if (report.expected_exit.has_value()) {
+        out << *report.expected_exit;
     } else {
         out << "null";
     }
@@ -414,25 +318,16 @@ int runFileWithReport(const fs::path& path, const Options& options) {
         bool parsed = false;
         std::vector<chirp::frontend::token> tokens;
         std::vector<std::unique_ptr<chirp::frontend::Stmt>> stmts;
-        TestExpectations static_expectations;
 
         if (loaded && report.diagnostics.empty()) {
             try {
                 tokens = chirp::frontend::tokenize(source);
-                static_expectations = scanExpectationsFromTokens(tokens);
                 stmts = chirp::frontend::parse(tokens);
                 parsed = true;
             } catch (const std::exception& e) {
                 report.outcome = "syntax_failure";
                 report.diagnostics.push_back({"parse", e.what(), path.string()});
                 process_exit = 1;
-
-                if (static_expectations.has_expectations) {
-                    report.expected_stdout = static_expectations.expected_stdout;
-                    report.expected_interpreter_exit = static_expectations.expected_interpreter_exit;
-                    report.expected_script_exit = static_expectations.expected_script_exit;
-                    report.expect_test_failure = static_expectations.expect_test_failure;
-                }
             }
         }
 
@@ -452,8 +347,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
             auto dynamic_expectations = session.getExpectations();
             if (dynamic_expectations.has_expectations) {
                 report.expected_stdout = dynamic_expectations.expected_stdout;
-                report.expected_interpreter_exit = dynamic_expectations.expected_interpreter_exit;
-                report.expected_script_exit = dynamic_expectations.expected_script_exit;
+                report.expected_exit = dynamic_expectations.expected_exit;
                 report.expect_test_failure = dynamic_expectations.expect_test_failure;
             }
         }

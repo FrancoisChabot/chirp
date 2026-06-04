@@ -1,5 +1,5 @@
 `expect_stdout("true\nfalse\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let small_answer = {x | x == 42};
 

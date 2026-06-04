@@ -12,8 +12,7 @@ def run_test(chirp_bin, file_path, report_path):
     open(report_path, 'w').close()
     
     expected_stdout = None
-    expected_interpreter_exit = None
-    expected_script_exit = None
+    expected_exit = None
     expect_test_failure = False
 
     try:
@@ -38,35 +37,34 @@ def run_test(chirp_bin, file_path, report_path):
                         report["script_exit"] = event.get("script_exit")
                     elif event.get("event") == "expectations":
                         expected_stdout = event.get("expected_stdout")
-                        expected_interpreter_exit = event.get("expected_interpreter_exit")
-                        expected_script_exit = event.get("expected_script_exit")
+                        expected_exit = event.get("expected_exit")
                         expect_test_failure = event.get("expect_test_failure", False)
             except json.JSONDecodeError as e:
                 return False, f"Could not read run report: {e}", expect_test_failure
     except subprocess.TimeoutExpired:
         return False, f"Execution timed out after 5 seconds", expect_test_failure
     
-    if expected_interpreter_exit is None:
-        expected_interpreter_exit = expected_script_exit if expected_script_exit is not None else 0
+    is_syntax_test = "/syntax/" in file_path.replace(os.sep, "/")
+    if is_syntax_test:
+        expected_exit = 1
+
+    if expected_exit is None:
+        expected_exit = 0
         
     actual_exit = result.returncode
     actual_stdout = result.stdout
     actual_stderr = result.stderr
 
     failures = []
-    if actual_exit != expected_interpreter_exit:
-        failures.append(f"Interpreter exit code mismatch: expected {expected_interpreter_exit}, got {actual_exit}")
+    if actual_exit != expected_exit:
+        failures.append(f"Interpreter exit code mismatch: expected {expected_exit}, got {actual_exit}")
         if actual_stderr:
             failures.append(f"Stderr output:\n{actual_stderr.strip()}")
 
-    actual_script_exit = report.get("script_exit")
-    if expected_script_exit is not None:
-        if report.get("outcome") != "script_exit":
-            failures.append(f"Run outcome mismatch: expected script_exit, got {report.get('outcome')!r}")
-        if actual_script_exit != expected_script_exit:
-            failures.append(f"Script exit code mismatch: expected {expected_script_exit}, got {actual_script_exit}")
-    elif report.get("outcome") == "script_exit":
-        failures.append(f"Unexpected script exit with code {actual_script_exit}")
+    if is_syntax_test:
+        actual_outcome = report.get("outcome")
+        if actual_outcome != "syntax_failure":
+            failures.append(f"Run outcome mismatch: expected syntax_failure, got {actual_outcome!r}")
             
     if expected_stdout is not None and actual_stdout != expected_stdout:
         failures.append(f"Stdout mismatch:\n  Expected: {repr(expected_stdout)}\n  Actual:   {repr(actual_stdout)}")

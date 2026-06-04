@@ -1,5 +1,5 @@
 `expect_stdout("before\n");
-`expect_script_exit(7);
+`expect_exit(7);
 
 `print("before");
 `exit(7);

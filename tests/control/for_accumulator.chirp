@@ -1,5 +1,5 @@
 `expect_stdout("10\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let total = 0;
 for (n ∈ 1..=4) do {

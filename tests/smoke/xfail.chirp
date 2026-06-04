@@ -1,2 +1,2 @@
 `expect_test_failure;
-let x = ; // Intentional syntax error to verify the XFAIL test pipeline
+let x : {1} = 2; // Runtime constraint violation for TDD validation

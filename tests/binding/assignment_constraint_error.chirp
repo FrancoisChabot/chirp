@@ -1,4 +1,4 @@
-`expect_interpreter_exit(1);
+`expect_exit(1);
 
 let x : {1, 2} = 1;
 x = 3;

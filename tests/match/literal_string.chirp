@@ -1,7 +1,7 @@
 // Match against string literal patterns. Each string literal acts as a
 // singleton set for membership testing.
 `expect_stdout("#in\n");
-`expect_interpreter_exit(0);
+`expect_exit(0);
 
 let check_keyword(lexeme) = match lexeme {
     "let" => #let,
