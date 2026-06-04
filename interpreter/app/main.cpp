@@ -4,6 +4,7 @@
 #include <sstream>
 #include <vector>
 #include "chirp/frontend.h"
+#include "chirp/interpreter.h"
 
 bool ast_dump_mode = false;
 bool format_mode = false;
@@ -50,6 +51,8 @@ bool run(const std::string& source) {
         
         if (ast_dump_mode) {
             std::cout << chirp::frontend::print_ast(stmts);
+        } else {
+            chirp::interpreter::execute(stmts, std::cout);
         }
         
         return true;

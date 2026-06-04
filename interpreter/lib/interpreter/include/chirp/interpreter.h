@@ -4,6 +4,14 @@
 #include "type.h"
 #include "binding.h"
 
+#include <iosfwd>
+#include <memory>
+#include <vector>
+
+namespace chirp::frontend {
+class Stmt;
+}
+
 namespace chirp::interpreter {
 
 // Getters for the 12 core predefined interpreter values and types
@@ -41,5 +49,8 @@ Value belongsTo(const Value& S, const Value& v);
 
 // Set range helper: typeof(S).br(S, lc)
 Value belongsRange(const Value& S, const Value& lc);
+
+// Execute a parsed Chirp script.
+void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::ostream& out);
 
 } // namespace chirp::interpreter

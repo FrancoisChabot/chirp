@@ -1,0 +1,518 @@
+#include "chirp/interpreter.h"
+
+#include "chirp/frontend.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <ostream>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+
+namespace chirp::interpreter {
+namespace {
+
+using namespace chirp::frontend;
+
+struct BreakSignal {
+    Value value;
+};
+
+std::string at(const token& tok) {
+    return " at line " + std::to_string(tok.line) + ":" + std::to_string(tok.column);
+}
+
+[[noreturn]] void fail(const token& tok, const std::string& message) {
+    throw std::runtime_error(message + at(tok));
+}
+
+std::string to_key(std::string_view text) {
+    return std::string(text);
+}
+
+int hex_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return 10 + c - 'a';
+    return 10 + c - 'A';
+}
+
+void append_utf8(std::string& out, uint32_t codepoint) {
+    if (codepoint <= 0x7f) {
+        out.push_back(static_cast<char>(codepoint));
+    } else if (codepoint <= 0x7ff) {
+        out.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+    } else {
+        out.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+    }
+}
+
+std::string decode_quoted_literal(std::string_view literal, const token& diag) {
+    if (literal.size() < 2) {
+        fail(diag, "Malformed string literal");
+    }
+
+    std::string out;
+    for (size_t i = 1; i + 1 < literal.size(); ++i) {
+        char c = literal[i];
+        if (c != '\\') {
+            out.push_back(c);
+            continue;
+        }
+
+        if (++i + 1 > literal.size()) {
+            fail(diag, "Malformed escape sequence");
+        }
+
+        char escaped = literal[i];
+        switch (escaped) {
+            case '\\': out.push_back('\\'); break;
+            case '\'': out.push_back('\''); break;
+            case '"': out.push_back('"'); break;
+            case 'n': out.push_back('\n'); break;
+            case 'r': out.push_back('\r'); break;
+            case 't': out.push_back('\t'); break;
+            case '0': out.push_back('\0'); break;
+            case 'u': {
+                if (i + 4 >= literal.size()) {
+                    fail(diag, "Malformed unicode escape");
+                }
+                uint32_t codepoint = 0;
+                for (int n = 0; n < 4; ++n) {
+                    char h = literal[++i];
+                    codepoint = (codepoint << 4) | static_cast<uint32_t>(hex_value(h));
+                }
+                append_utf8(out, codepoint);
+                break;
+            }
+            default:
+                fail(diag, "Unsupported escape sequence");
+        }
+    }
+    return out;
+}
+
+std::string display_string(const Value& value) {
+    if (value.isString()) {
+        return value.asString();
+    }
+    return value.toString();
+}
+
+bool is_name(std::string_view actual, std::string_view expected) {
+    return actual == expected;
+}
+
+bool is_harness_intrinsic(std::string_view name) {
+    return is_name(name, "`expect_stdout") ||
+        is_name(name, "`expect_exit") ||
+        is_name(name, "`expect_test_failure");
+}
+
+class Evaluator : public ASTVisitor, public StmtVisitor {
+public:
+    explicit Evaluator(std::ostream& out) : out_(out) {
+        scopes_.emplace_back();
+    }
+
+    void execute(const std::vector<std::unique_ptr<Stmt>>& stmts) {
+        for (const auto& stmt : stmts) {
+            execute_stmt(*stmt);
+        }
+    }
+
+private:
+    using Scope = std::unordered_map<std::string, std::shared_ptr<Binding>>;
+
+    std::ostream& out_;
+    std::vector<Scope> scopes_;
+    Value result_;
+
+    Value evaluate(const Expr& expr) {
+        expr.accept(*this);
+        return result_;
+    }
+
+    void execute_stmt(const Stmt& stmt) {
+        stmt.accept(*this);
+    }
+
+    std::shared_ptr<Binding> lookup_binding(std::string_view name, const token& diag) const {
+        std::string key = to_key(name);
+        for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+            auto found = scope->find(key);
+            if (found != scope->end()) {
+                return found->second;
+            }
+        }
+        fail(diag, "Undefined identifier '" + key + "'");
+    }
+
+    void define_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
+        std::string key = to_key(name);
+        auto [_, inserted] = scopes_.back().emplace(key, std::move(binding));
+        if (!inserted) {
+            fail(diag, "Identifier '" + key + "' is already defined in this scope");
+        }
+    }
+
+    static bool as_bool(const Value& value, const token& diag) {
+        if (!value.isBool()) {
+            fail(diag, "Expected Bool, got " + value.toString());
+        }
+        return value.asBool();
+    }
+
+    static int64_t as_int(const Value& value, const token& diag) {
+        if (!value.isInt()) {
+            fail(diag, "Expected int, got " + value.toString());
+        }
+        return value.asInt();
+    }
+
+    void enforce_constraint(const Value& constraint, const Value& value, const token& diag) {
+        Value belongs = belongsTo(constraint, value);
+        if (!belongs.isBool()) {
+            fail(diag, "Constraint belonging predicate did not return Bool");
+        }
+        if (!belongs.asBool()) {
+            fail(diag, "Constraint violation: " + display_string(value) + " does not belong to " + constraint.toString());
+        }
+    }
+
+    Value builtin_identifier(std::string_view name, const token& diag) const {
+        if (is_name(name, "int")) return Value::make_type(getIntType());
+        if (is_name(name, "string")) return Value::make_type(getStringType());
+        if (is_name(name, "Bool")) return Bool();
+        if (is_name(name, "Type")) return TypeVal();
+        if (is_name(name, "any")) return Any();
+        if (is_name(name, "empty")) return Empty();
+        if (is_name(name, "set")) return Set();
+        if (is_name(name, "Void")) return Void();
+        return lookup_binding(name, diag)->getCV();
+    }
+
+    Value builtin_intrinsic(std::string_view name, const token& diag) const {
+        if (is_name(name, "`void")) return VoidVal();
+        if (is_name(name, "`any")) return Any();
+        if (is_name(name, "`empty")) return Empty();
+        if (is_name(name, "`set")) return Set();
+        if (is_name(name, "`type")) return TypeVal();
+        if (is_harness_intrinsic(name)) return VoidVal();
+        fail(diag, "Unknown intrinsic '" + to_key(name) + "'");
+    }
+
+    void call_intrinsic(std::string_view name, const std::vector<Argument>& args, const token& diag) {
+        if (is_name(name, "`print")) {
+            if (args.size() != 1 || args.front().name.has_value()) {
+                fail(diag, "`print expects one positional argument");
+            }
+            Value value = evaluate(*args.front().value);
+            out_ << display_string(value) << '\n';
+            result_ = VoidVal();
+            return;
+        }
+
+        if (is_name(name, "`expect_stdout") || is_name(name, "`expect_exit")) {
+            result_ = VoidVal();
+            return;
+        }
+
+        fail(diag, "Cannot call intrinsic '" + to_key(name) + "'");
+    }
+
+    int64_t binary_int(const Value& left, const Value& right, BinaryOp op, const token& diag) {
+        int64_t a = as_int(left, diag);
+        int64_t b = as_int(right, diag);
+        switch (op) {
+            case BinaryOp::Add: return a + b;
+            case BinaryOp::Sub: return a - b;
+            case BinaryOp::Mul: return a * b;
+            case BinaryOp::Div:
+                if (b == 0) fail(diag, "Division by zero");
+                return a / b;
+            case BinaryOp::Mod:
+                if (b == 0) fail(diag, "Modulo by zero");
+                return a % b;
+            default:
+                fail(diag, "Unsupported integer operator");
+        }
+    }
+
+    void visit(const BinaryExpr& expr) override {
+        if (expr.op == BinaryOp::And) {
+            bool left = as_bool(evaluate(*expr.left), expr.diagnostic_token);
+            result_ = Value::make_bool(left && as_bool(evaluate(*expr.right), expr.diagnostic_token));
+            return;
+        }
+
+        if (expr.op == BinaryOp::Or) {
+            bool left = as_bool(evaluate(*expr.left), expr.diagnostic_token);
+            result_ = Value::make_bool(left || as_bool(evaluate(*expr.right), expr.diagnostic_token));
+            return;
+        }
+
+        Value left = evaluate(*expr.left);
+        Value right = evaluate(*expr.right);
+
+        switch (expr.op) {
+            case BinaryOp::Add:
+            case BinaryOp::Sub:
+            case BinaryOp::Mul:
+            case BinaryOp::Div:
+            case BinaryOp::Mod:
+                result_ = Value::make_int(binary_int(left, right, expr.op, expr.diagnostic_token));
+                return;
+            case BinaryOp::Eq:
+                result_ = Value::make_bool(left == right);
+                return;
+            case BinaryOp::Neq:
+                result_ = Value::make_bool(left != right);
+                return;
+            case BinaryOp::Lt:
+                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) < as_int(right, expr.diagnostic_token));
+                return;
+            case BinaryOp::Lte:
+                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) <= as_int(right, expr.diagnostic_token));
+                return;
+            case BinaryOp::Gt:
+                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) > as_int(right, expr.diagnostic_token));
+                return;
+            case BinaryOp::Gte:
+                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) >= as_int(right, expr.diagnostic_token));
+                return;
+            case BinaryOp::In:
+                result_ = belongsTo(right, left);
+                return;
+            case BinaryOp::NotIn:
+                result_ = Value::make_bool(!as_bool(belongsTo(right, left), expr.diagnostic_token));
+                return;
+            default:
+                fail(expr.diagnostic_token, "Unsupported binary operator");
+        }
+    }
+
+    void visit(const UnaryExpr& expr) override {
+        Value right = evaluate(*expr.right);
+        switch (expr.op) {
+            case UnaryOp::Not:
+                result_ = Value::make_bool(!as_bool(right, expr.diagnostic_token));
+                return;
+            case UnaryOp::Negate:
+                result_ = Value::make_int(-as_int(right, expr.diagnostic_token));
+                return;
+            default:
+                fail(expr.diagnostic_token, "Unsupported unary operator");
+        }
+    }
+
+    void visit(const GroupingExpr& expr) override {
+        result_ = evaluate(*expr.expression);
+    }
+
+    void visit(const NumberExpr& expr) override {
+        std::string text(expr.value);
+        if (text.find('.') != std::string::npos) {
+            fail(expr.diagnostic_token, "Floating point literals are not supported yet");
+        }
+
+        size_t pos = 0;
+        long long parsed = 0;
+        try {
+            parsed = std::stoll(text, &pos);
+        } catch (const std::exception&) {
+            fail(expr.diagnostic_token, "Invalid integer literal '" + text + "'");
+        }
+
+        if (pos != text.size() ||
+            parsed < std::numeric_limits<int64_t>::min() ||
+            parsed > std::numeric_limits<int64_t>::max()) {
+            fail(expr.diagnostic_token, "Invalid integer literal '" + text + "'");
+        }
+        result_ = Value::make_int(static_cast<int64_t>(parsed));
+    }
+
+    void visit(const StringExpr& expr) override {
+        result_ = Value::make_string(decode_quoted_literal(expr.value, expr.diagnostic_token));
+    }
+
+    void visit(const BoolExpr& expr) override {
+        result_ = Value::make_bool(expr.value);
+    }
+
+    void visit(const IdentifierExpr& expr) override {
+        result_ = builtin_identifier(expr.name, expr.diagnostic_token);
+    }
+
+    void visit(const IntrinsicExpr& expr) override {
+        result_ = builtin_intrinsic(expr.name, expr.diagnostic_token);
+    }
+
+    void visit(const UndecidedExpr& expr) override {
+        fail(expr.diagnostic_token, "undecided is not supported yet");
+    }
+
+    void visit(const SymbolicConstantExpr& expr) override {
+        fail(expr.diagnostic_token, "Symbolic constants are not supported yet");
+    }
+
+    void visit(const EnumeratedSetExpr& expr) override {
+        std::vector<Value> elements;
+        elements.reserve(expr.elements.size());
+        for (const auto& element : expr.elements) {
+            elements.push_back(evaluate(*element));
+        }
+        result_ = Value::make_enumerated_set(std::move(elements));
+    }
+
+    void visit(const ConstructedSetExpr& expr) override {
+        fail(expr.diagnostic_token, "Constructed sets are not supported yet");
+    }
+
+    void visit(const IfExpr& expr) override {
+        if (as_bool(evaluate(*expr.condition), expr.diagnostic_token)) {
+            result_ = evaluate(*expr.then_branch);
+        } else {
+            result_ = evaluate(*expr.else_branch);
+        }
+    }
+
+    void visit(const WhileExpr& expr) override {
+        fail(expr.diagnostic_token, "while expressions are not supported yet");
+    }
+
+    void visit(const ForExpr& expr) override {
+        fail(expr.diagnostic_token, "for expressions are not supported yet");
+    }
+
+    void visit(const LambdaExpr& expr) override {
+        fail(expr.diagnostic_token, "lambda expressions are not supported yet");
+    }
+
+    void visit(const BlockExpr& expr) override {
+        scopes_.emplace_back();
+        try {
+            for (const auto& stmt : expr.statements) {
+                execute_stmt(*stmt);
+            }
+            scopes_.pop_back();
+            result_ = VoidVal();
+        } catch (const BreakSignal& signal) {
+            scopes_.pop_back();
+            result_ = signal.value;
+        } catch (...) {
+            scopes_.pop_back();
+            throw;
+        }
+    }
+
+    void visit(const StructExpr& expr) override {
+        fail(expr.diagnostic_token, "struct expressions are not supported yet");
+    }
+
+    void visit(const CallExpr& expr) override {
+        if (const auto* intrinsic = dynamic_cast<const IntrinsicExpr*>(expr.callee.get())) {
+            call_intrinsic(intrinsic->name, expr.args, expr.diagnostic_token);
+            return;
+        }
+        fail(expr.diagnostic_token, "Only intrinsic calls are supported yet");
+    }
+
+    void visit(const IndexExpr& expr) override {
+        fail(expr.diagnostic_token, "index expressions are not supported yet");
+    }
+
+    void visit(const ListExpr& expr) override {
+        fail(expr.diagnostic_token, "list expressions are not supported yet");
+    }
+
+    void visit(const MatchExpr& expr) override {
+        fail(expr.diagnostic_token, "match expressions are not supported yet");
+    }
+
+    void visit(const ExprStmt& stmt) override {
+        if (const auto* intrinsic = dynamic_cast<const IntrinsicExpr*>(stmt.expression.get());
+            intrinsic != nullptr && is_harness_intrinsic(intrinsic->name)) {
+            return;
+        }
+        evaluate(*stmt.expression);
+    }
+
+    void visit(const LetStmt& stmt) override {
+        Value initializer = evaluate(*stmt.binding.initializer);
+        Value constraint = stmt.binding.type_bound ? evaluate(*stmt.binding.type_bound) : Any();
+        enforce_constraint(constraint, initializer, stmt.diagnostic_token);
+
+        auto binding = std::make_shared<Binding>(constraint, constraint, initializer);
+        define_binding(stmt.binding.name.lexeme, std::move(binding), stmt.binding.name);
+    }
+
+    void visit(const BreakStmt& stmt) override {
+        Value value = stmt.value ? evaluate(*stmt.value) : VoidVal();
+        throw BreakSignal{std::move(value)};
+    }
+
+    void visit(const AssignStmt& stmt) override {
+        const auto* target = dynamic_cast<const IdentifierExpr*>(stmt.target.get());
+        if (target == nullptr) {
+            fail(stmt.diagnostic_token, "Only identifier assignment is supported yet");
+        }
+
+        auto binding = lookup_binding(target->name, target->diagnostic_token);
+        Value value = evaluate(*stmt.value);
+
+        switch (stmt.op.type) {
+            case token_type::equal:
+                break;
+            case token_type::plus_equal:
+                value = Value::make_int(as_int(binding->getCV(), stmt.op) + as_int(value, stmt.op));
+                break;
+            case token_type::minus_equal:
+                value = Value::make_int(as_int(binding->getCV(), stmt.op) - as_int(value, stmt.op));
+                break;
+            case token_type::star_equal:
+                value = Value::make_int(as_int(binding->getCV(), stmt.op) * as_int(value, stmt.op));
+                break;
+            case token_type::slash_equal: {
+                int64_t rhs = as_int(value, stmt.op);
+                if (rhs == 0) fail(stmt.op, "Division by zero");
+                value = Value::make_int(as_int(binding->getCV(), stmt.op) / rhs);
+                break;
+            }
+            case token_type::percent_equal: {
+                int64_t rhs = as_int(value, stmt.op);
+                if (rhs == 0) fail(stmt.op, "Modulo by zero");
+                value = Value::make_int(as_int(binding->getCV(), stmt.op) % rhs);
+                break;
+            }
+            default:
+                fail(stmt.op, "Unsupported assignment operator");
+        }
+
+        enforce_constraint(binding->getFC(), value, stmt.diagnostic_token);
+        binding->setCV(std::move(value));
+    }
+
+    void visit(const IfStmt& stmt) override {
+        if (as_bool(evaluate(*stmt.condition), stmt.diagnostic_token)) {
+            execute_stmt(*stmt.then_branch);
+        } else if (stmt.else_branch) {
+            execute_stmt(*stmt.else_branch);
+        }
+    }
+};
+
+} // namespace
+
+void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::ostream& out) {
+    Evaluator evaluator(out);
+    evaluator.execute(stmts);
+}
+
+} // namespace chirp::interpreter

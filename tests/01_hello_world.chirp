@@ -2,6 +2,5 @@
 
 `expect_stdout("Hello World\n");
 `expect_exit(0);
-`expect_test_failure;
 
 `print("Hello World");
