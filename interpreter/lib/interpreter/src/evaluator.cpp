@@ -362,6 +362,18 @@ private:
             case BinaryOp::Gte:
                 result_ = Value::make_bool(as_int(left, expr.diagnostic_token) >= as_int(right, expr.diagnostic_token));
                 return;
+            case BinaryOp::Range:
+                result_ = Value::make_range(
+                    as_int(left, expr.diagnostic_token),
+                    as_int(right, expr.diagnostic_token),
+                    false);
+                return;
+            case BinaryOp::RangeInclusiveEnd:
+                result_ = Value::make_range(
+                    as_int(left, expr.diagnostic_token),
+                    as_int(right, expr.diagnostic_token),
+                    true);
+                return;
             case BinaryOp::In:
                 result_ = belongsTo(right, left);
                 return;

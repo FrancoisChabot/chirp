@@ -29,6 +29,16 @@ public:
         std::shared_ptr<std::vector<Value>> elements;
         bool operator==(const EnumeratedSetTag& other) const;
     };
+    struct RangeTag {
+        int64_t start;
+        int64_t end;
+        bool inclusive_end;
+        bool operator==(const RangeTag& other) const {
+            return start == other.start &&
+                end == other.end &&
+                inclusive_end == other.inclusive_end;
+        }
+    };
     struct LambdaTag {
         const frontend::LambdaExpr* lambda;
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
@@ -44,6 +54,7 @@ public:
     static Value make_type(std::shared_ptr<const Type> type_val);
     static Value make_binding(std::shared_ptr<Binding> binding_val);
     static Value make_enumerated_set(std::vector<Value> elements);
+    static Value make_range(int64_t start, int64_t end, bool inclusive_end);
     static Value make_lambda(const frontend::LambdaExpr& lambda);
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
@@ -70,6 +81,9 @@ public:
     bool isEnumeratedSet() const;
     const std::vector<Value>& asEnumeratedSet() const;
 
+    bool isRange() const;
+    RangeTag asRange() const;
+
     bool isLambda() const;
     const frontend::LambdaExpr& asLambda() const;
 
@@ -79,12 +93,12 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    Value(std::shared_ptr<const Type> type, std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, LambdaTag> payload)
+    Value(std::shared_ptr<const Type> type, std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, LambdaTag> payload)
         : type_(std::move(type)), payload_(std::move(payload)) {}
 
 private:
     std::shared_ptr<const Type> type_;
-    std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, LambdaTag> payload_;
+    std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, LambdaTag> payload_;
 };
 
 

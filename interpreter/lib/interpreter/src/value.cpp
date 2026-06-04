@@ -42,6 +42,11 @@ std::shared_ptr<const Type> getEnumeratedSetType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getRangeType() {
+    static auto instance = std::make_shared<RangeType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getBindingType() {
     static auto instance = std::make_shared<BindingType>();
     return instance;
@@ -152,6 +157,10 @@ Value Value::make_enumerated_set(std::vector<Value> elements) {
     return Value(getEnumeratedSetType(), EnumeratedSetTag{std::make_shared<std::vector<Value>>(std::move(elements))});
 }
 
+Value Value::make_range(int64_t start, int64_t end, bool inclusive_end) {
+    return Value(getRangeType(), RangeTag{start, end, inclusive_end});
+}
+
 Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
     return Value(getFunctionType(), LambdaTag{&lambda});
 }
@@ -230,6 +239,17 @@ const std::vector<Value>& Value::asEnumeratedSet() const {
     return *std::get<EnumeratedSetTag>(payload_).elements;
 }
 
+bool Value::isRange() const {
+    return std::holds_alternative<RangeTag>(payload_);
+}
+
+Value::RangeTag Value::asRange() const {
+    if (!isRange()) {
+        throw std::runtime_error("Value is not a Range");
+    }
+    return std::get<RangeTag>(payload_);
+}
+
 bool Value::isLambda() const {
     return std::holds_alternative<LambdaTag>(payload_);
 }
@@ -286,6 +306,12 @@ std::string Value::toString() const {
             if (i + 1 < elems.size()) ss << ", ";
         }
         ss << "}";
+        return ss.str();
+    }
+    if (isRange()) {
+        auto range = asRange();
+        std::stringstream ss;
+        ss << range.start << (range.inclusive_end ? "..=" : "..") << range.end;
         return ss.str();
     }
     if (isLambda()) {
@@ -384,6 +410,27 @@ Value EnumeratedSetType::bp(const Value& S, const Value& v) const {
 }
 
 Value EnumeratedSetType::br(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+// --- RangeType bp/br implementations (1..5, 1..=5) ---
+
+Value RangeType::bp(const Value& S, const Value& v) const {
+    if (!S.isRange()) {
+        throw std::runtime_error("RangeType::bp: S must be a Range value");
+    }
+    if (!v.isInt()) {
+        return Value::make_bool(false);
+    }
+
+    auto range = S.asRange();
+    int64_t value = v.asInt();
+    bool in_range = value >= range.start &&
+        (range.inclusive_end ? value <= range.end : value < range.end);
+    return Value::make_bool(in_range);
+}
+
+Value RangeType::br(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
