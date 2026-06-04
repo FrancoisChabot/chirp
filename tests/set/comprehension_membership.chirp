@@ -1,0 +1,11 @@
+`expect_stdout("true\nfalse\ntrue\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let positive = {x : int | x > 0};
+let even = {x : int | x % 2 == 0};
+
+`print(3 ∈ positive);
+`print(0 ∈ positive);
+`print(4 ∈ even);
+`print(5 ∈ even);

@@ -1,0 +1,8 @@
+`expect_stdout("true\ntrue\nfalse\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+`print(1 ∈ 1..5);
+`print(4 ∈ 1..5);
+`print(5 ∈ 1..5);
+`print(0 ∈ 1..5);

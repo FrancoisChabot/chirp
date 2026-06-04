@@ -1,0 +1,8 @@
+`expect_stdout("true\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let small_answer = {x | x == 42};
+
+`print(42 ∈ small_answer);
+`print(41 ∈ small_answer);

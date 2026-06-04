@@ -1,0 +1,9 @@
+`expect_stdout("10\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let total = 0;
+for (n ∈ 1..=4) do {
+    total += n;
+};
+`print(total);

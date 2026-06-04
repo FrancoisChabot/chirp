@@ -1,0 +1,9 @@
+`expect_stdout("true\nfalse\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let small_even = {x : 1..=10 | x % 2 == 0};
+
+`print(8 ∈ small_even);
+`print(9 ∈ small_even);
+`print(12 ∈ small_even);

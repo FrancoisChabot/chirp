@@ -4,9 +4,10 @@ Each chirp file in here is a conformance test in the form of a chirp script.
 
 For instructions on how to run the test suite, check [`scripts/README.md`](../scripts/README.md).
 
-Tests are grouped by behavior in subdirectories such as `binding/`, `expr/`,
-`function/`, `set/`, `smoke/`, and `string/`. The runner discovers `.chirp`
-files recursively and reports failures by relative path.
+Tests are grouped by behavior in subdirectories such as `binding/`, `control/`,
+`expr/`, `function/`, `integration/`, `range/`, `set/`, `smoke/`, and `string/`.
+The runner discovers `.chirp` files recursively and reports failures by relative
+path.
 
 ## Test File Format
 

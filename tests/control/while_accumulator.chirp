@@ -1,0 +1,11 @@
+`expect_stdout("15\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let n = 1;
+let total = 0;
+while (n <= 5) do {
+    total += n;
+    n += 1;
+};
+`print(total);

@@ -1,0 +1,9 @@
+`expect_stdout("1\nloop finished\n");
+`expect_exit(1);
+`expect_test_failure;
+
+for (n ∈ 1..=1) do {
+    `print(n);
+};
+`print("loop finished");
+`print(n);

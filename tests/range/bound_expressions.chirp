@@ -1,0 +1,11 @@
+`expect_stdout("true\nfalse\ntrue\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let start = 1 + 1;
+let stop = 2 * 4;
+
+`print(2 ∈ start..stop);
+`print(8 ∈ start..stop);
+`print(8 ∈ start..=stop);
+`print(9 ∈ start..=stop);
