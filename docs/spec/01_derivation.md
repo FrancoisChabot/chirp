@@ -17,7 +17,7 @@ Chirp is an engineered language. So to trace back where it comes from, we need t
 
 I like Zig's model, and I also like TypeScript's expressiveness. It's hard to imagine two languages further apart (ok, it's pretty easy... but they are still very different beasts), so fusing them together seems like a suitable act of hubris for this vanity project. 
 
-The holy grail would be if we could get something along the lines of Rust’s borrow checker as an emergent feature of a more general correctness engine. I've always felt that it's a shame it has so much syntactical noise just to handle a very specific category of bugs.
+The holy grail would be if we could get something along the lines of Rust’s borrow checker as an emergent feature of a more general correctness engine. I've always felt that it's a shame it has so much syntactical noise just to handle a very specific category of bugs. I
 
 And let's try to make this as squeaky-clean as possible. The fewer primitive building blocks and special cases, the better. This is partly because it makes the language's mental model simpler, but it also makes the compiler more robust, and I'd be lying if I tried tp pretendaesticism and personal satisfaction didn't come into it.
 
@@ -195,6 +195,59 @@ let foo(s: string, v: int ) = do {
 Finally, it's pretty subtle so it's worth pointing out: In practice, a `bp` will return `undecided` by the interpreter giving up after some cost threshold has been reached. However, if a `br` is just `{true, false}`, then the interpreter can be confident that there's going to be an answer eventually. This reduces the risk of cost-based decidability causing false positives.
 
 Now set-ness looks more like: "The **Belonging Predicate** of a set returns an element of its **Belonging Range**" (`bp(S, b) ∈ br(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
+
+What does that mean in practice? if you write `if (v ∈ S)`, and the `br` of `S` against `v` contains `undecided`, that triggers an immediate error by simple virtue of the fact that `undecided` is not a boolean so `if` can only operate on those, forcing you to do something along the lines of:
+
+```
+match (v ∈ S) {
+  true => ... ,
+  false => ... ,
+  undecided => ... ,
+}
+```
+
+But if the `br` of `S` against `v` is just `{true, false}`, then all is good and your code will "just work".
+
+### A concrete example
+
+To better understand how profound the implications of this are, let's have a glance at [00_intrinsics.chirp](../../lib/chirp/boot/02_conveniences.chirp), which is a file that the chirp interpreter loads before anything else.
+
+The role of the portion we are going to look at is to imbue the `int`, `bool`, and `string` types with set-ness so that we can use their values directly in places like match arms:
+```chirp
+let str = match v {
+  1 => "one",        //  <------- having to write {1} here would be ugly.
+  {2,3,4} => "many"
+  `any => "lots"
+};
+```
+
+```chirp
+//...
+do {
+   // This makes each instance of a type a set of itself, which is really convenient for match arms.
+   let make_type_a_self_set(t) => {
+     `inject_set_capability(t, Setness(
+        bp= (this, v) => v == this,
+        br= (this, lc) =>
+          if (this ∉ lc) {false}
+          else if ({this} == lc) {true}
+          else {true, false}
+     ));
+   };
+
+   make_type_a_self_set(bool);
+   make_type_a_self_set(int);
+   make_type_a_self_set(string);
+   // ...
+};
+```
+
+If you zero-in on the `br` (Belonging Range) portion, notice what it calculates:
+- **Static Unreachability**: If `this ∉ lc`, the range of possible answers is `{false}`. Since `true` is not in this range, the compiler has static proof that membership is impossible. This allows the compiler to **eliminate the branch as dead code** at compile time.
+- **Static Certainty**: If `{this} == lc`, the range of possible answers is `{true}`. The compiler now has static proof that membership is guaranteed. It can optimize away the runtime check, run the branch body unconditionally, and prune any subsequent match arms.
+- Otherwise, it returns `{true, false}`, signaling that a runtime check is necessary.
+
+How cool is that? The compiler still needs the ordinary machinery to remove unreachable code, but the proof that a branch is unreachable does not have to be hardcoded into pattern matching. It falls out of the set’s own user-defined abstract transformer.
 
 ## Conclusion
 

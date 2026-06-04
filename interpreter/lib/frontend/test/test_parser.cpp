@@ -74,7 +74,7 @@ TEST(ParserTest, SpacedMutIsNotPointerMutabilityOperator) {
 }
 
 TEST(ParserTest, ContextualBindingModifiers) {
-    auto final_true = parse(tokenize("let final true = `__boot_bind(\"true_val\");"));
+    auto final_true = parse(tokenize("let final true = `import(\"true_val\", \"__chirp_boot\");"));
     auto final_identifier = parse(tokenize("let final = 1;"));
     auto mut_identifier = parse(tokenize("let mut = 2;"));
     auto combined = parse(tokenize("let mut final x : int = 3;"));
@@ -84,7 +84,7 @@ TEST(ParserTest, ContextualBindingModifiers) {
     ASSERT_EQ(mut_identifier.size(), 1);
     ASSERT_EQ(combined.size(), 1);
 
-    EXPECT_EQ(print_ast(*final_true[0]), "(let final true = (call `__boot_bind \"true_val\"))");
+    EXPECT_EQ(print_ast(*final_true[0]), "(let final true = (call `import \"true_val\" \"__chirp_boot\"))");
     EXPECT_EQ(print_ast(*final_identifier[0]), "(let final = 1)");
     EXPECT_EQ(print_ast(*mut_identifier[0]), "(let mut = 2)");
     EXPECT_EQ(print_ast(*combined[0]), "(let final mut x:int = 3)");

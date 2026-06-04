@@ -1,0 +1,31 @@
+// N.B. This file, as well has others in the `boot` directory operate under special rules:
+// - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
+// - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
+// - Identifiers defined here appear in the global namespace. This is the only place where that happens.
+
+// --------- Derived bindings ---------
+// We like those. We like them a lot.
+
+// Core type keywords. Extracted from their literals
+let final bool = `typeof(true);
+let final int = `typeof(1);
+let final string = `typeof("");
+let final `symbol = `typeof(#foo);
+
+// we can lookup our void constant by simply executing an empty block.
+let final `void = do {};
+
+// --------- Lattice edges ---------
+// These, we will likely be able to fully define those right here eventually.
+let final `any = `import("any_val", "__chirp_boot");      // the set of all values
+let final `empty = `import("empty_val", "__chirp_boot");  // the set of no values
+
+// --------- Set of all sets ---------
+// N.B. I'm not *quite* sure how core the set-of-all-sets should be...
+// It'll stick around regardless, the only question is in which stage it belongs.
+let final `set = `import("set_val", "__chirp_boot");      // the set of all sets
+
+// --------- The fixed point ---------
+// It's weird enough to deserve its own section.
+let final `type = `typeof(bool);
+

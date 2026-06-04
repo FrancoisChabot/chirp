@@ -110,7 +110,7 @@ The following **values** are predefined as part of the core:
 - `set`       - the set of values whose type has set-ness
 - `SetType`   - the type of `set`
 - `Void`      - The type of the void value
-- `` `void `` - a fundamentally useless value that isn't even equal to itself
+- `` `void `` - the single value of type `Void` representing no returned data
 
 **Auxiliary notes:** Why do `any` and `empty` need their own unique types? Because a set's belonging logic depends on its **Type**. If `any` were simply of type `Type` (like `Bool`), checking `v ∈ any` would be checking `typeof(v) == any`, which is not what we want. `AnyType` and `EmptyType` exist to provide custom set-ness predicates that always return `true` and `false`, respectively. The same logic applies to `set` with `SetType`.
 

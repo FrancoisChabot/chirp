@@ -22,7 +22,6 @@ Each test is an ordinary `.chirp` file with optional harness directives:
 ### Directory-Based Routing
 To verify syntactical, lexical, or parse-phase failures, place the test script in a directory whose path contains `/syntax/` (e.g. `tests/syntax/`). 
 * The test runner automatically expects these files to fail parsing (yielding a `syntax_failure` outcome and exiting with code `1`).
-* This eliminates the need to specify any exit expectations inside the file itself.
 
 ### Supported Directives
 For successful compilations (VM runtime tests), you can specify expectations dynamically:

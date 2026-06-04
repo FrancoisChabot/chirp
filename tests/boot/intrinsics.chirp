@@ -1,0 +1,50 @@
+`expect_stdout("--- Type Identities ---\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n");
+`expect_stdout("--- Membership Relations ---\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n");
+`expect_stdout("--- Set Capability Relations ---\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n");
+`expect_stdout("--- Top (any) and Bottom (empty) Relations ---\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n");
+
+`expect_exit(0);
+
+`print("--- Type Identities ---");
+`print(`typeof(true) == bool);
+`print(`typeof(false) == bool);
+`print(`typeof(1) == int);
+`print(`typeof("") == string);
+`print(`typeof(bool) == `type);
+`print(`typeof(int) == `type);
+`print(`typeof(string) == `type);
+`print(`typeof(`type) == `type);
+
+`print("--- Membership Relations ---");
+`print(true ∈ bool);
+`print(false ∈ bool);
+`print(1 ∈ int);
+`print("" ∈ string);
+`print(bool ∈ `type);
+`print(int ∈ `type);
+`print(string ∈ `type);
+`print(`type ∈ `type);
+
+`print("--- Set Capability Relations ---");
+`print(bool ∈ `set);
+`print(int ∈ `set);
+`print(string ∈ `set);
+`print(`type ∈ `set);
+`print(`any ∈ `set);
+`print(`empty ∈ `set);
+`print(`set ∈ `set);
+`print(true ∉ `set);
+`print(1 ∉ `set);
+`print("" ∉ `set);
+
+`print("--- Top (any) and Bottom (empty) Relations ---");
+`print(true ∈ `any);
+`print(1 ∈ `any);
+`print("" ∈ `any);
+`print(`type ∈ `any);
+`print(`any ∈ `any);
+`print(true ∉ `empty);
+`print(1 ∉ `empty);
+`print("" ∉ `empty);
+`print(`type ∉ `empty);
+`print(`empty ∉ `empty);

@@ -1,0 +1,54 @@
+// N.B. This file, as well has others in the `boot` directory operate under special rules:
+// - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
+// - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
+// - Identifiers defined here appear in the global namespace. This is the only place where that happens.
+
+// pre-defined ranges that match the usual suspects. Very important for forcing code into a machine-emmitable shape.
+let final int8 = -128..=127;
+let final int16 = -32768..=32767;
+let final int32 = -2147483648..=2147483647;
+let final int64 = -9223372036854775808..=9223372036854775807;
+
+let final uint8 = 0..=255;
+let final uint16 = 0..=65535;
+let final uint32 = 0..=4294967295;
+// TODO: This needs an unsigned or bigint-backed value model.
+//let final uint64 = 0..=18446744073709551615;
+
+
+// ---------- literals as singleton sets ----------
+
+// Without these, we'd have to wrap every literal in a singleton set when matching, ew!
+// It also doesn't conflict with anything because none of them are sets.
+//
+// match (v) => {
+//   {0} => "zero"
+//   {1} => "one"
+//   `any => "other"
+// }
+// 
+
+// N.B. `inject_set_capability() and Setness are real things yet, and the actual machinery will likely be different. 
+// // The do is to avoid bleeding out the intermediate symbol into the global namespace.
+// do {
+//    // This makes each instance of a type a set of itself, which is really convenient for match arms.
+//    let make_type_a_self_set(t) => {
+//      `inject_set_capability(t, Setness(
+//         bp = (this, v) => v == this,
+//         br = (this, lc) =>
+//           if (this ∉ lc) {false}
+//           else if ({this} == lc) {true}
+//           else {true, false}
+//      ));
+//    };
+//
+//    make_type_a_self_set(bool);
+//    make_type_a_self_set(int);
+//    make_type_a_self_set(string);
+//    make_type_a_self_set(`typeof(undecided));
+// };
+
+
+// We could just force returning from main. But being able to bail out is nice and easy to implement, 
+// and it's not like it adds much complexity.
+let final `exit = `import("exit_func", "__chirp_boot");

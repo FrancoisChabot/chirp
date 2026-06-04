@@ -68,6 +68,8 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 - The core language design feels stable enough that the remaining abstractions look buildable on top of it. There is still a lot of design and implementation work ahead, but I don’t currently expect any *fundamental* problems to pop up in the model.
 
+- Empirical experimentation in the interpreter and boot prelude is currently overtaking the design docs. The docs still capture the intended direction, but runtime experiments are more representative of the finer implementation details. We'll circle back to another round of formalization once the dust settles. In practice, this means that opportunities for outside contributions are very limited at the moment.
+
 - I am very happy with the syntax as it is right now. It exposes the foundations directly, without abstraction, yet reads intuitively.
 
 - I currently don't foresee any major roadblocks to building an interpreter that *works*. Building one that runs *fast* and contains a smart-enough solver will be tough, but there's nothing precluding its existence. As far as I can tell, of course.

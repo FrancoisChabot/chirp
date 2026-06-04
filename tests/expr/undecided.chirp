@@ -6,6 +6,6 @@
 `print(undecided != undecided);
 `print(undecided ∈ `typeof(undecided));
 `print(true ∈ `typeof(undecided));
-`print(`typeof(undecided) ∈ set);
-`print(undecided ∈ set);
-`print(undecided ∈ Bool);
+`print(`typeof(undecided) ∈ `set);
+`print(undecided ∈ `set);
+`print(undecided ∈ bool);

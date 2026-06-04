@@ -3,6 +3,7 @@
 #include "chirp/frontend.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -117,6 +118,42 @@ bool is_harness_intrinsic(std::string_view name) {
 }
 
 constexpr int64_t MAX_LOOP_ITERATIONS = 1'000'000;
+constexpr uint64_t INT64_MAX_MAGNITUDE = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+constexpr uint64_t INT64_MIN_MAGNITUDE = INT64_MAX_MAGNITUDE + 1;
+
+uint64_t parse_integer_magnitude(std::string_view text, const token& diag) {
+    if (text.find('.') != std::string_view::npos) {
+        fail(diag, "Floating point literals are not supported yet");
+    }
+
+    uint64_t parsed = 0;
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    auto [ptr, error] = std::from_chars(begin, end, parsed, 10);
+    if (error != std::errc{} || ptr != end) {
+        fail(diag, "Invalid integer literal '" + std::string(text) + "'");
+    }
+    return parsed;
+}
+
+int64_t parse_positive_integer_literal(std::string_view text, const token& diag) {
+    uint64_t magnitude = parse_integer_magnitude(text, diag);
+    if (magnitude > INT64_MAX_MAGNITUDE) {
+        fail(diag, "Invalid integer literal '" + std::string(text) + "'");
+    }
+    return static_cast<int64_t>(magnitude);
+}
+
+int64_t parse_negated_integer_literal(std::string_view text, const token& diag) {
+    uint64_t magnitude = parse_integer_magnitude(text, diag);
+    if (magnitude > INT64_MIN_MAGNITUDE) {
+        fail(diag, "Invalid integer literal '-" + std::string(text) + "'");
+    }
+    if (magnitude == INT64_MIN_MAGNITUDE) {
+        return std::numeric_limits<int64_t>::min();
+    }
+    return -static_cast<int64_t>(magnitude);
+}
 
 class Evaluator : public ASTVisitor, public StmtVisitor {
 public:
@@ -387,20 +424,13 @@ private:
     }
 
     Value builtin_identifier(std::string_view name, const token& diag) const {
-        if (is_name(name, "int")) return Value::make_type(getIntType());
-        if (is_name(name, "string")) return Value::make_type(getStringType());
-        if (is_name(name, "Type")) return TypeVal();
-        if (is_name(name, "any")) return Any();
-        if (is_name(name, "empty")) return Empty();
-        if (is_name(name, "set")) return Set();
-        if (is_name(name, "Void")) return Void();
         return lookup_binding(name, diag)->getCV();
     }
 
     Value builtin_intrinsic(std::string_view name, const token& diag) const {
         if (is_harness_intrinsic(name)) return VoidVal();
-        if (is_name(name, "`__boot_bind")) {
-            fail(diag, "`__boot_bind is only available as a boot-time call");
+        if (is_name(name, "`import")) {
+            fail(diag, "`import is only available as a call");
         }
         return lookup_binding(name, diag)->getCV();
     }
@@ -411,26 +441,35 @@ private:
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
-        if (is_name(name, "bool_type")) return Bool();
         if (is_name(name, "undecided_val")) return UndecidedVal();
-        if (is_name(name, "void_val")) return VoidVal();
         if (is_name(name, "any_val")) return Any();
         if (is_name(name, "empty_val")) return Empty();
         if (is_name(name, "set_val")) return Set();
-        if (is_name(name, "type_val_and_type")) return TypeVal();
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
 
-    Value call_boot_bind(const std::vector<Argument>& args, const token& diag) {
-        if (!boot_mode_) {
-            fail(diag, "`__boot_bind is only available while evaluating boot files");
+    Value call_import(const std::vector<Argument>& args, const token& diag) {
+        if (args.size() != 2) {
+            fail(diag, "`import expects two arguments: key and format");
         }
-        if (args.size() != 1 || args.front().name.has_value()) {
-            fail(diag, "`__boot_bind expects one positional string argument");
+        for (const auto& arg : args) {
+            if (arg.name.has_value()) {
+                fail(diag, "`import does not support named arguments");
+            }
         }
-        Value name = evaluate(*args.front().value);
+        Value name = evaluate(*args[0].value);
         if (!name.isString()) {
-            fail(diag, "`__boot_bind expects a string argument");
+            fail(diag, "`import expects first argument (key) to be a string");
+        }
+        Value format = evaluate(*args[1].value);
+        if (!format.isString()) {
+            fail(diag, "`import expects second argument (format) to be a string");
+        }
+        if (format.asString() != "__chirp_boot") {
+            fail(diag, "`import format must be \"__chirp_boot\"");
+        }
+        if (!boot_mode_) {
+            fail(diag, "`import with format \"__chirp_boot\" is only available while evaluating boot files");
         }
         return boot_bind(name.asString(), diag);
     }
@@ -666,14 +705,26 @@ private:
     }
 
     void visit(const UnaryExpr& expr) override {
-        Value right = evaluate(*expr.right);
         switch (expr.op) {
-            case UnaryOp::Not:
+            case UnaryOp::Not: {
+                Value right = evaluate(*expr.right);
                 result_ = Value::make_bool(!as_bool(right, expr.diagnostic_token));
                 return;
-            case UnaryOp::Negate:
-                result_ = Value::make_int(-as_int(right, expr.diagnostic_token));
+            }
+            case UnaryOp::Negate: {
+                if (const auto* literal = dynamic_cast<const NumberExpr*>(expr.right.get())) {
+                    result_ = Value::make_int(parse_negated_integer_literal(literal->value, literal->diagnostic_token));
+                    return;
+                }
+
+                Value right = evaluate(*expr.right);
+                int64_t value = as_int(right, expr.diagnostic_token);
+                if (value == std::numeric_limits<int64_t>::min()) {
+                    fail(expr.diagnostic_token, "Integer negation overflow");
+                }
+                result_ = Value::make_int(-value);
                 return;
+            }
             default:
                 fail(expr.diagnostic_token, "Unsupported unary operator");
         }
@@ -684,25 +735,7 @@ private:
     }
 
     void visit(const NumberExpr& expr) override {
-        std::string text(expr.value);
-        if (text.find('.') != std::string::npos) {
-            fail(expr.diagnostic_token, "Floating point literals are not supported yet");
-        }
-
-        size_t pos = 0;
-        long long parsed = 0;
-        try {
-            parsed = std::stoll(text, &pos);
-        } catch (const std::exception&) {
-            fail(expr.diagnostic_token, "Invalid integer literal '" + text + "'");
-        }
-
-        if (pos != text.size() ||
-            parsed < std::numeric_limits<int64_t>::min() ||
-            parsed > std::numeric_limits<int64_t>::max()) {
-            fail(expr.diagnostic_token, "Invalid integer literal '" + text + "'");
-        }
-        result_ = Value::make_int(static_cast<int64_t>(parsed));
+        result_ = Value::make_int(parse_positive_integer_literal(expr.value, expr.diagnostic_token));
     }
 
     void visit(const StringExpr& expr) override {
@@ -831,8 +864,8 @@ private:
 
     void visit(const CallExpr& expr) override {
         if (const auto* intrinsic = dynamic_cast<const IntrinsicExpr*>(expr.callee.get())) {
-            if (is_name(intrinsic->name, "`__boot_bind")) {
-                result_ = call_boot_bind(expr.args, expr.diagnostic_token);
+            if (is_name(intrinsic->name, "`import")) {
+                result_ = call_import(expr.args, expr.diagnostic_token);
                 return;
             }
             if (is_harness_intrinsic(intrinsic->name)) {

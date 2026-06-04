@@ -2,7 +2,7 @@
 `expect_exit(0);
 
 let double(x : int) : int = do { break x * 2; };
-let choose(flag : Bool) : int = if (flag) 1 else 2;
+let choose(flag : bool) : int = if (flag) 1 else 2;
 
 `print(double(6));
 `print(choose(false));

@@ -5,7 +5,7 @@
 
 let describe(v) = match v {
     int => "integer",
-    Bool => "boolean",
+    bool => "boolean",
     string => "text",
     `any => "unknown"
 };

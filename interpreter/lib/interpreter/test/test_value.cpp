@@ -46,7 +46,7 @@ TEST(InterpreterTest, TypeTagIdentity) {
     EXPECT_EQ(host_print.asHostFunction(), Value::HostFunction::Print);
 }
 
-// 2. Void is not equal to itself
+// 2. Void is equal to itself (reflexive)
 TEST(InterpreterTest, VoidEquality) {
     Value v1;
     Value v2;
@@ -55,11 +55,15 @@ TEST(InterpreterTest, VoidEquality) {
     EXPECT_TRUE(v2.isVoid());
     EXPECT_TRUE(VoidVal().isVoid());
 
-    // void is not equal to itself or anything else
-    EXPECT_FALSE(v1 == v2);
-    EXPECT_TRUE(v1 != v2);
-    EXPECT_FALSE(VoidVal() == VoidVal());
-    EXPECT_TRUE(VoidVal() != VoidVal());
+    // void is equal to itself
+    EXPECT_TRUE(v1 == v2);
+    EXPECT_FALSE(v1 != v2);
+    EXPECT_TRUE(VoidVal() == VoidVal());
+    EXPECT_FALSE(VoidVal() != VoidVal());
+
+    // void is not equal to non-void values
+    EXPECT_FALSE(v1 == True());
+    EXPECT_TRUE(v1 != True());
 }
 
 // 3. Set-ness belonging predicate checks

@@ -375,6 +375,9 @@ const Value::CompositeSetTag& Value::asCompositeSet() const {
 }
 
 bool Value::operator==(const Value& other) const {
+    if (isVoid() && other.isVoid()) {
+        return true;
+    }
     if (isVoid() || other.isVoid()) {
         return false;
     }
