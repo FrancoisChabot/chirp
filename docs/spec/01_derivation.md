@@ -2,7 +2,7 @@
 
 ## Preamble
 
-Do not take anything in here to the letter. The goal of this document is to contextualize the Chirp spec.
+Do not take anything in here to the letter. The goal of this chapter is to contextualize the Chirp spec.
 
 I am also going to rebuild some familiar ideas from first principles and intentionally avoid jargon for two reasons:
 
@@ -19,7 +19,7 @@ I like Zig's model, and I also like TypeScript's expressiveness. It's hard to im
 
 The holy grail would be if we could get something along the lines of Rust’s borrow checker as an emergent feature of a more general correctness engine. I've always felt that it's a shame it has so much syntactical noise just to handle a very specific category of bugs.
 
-And let's try to make this as squeaky-clean as possible. The fewer primitive building blocks and special cases, the better.
+And let's try to make this as squeaky-clean as possible. The fewer primitive building blocks and special cases, the better. This is partly because it makes the language's mental model simpler, but it also makes the compiler more robust, and I'd be lying if I tried tp pretendaesticism and personal satisfaction didn't come into it.
 
 ### The constraints
 
