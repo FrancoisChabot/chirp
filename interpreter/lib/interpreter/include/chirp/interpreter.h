@@ -34,6 +34,8 @@ std::shared_ptr<const Type> getFunctionType();
 std::shared_ptr<const Type> getIntType();
 std::shared_ptr<const Type> getStringType();
 std::shared_ptr<const Type> getSymbolType();
+std::shared_ptr<const Type> getListType();
+
 
 // Core Values (as Value objects)
 const Value& Bool();

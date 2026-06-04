@@ -769,12 +769,35 @@ private:
     }
 
     void visit(const IndexExpr& expr) override {
-        fail(expr.diagnostic_token, "index expressions are not supported yet");
+        Value target = evaluate(*expr.target);
+        if (!target.isList()) {
+            fail(expr.diagnostic_token, "Only list indexing is supported for now");
+        }
+        if (expr.args.size() != 1 || expr.args[0].name.has_value()) {
+            fail(expr.diagnostic_token, "List indexing requires exactly one positional argument");
+        }
+        Value index_val = evaluate(*expr.args[0].value);
+        if (!index_val.isInt()) {
+            fail(expr.diagnostic_token, "List index must be an integer");
+        }
+        int64_t index = index_val.asInt();
+        const auto& list_elems = target.asList();
+        if (index < 0 || index >= static_cast<int64_t>(list_elems.size())) {
+            fail(expr.diagnostic_token, "List index out of bounds: " + std::to_string(index));
+        }
+        result_ = list_elems[index];
     }
 
+
     void visit(const ListExpr& expr) override {
-        fail(expr.diagnostic_token, "list expressions are not supported yet");
+        std::vector<Value> elements;
+        elements.reserve(expr.elements.size());
+        for (const auto& element : expr.elements) {
+            elements.push_back(evaluate(*element));
+        }
+        result_ = Value::make_list(std::move(elements));
     }
+
 
     void visit(const MatchExpr& expr) override {
         Value subject = evaluate(*expr.subject);

@@ -62,6 +62,11 @@ public:
         std::string name;
         bool operator==(const SymbolTag& other) const { return name == other.name; }
     };
+    struct ListTag {
+        std::shared_ptr<std::vector<Value>> elements;
+        bool operator==(const ListTag& other) const;
+    };
+
 
     // Constructs a Chirp `void` value.
     Value();
@@ -78,6 +83,8 @@ public:
     static Value make_lambda(const frontend::LambdaExpr& lambda);
     static Value make_composite_set(Value left, Value right, CompositeSetOp op);
     static Value make_symbol(std::string name);
+    static Value make_list(std::vector<Value> elements);
+
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
     std::shared_ptr<const Type> getType() const;
@@ -112,6 +119,10 @@ public:
     bool isConstructedSet() const;
     const frontend::ConstructedSetExpr& asConstructedSet() const;
 
+    bool isList() const;
+    const std::vector<Value>& asList() const;
+
+
     bool isLambda() const;
     const frontend::LambdaExpr& asLambda() const;
 
@@ -124,7 +135,8 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, CompositeSetTag, SymbolTag>;
+    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, CompositeSetTag, SymbolTag, ListTag>;
+
 
     Value(std::shared_ptr<const Type> type, Payload payload)
         : type_(std::move(type)), payload_(std::move(payload)) {}

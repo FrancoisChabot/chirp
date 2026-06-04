@@ -82,6 +82,12 @@ std::shared_ptr<const Type> getSymbolType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getListType() {
+    static auto instance = std::make_shared<ListType>();
+    return instance;
+}
+
+
 // --- Core Value Accessors ---
 
 const Value& Bool() {
@@ -192,6 +198,11 @@ Value Value::make_symbol(std::string name) {
     return Value(getSymbolType(), SymbolTag{std::move(name)});
 }
 
+Value Value::make_list(std::vector<Value> elements) {
+    return Value(getListType(), ListTag{std::make_shared<std::vector<Value>>(std::move(elements))});
+}
+
+
 std::shared_ptr<const Type> Value::getType() const {
     return type_;
 }
@@ -299,6 +310,18 @@ const frontend::ConstructedSetExpr& Value::asConstructedSet() const {
     return *std::get<ConstructedSetTag>(payload_).set;
 }
 
+bool Value::isList() const {
+    return std::holds_alternative<ListTag>(payload_);
+}
+
+const std::vector<Value>& Value::asList() const {
+    if (!isList()) {
+        throw std::runtime_error("Value is not a List");
+    }
+    return *std::get<ListTag>(payload_).elements;
+}
+
+
 bool Value::isLambda() const {
     return std::holds_alternative<LambdaTag>(payload_);
 }
@@ -338,6 +361,14 @@ bool Value::EnumeratedSetTag::operator==(const EnumeratedSetTag& other) const {
     return *elements == *other.elements;
 }
 
+bool Value::ListTag::operator==(const ListTag& other) const {
+    if (!elements || !other.elements) {
+        return elements == other.elements;
+    }
+    return *elements == *other.elements;
+}
+
+
 std::string Value::toString() const {
     if (isVoid()) {
         return "`void";
@@ -369,6 +400,17 @@ std::string Value::toString() const {
             if (i + 1 < elems.size()) ss << ", ";
         }
         ss << "}";
+        return ss.str();
+    }
+    if (isList()) {
+        std::stringstream ss;
+        ss << "[";
+        const auto& elems = asList();
+        for (size_t i = 0; i < elems.size(); ++i) {
+            ss << elems[i].toString();
+            if (i + 1 < elems.size()) ss << ", ";
+        }
+        ss << "]";
         return ss.str();
     }
     if (isRange()) {
