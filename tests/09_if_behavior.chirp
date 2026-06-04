@@ -1,0 +1,14 @@
+`expect_stdout("11\n2\n2\nyes\n");
+`expect_exit(0);
+
+let expr_value = if (false) 10 else 11;
+`print(expr_value);
+
+let x = 0;
+if (true) x = 2; else x = 3;
+`print(x);
+
+if (false) x = 4;
+`print(x);
+
+`print(if (true) "yes" else "no");
