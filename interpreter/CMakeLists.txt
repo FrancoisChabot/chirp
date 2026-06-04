@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(ChirpInterpreter VERSION 0.1.0 LANGUAGES CXX)
 
 enable_testing()
+include(GNUInstallDirs)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -18,6 +19,25 @@ add_subdirectory(lib/interpreter)
 add_executable(chirp app/main.cpp)
 target_link_libraries(chirp PRIVATE chirp_frontend chirp_interpreter)
 target_compile_features(chirp PUBLIC cxx_std_20)
+
+get_filename_component(CHIRP_REPO_ROOT "${ChirpInterpreter_SOURCE_DIR}/.." ABSOLUTE)
+
+if(CHIRP_ENABLE_SOURCE_TREE_BOOT)
+  target_compile_definitions(chirp PRIVATE CHIRP_ENABLE_SOURCE_TREE_BOOT=1)
+else()
+  target_compile_definitions(chirp PRIVATE CHIRP_ENABLE_SOURCE_TREE_BOOT=0)
+endif()
+
+target_compile_definitions(chirp PRIVATE
+  CHIRP_SOURCE_BOOT_DIR="${CHIRP_REPO_ROOT}/lib/chirp/boot"
+  CHIRP_INSTALL_BOOT_DIR="${CMAKE_INSTALL_FULL_DATADIR}/chirp/boot"
+)
+
+install(TARGETS chirp RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(DIRECTORY "${CHIRP_REPO_ROOT}/lib/chirp/boot"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/chirp"
+  FILES_MATCHING PATTERN "*.chirp"
+)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME chirp_e2e_tests COMMAND Python3::Interpreter "${ChirpInterpreter_SOURCE_DIR}/../scripts/test_conformance.py" $<TARGET_FILE:chirp>)

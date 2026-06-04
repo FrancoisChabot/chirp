@@ -75,15 +75,18 @@ if (cond) x = 1; else x = 2;
 Bindings:
 
 ```ebnf
-BindingWithInitializer = [ "mut" ] Identifier [ ParamList ] [ ":" Expr ] "=" Expr ;
-BindingNoInitializer   = [ "mut" ] Identifier [ ":" Expr ] ;
-NamedBinding           = [ "mut" ] Identifier [ ":" Expr ] [ "=" Expr ] ;
-FieldBinding           = NamedBinding | [ "mut" ] Identifier ParamList [ ":" Expr ] "=" Expr ;
+BindingName            = Identifier | Intrinsic ;
+BindingWithInitializer = [ "mut" ] BindingName [ ParamList ] [ ":" Expr ] "=" Expr ;
+BindingNoInitializer   = [ "mut" ] BindingName [ ":" Expr ] ;
+NamedBinding           = [ "mut" ] BindingName [ ":" Expr ] [ "=" Expr ] ;
+FieldBinding           = NamedBinding | [ "mut" ] BindingName ParamList [ ":" Expr ] "=" Expr ;
 
 ParamList = "(" [ BindingNoInitializer { "," BindingNoInitializer } ] ")" ;
 ```
 
 `let name(params): bound = body;` is function sugar. The parser lowers it to a let binding whose initializer is a lambda with the parsed parameters, optional return bound, and body expression.
+
+Backtick-prefixed binding names are accepted by the parser so boot sources can define public intrinsics, but ordinary user code is not allowed to define them.
 
 ## Expressions
 

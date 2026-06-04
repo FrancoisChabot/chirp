@@ -1,0 +1,8 @@
+// Transitional host bindings. Prefer defining language facts directly in boot
+// once Chirp has the user-facing mechanisms needed to express them.
+let `print = `__boot_bind("print");
+let `void = `__boot_bind("void");
+let `any = `__boot_bind("any");
+let `empty = `__boot_bind("empty");
+let `set = `__boot_bind("set");
+let `type = `__boot_bind("type");

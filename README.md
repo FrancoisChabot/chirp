@@ -93,7 +93,11 @@ How far we can take it from there is unclear. I am reasonably confident that it 
 
 [`examples/`](examples/) : A collection of non-trivial examples of chirp code. 
 
-[`interpreter/`](interpreter/) : A work-in-progress C++ interpreter. At the moment, it can parse chirp code and dump it as AST, as well as do the in-place ASCII->unicode operator replacement.
+[`interpreter/`](interpreter/) : A work-in-progress C++ interpreter. It can run Chirp scripts, load boot sources, dump ASTs, and do in-place ASCII->unicode operator replacement.
+
+[`lib/chirp/boot`](lib/chirp/boot) : Chirp tries to define itself via its own language as much as possible. This is the Chirp-specified bridge between the raw interpreter and user code.
+
+[`lib/chirp/std`](lib/chirp/std) : This is where the standard library will live.
 
 [`docs/spec/`](docs/spec/) : It's not trying to be a legalese-style spec at the moment. Formalism will happen once the dust settles a bit.
 

@@ -6,6 +6,7 @@
 
 #include <iosfwd>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace chirp::frontend {
@@ -59,6 +60,25 @@ Value belongsTo(const Value& S, const Value& v);
 
 // Set range helper: typeof(S).br(S, lc)
 Value belongsRange(const Value& S, const Value& lc);
+
+class Session {
+public:
+    explicit Session(std::ostream& out);
+    ~Session();
+
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    Session(Session&&) noexcept;
+    Session& operator=(Session&&) noexcept;
+
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts);
+    void execute_source(std::string source, std::string label);
+    void execute_boot_source(std::string source, std::string label);
+
+private:
+    class Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 // Execute a parsed Chirp script.
 void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::ostream& out);

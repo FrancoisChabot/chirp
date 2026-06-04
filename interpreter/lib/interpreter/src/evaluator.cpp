@@ -129,12 +129,25 @@ public:
         }
     }
 
+    void execute_boot(const std::vector<std::unique_ptr<Stmt>>& stmts) {
+        bool was_boot_mode = boot_mode_;
+        boot_mode_ = true;
+        try {
+            execute(stmts);
+            boot_mode_ = was_boot_mode;
+        } catch (...) {
+            boot_mode_ = was_boot_mode;
+            throw;
+        }
+    }
+
 private:
     using Scope = std::unordered_map<std::string, std::shared_ptr<Binding>>;
 
     std::ostream& out_;
     std::vector<Scope> scopes_;
     Value result_;
+    bool boot_mode_ = false;
 
     Value evaluate(const Expr& expr) {
         expr.accept(*this);
@@ -157,6 +170,10 @@ private:
     }
 
     void define_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
+        if (diag.type == token_type::intrinsic && !(boot_mode_ && scopes_.size() == 1)) {
+            fail(diag, "Backtick-prefixed bindings may only be defined by top-level boot files");
+        }
+
         std::string key = to_key(name);
         auto [_, inserted] = scopes_.back().emplace(key, std::move(binding));
         if (!inserted) {
@@ -371,32 +388,49 @@ private:
     }
 
     Value builtin_intrinsic(std::string_view name, const token& diag) const {
-        if (is_name(name, "`void")) return VoidVal();
-        if (is_name(name, "`any")) return Any();
-        if (is_name(name, "`empty")) return Empty();
-        if (is_name(name, "`set")) return Set();
-        if (is_name(name, "`type")) return TypeVal();
         if (is_harness_intrinsic(name)) return VoidVal();
-        fail(diag, "Unknown intrinsic '" + to_key(name) + "'");
+        if (is_name(name, "`__boot_bind")) {
+            fail(diag, "`__boot_bind is only available as a boot-time call");
+        }
+        return lookup_binding(name, diag)->getCV();
     }
 
-    void call_intrinsic(std::string_view name, const std::vector<Argument>& args, const token& diag) {
-        if (is_name(name, "`print")) {
-            if (args.size() != 1 || args.front().name.has_value()) {
-                fail(diag, "`print expects one positional argument");
+    Value boot_bind(std::string_view name, const token& diag) const {
+        if (is_name(name, "print")) return Value::make_host_function(Value::HostFunction::Print);
+        if (is_name(name, "void")) return VoidVal();
+        if (is_name(name, "any")) return Any();
+        if (is_name(name, "empty")) return Empty();
+        if (is_name(name, "set")) return Set();
+        if (is_name(name, "type")) return TypeVal();
+        fail(diag, "Unknown boot binding '" + to_key(name) + "'");
+    }
+
+    Value call_boot_bind(const std::vector<Argument>& args, const token& diag) {
+        if (!boot_mode_) {
+            fail(diag, "`__boot_bind is only available while evaluating boot files");
+        }
+        if (args.size() != 1 || args.front().name.has_value()) {
+            fail(diag, "`__boot_bind expects one positional string argument");
+        }
+        Value name = evaluate(*args.front().value);
+        if (!name.isString()) {
+            fail(diag, "`__boot_bind expects a string argument");
+        }
+        return boot_bind(name.asString(), diag);
+    }
+
+    Value call_host_function(Value::HostFunction fn, const std::vector<Argument>& args, const token& diag) {
+        switch (fn) {
+            case Value::HostFunction::Print: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`print expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                out_ << display_string(value) << '\n';
+                return VoidVal();
             }
-            Value value = evaluate(*args.front().value);
-            out_ << display_string(value) << '\n';
-            result_ = VoidVal();
-            return;
         }
-
-        if (is_name(name, "`expect_stdout") || is_name(name, "`expect_exit")) {
-            result_ = VoidVal();
-            return;
-        }
-
-        fail(diag, "Cannot call intrinsic '" + to_key(name) + "'");
+        fail(diag, "Unknown host function");
     }
 
     int64_t binary_int(const Value& left, const Value& right, BinaryOp op, const token& diag) {
@@ -757,16 +791,27 @@ private:
 
     void visit(const CallExpr& expr) override {
         if (const auto* intrinsic = dynamic_cast<const IntrinsicExpr*>(expr.callee.get())) {
-            call_intrinsic(intrinsic->name, expr.args, expr.diagnostic_token);
-            return;
+            if (is_name(intrinsic->name, "`__boot_bind")) {
+                result_ = call_boot_bind(expr.args, expr.diagnostic_token);
+                return;
+            }
+            if (is_harness_intrinsic(intrinsic->name)) {
+                result_ = VoidVal();
+                return;
+            }
         }
 
         Value callee = evaluate(*expr.callee);
-        if (!callee.isLambda()) {
-            fail(expr.diagnostic_token, "Value is not callable: " + callee.toString());
+        if (callee.isLambda()) {
+            result_ = call_lambda(callee.asLambda(), expr.args, expr.diagnostic_token);
+            return;
+        }
+        if (callee.isHostFunction()) {
+            result_ = call_host_function(callee.asHostFunction(), expr.args, expr.diagnostic_token);
+            return;
         }
 
-        result_ = call_lambda(callee.asLambda(), expr.args, expr.diagnostic_token);
+        fail(expr.diagnostic_token, "Value is not callable: " + callee.toString());
     }
 
     void visit(const IndexExpr& expr) override {
@@ -899,9 +944,71 @@ private:
 
 } // namespace
 
+class Session::Impl {
+    struct SourceUnit {
+        std::string label;
+        std::string source;
+        std::vector<std::unique_ptr<frontend::Stmt>> stmts;
+    };
+
+public:
+    explicit Impl(std::ostream& out) : evaluator(out) {}
+
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
+        evaluator.execute(stmts);
+    }
+
+    void execute_source(std::string source, std::string label, bool boot) {
+        auto unit = std::make_unique<SourceUnit>();
+        unit->source = std::move(source);
+        unit->label = std::move(label);
+        std::string error_label = unit->label;
+
+        try {
+            auto tokens = frontend::tokenize(unit->source);
+            unit->stmts = frontend::parse(tokens);
+
+            SourceUnit* loaded = unit.get();
+            sources.push_back(std::move(unit));
+
+            if (boot) {
+                evaluator.execute_boot(loaded->stmts);
+            } else {
+                evaluator.execute(loaded->stmts);
+            }
+        } catch (const std::exception& e) {
+            if (error_label.empty()) {
+                throw;
+            }
+            throw std::runtime_error(error_label + ": " + e.what());
+        }
+    }
+
+private:
+    Evaluator evaluator;
+    std::vector<std::unique_ptr<SourceUnit>> sources;
+};
+
+Session::Session(std::ostream& out) : impl_(std::make_unique<Impl>(out)) {}
+Session::~Session() = default;
+Session::Session(Session&&) noexcept = default;
+Session& Session::operator=(Session&&) noexcept = default;
+
+void Session::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
+    impl_->execute(stmts);
+}
+
+void Session::execute_source(std::string source, std::string label) {
+    impl_->execute_source(std::move(source), std::move(label), false);
+}
+
+void Session::execute_boot_source(std::string source, std::string label) {
+    impl_->execute_source(std::move(source), std::move(label), true);
+}
+
 void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::ostream& out) {
-    Evaluator evaluator(out);
-    evaluator.execute(stmts);
+    Session session(out);
+    session.execute(stmts);
 }
 
 } // namespace chirp::interpreter

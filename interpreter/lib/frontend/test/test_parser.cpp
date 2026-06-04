@@ -193,6 +193,13 @@ TEST(ParserTest, LetStatement) {
     EXPECT_EQ(print_ast(*stmts[0]), "(let x = 5)");
 }
 
+TEST(ParserTest, IntrinsicLetStatement) {
+    auto tokens = tokenize("let `foo = 5;");
+    auto stmts = parse(tokens);
+    ASSERT_EQ(stmts.size(), 1);
+    EXPECT_EQ(print_ast(*stmts[0]), "(let `foo = 5)");
+}
+
 TEST(ParserTest, LetStatementWithBound) {
     auto tokens = tokenize("let x: int = 5;");
     auto stmts = parse(tokens);
@@ -377,5 +384,4 @@ TEST(ParserTest, MatchExpression) {
     ASSERT_NE(expr, nullptr);
     EXPECT_EQ(print_ast(*expr), "(match x (=> 1 #one) (=> 2 #two))");
 }
-
 

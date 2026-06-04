@@ -39,6 +39,11 @@ TEST(InterpreterTest, TypeTagIdentity) {
     EXPECT_EQ(VoidVal().getType(), getVoidType());
     // typeof(Void) == Type
     EXPECT_EQ(Void().getType(), getMetaType());
+
+    Value host_print = Value::make_host_function(Value::HostFunction::Print);
+    EXPECT_EQ(host_print.getType(), getFunctionType());
+    EXPECT_TRUE(host_print.isHostFunction());
+    EXPECT_EQ(host_print.asHostFunction(), Value::HostFunction::Print);
 }
 
 // 2. Void is not equal to itself

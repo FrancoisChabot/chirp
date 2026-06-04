@@ -49,6 +49,12 @@ public:
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
     };
 
+    enum class HostFunction { Print };
+    struct HostFunctionTag {
+        HostFunction fn;
+        bool operator==(const HostFunctionTag& other) const { return fn == other.fn; }
+    };
+
     enum class CompositeSetOp { Union, Intersection };
     struct CompositeSetTag {
         std::shared_ptr<Value> left;
@@ -81,6 +87,7 @@ public:
     static Value make_range(int64_t start, int64_t end, bool inclusive_end);
     static Value make_constructed_set(const frontend::ConstructedSetExpr& set);
     static Value make_lambda(const frontend::LambdaExpr& lambda);
+    static Value make_host_function(HostFunction fn);
     static Value make_composite_set(Value left, Value right, CompositeSetOp op);
     static Value make_symbol(std::string name);
     static Value make_list(std::vector<Value> elements);
@@ -126,6 +133,9 @@ public:
     bool isLambda() const;
     const frontend::LambdaExpr& asLambda() const;
 
+    bool isHostFunction() const;
+    HostFunction asHostFunction() const;
+
     bool isCompositeSet() const;
     const CompositeSetTag& asCompositeSet() const;
 
@@ -135,7 +145,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, CompositeSetTag, SymbolTag, ListTag>;
+    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

@@ -80,6 +80,7 @@ A backtick `` ` `` followed directly by an identifier.
 * **Lexical Rule:** `` ` `` followed by a sequence of alphanumeric characters/underscores.
 * **The Formalism:** If a compiler-reserved keyword acts syntactically as an identifier (i.e., a primary expression that evaluates to a value), it must be given the backtick prefix. This creates an open namespace allowing the compiler to introduce new built-ins (like `` `import `` or `` `type ``) without ever shadowing user code. Standard keywords (like `if` or `match`) dictate grammar and do not receive backticks.
 * **The Pragmatic Exception:** The boolean literals `true` and `false` are primary expressions, but pedantically forcing `` `true `` and `` `false `` damages developer ergonomics. Therefore, they are carved out and treated as standard reserved keywords.
+* **Boot Definitions:** Bootstrap sources may define backtick-prefixed bindings. User code may reference those bindings, but may not introduce new ones.
 * Examples: `` `print ``, `` `import ``, `` `type ``.
 
 ---

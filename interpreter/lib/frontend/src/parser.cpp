@@ -152,9 +152,16 @@ public:
     }
 
 private:
+    token consume_binding_name() {
+        if (match(token_type::identifier, token_type::intrinsic)) {
+            return previous();
+        }
+        throw std::runtime_error("Expect identifier for binding. at line " + std::to_string(peek().line) + ":" + std::to_string(peek().column) + " (found: '" + std::string(peek().lexeme) + "')");
+    }
+
     NamedBinding parse_binding(bool require_initializer, bool allow_initializer, bool allow_function_sugar = false) {
         bool is_mut = match(token_type::kw_mut);
-        token name = consume(token_type::identifier, "Expect identifier for binding.");
+        token name = consume_binding_name();
         
         bool is_function = false;
         std::vector<NamedBinding> lambda_params;

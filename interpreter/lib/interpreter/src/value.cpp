@@ -209,6 +209,10 @@ Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
     return Value(getFunctionType(), LambdaTag{&lambda});
 }
 
+Value Value::make_host_function(HostFunction fn) {
+    return Value(getFunctionType(), HostFunctionTag{fn});
+}
+
 Value Value::make_symbol(std::string name) {
     return Value(getSymbolType(), SymbolTag{std::move(name)});
 }
@@ -348,6 +352,17 @@ const frontend::LambdaExpr& Value::asLambda() const {
     return *std::get<LambdaTag>(payload_).lambda;
 }
 
+bool Value::isHostFunction() const {
+    return std::holds_alternative<HostFunctionTag>(payload_);
+}
+
+Value::HostFunction Value::asHostFunction() const {
+    if (!isHostFunction()) {
+        throw std::runtime_error("Value is not a host Function");
+    }
+    return std::get<HostFunctionTag>(payload_).fn;
+}
+
 bool Value::isCompositeSet() const {
     return std::holds_alternative<CompositeSetTag>(payload_);
 }
@@ -439,6 +454,9 @@ std::string Value::toString() const {
     }
     if (isLambda()) {
         return "<function>";
+    }
+    if (isHostFunction()) {
+        return "<host-function>";
     }
     if (type_ == getUndecidedType()) {
         return "undecided";

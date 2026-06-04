@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(Chirp VERSION 0.1.0 LANGUAGES CXX)
 
+option(CHIRP_ENABLE_SOURCE_TREE_BOOT "Enable source-tree boot directory fallback for development builds" ON)
+
 enable_testing()
 add_subdirectory(interpreter)
