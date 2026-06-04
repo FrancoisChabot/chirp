@@ -211,6 +211,120 @@ private:
         }
     }
 
+    static void require_set_operand(const Value& value, const token& diag) {
+        if (!value.getType()->hasSetness()) {
+            fail(diag, "Expected set operand, got " + value.toString());
+        }
+    }
+
+    static bool contains_value(const std::vector<Value>& values, const Value& value) {
+        return std::find(values.begin(), values.end(), value) != values.end();
+    }
+
+    static void append_unique(std::vector<Value>& values, const Value& value) {
+        if (!contains_value(values, value)) {
+            values.push_back(value);
+        }
+    }
+
+    std::vector<Value> finite_elements(const Value& set, const token& diag) {
+        require_set_operand(set, diag);
+
+        if (set.isEnumeratedSet()) {
+            std::vector<Value> elements;
+            for (const auto& element : set.asEnumeratedSet()) {
+                append_unique(elements, element);
+            }
+            return elements;
+        }
+
+        if (set.isRange()) {
+            std::vector<Value> elements;
+            auto range = set.asRange();
+            int64_t current = range.start;
+            int64_t iterations = 0;
+            auto in_range = [&]() {
+                return range.inclusive_end ? current <= range.end : current < range.end;
+            };
+
+            while (in_range()) {
+                if (iterations++ >= MAX_LOOP_ITERATIONS) {
+                    fail(diag, "Finite set materialization limit exceeded");
+                }
+                append_unique(elements, Value::make_int(current));
+
+                if (current == std::numeric_limits<int64_t>::max()) {
+                    break;
+                }
+                current += 1;
+            }
+            return elements;
+        }
+
+        if (set.isConstructedSet()) {
+            const ConstructedSetExpr& expr = set.asConstructedSet();
+            if (!expr.binding.type_bound) {
+                fail(diag, "Cannot materialize unbounded constructed set");
+            }
+
+            Value bound = evaluate(*expr.binding.type_bound);
+            std::vector<Value> candidates = finite_elements(bound, expr.diagnostic_token);
+            std::vector<Value> elements;
+            for (const auto& candidate : candidates) {
+                if (as_bool(belongs_to(set, candidate, expr.diagnostic_token), expr.diagnostic_token)) {
+                    append_unique(elements, candidate);
+                }
+            }
+            return elements;
+        }
+
+        if (set == Empty()) {
+            return {};
+        }
+
+        if (set.isType() && set.asType() == getBoolType()) {
+            return {True(), False()};
+        }
+
+        fail(diag, "Set operator requires a finite enumerable set");
+    }
+
+    Value set_union(const Value& left, const Value& right, const token& diag) {
+        require_set_operand(left, diag);
+        require_set_operand(right, diag);
+
+        std::vector<Value> elements = finite_elements(left, diag);
+        for (const auto& element : finite_elements(right, diag)) {
+            append_unique(elements, element);
+        }
+        return Value::make_enumerated_set(std::move(elements));
+    }
+
+    Value set_intersection(const Value& left, const Value& right, const token& diag) {
+        require_set_operand(left, diag);
+        require_set_operand(right, diag);
+
+        std::vector<Value> elements;
+        for (const auto& element : finite_elements(left, diag)) {
+            if (as_bool(belongs_to(right, element, diag), diag)) {
+                append_unique(elements, element);
+            }
+        }
+        return Value::make_enumerated_set(std::move(elements));
+    }
+
+    bool is_subset(const Value& left, const Value& right, const token& diag) {
+        require_set_operand(left, diag);
+        require_set_operand(right, diag);
+
+        for (const auto& element : finite_elements(left, diag)) {
+            if (!as_bool(belongs_to(right, element, diag), diag)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void enforce_constraint(const Value& constraint, const Value& value, const token& diag) {
         Value belongs = belongs_to(constraint, value, diag);
         if (!belongs.isBool()) {
@@ -426,6 +540,34 @@ private:
                 return;
             case BinaryOp::NotIn:
                 result_ = Value::make_bool(!as_bool(belongs_to(right, left, expr.diagnostic_token), expr.diagnostic_token));
+                return;
+            case BinaryOp::Union:
+                result_ = set_union(left, right, expr.diagnostic_token);
+                return;
+            case BinaryOp::Intersection:
+                result_ = set_intersection(left, right, expr.diagnostic_token);
+                return;
+            case BinaryOp::Subset:
+                result_ = Value::make_bool(is_subset(left, right, expr.diagnostic_token));
+                return;
+            case BinaryOp::ProperSubset:
+                result_ = Value::make_bool(
+                    is_subset(left, right, expr.diagnostic_token) &&
+                    !is_subset(right, left, expr.diagnostic_token));
+                return;
+            case BinaryOp::NotSubset:
+                result_ = Value::make_bool(!is_subset(left, right, expr.diagnostic_token));
+                return;
+            case BinaryOp::Superset:
+                result_ = Value::make_bool(is_subset(right, left, expr.diagnostic_token));
+                return;
+            case BinaryOp::ProperSuperset:
+                result_ = Value::make_bool(
+                    is_subset(right, left, expr.diagnostic_token) &&
+                    !is_subset(left, right, expr.diagnostic_token));
+                return;
+            case BinaryOp::NotSuperset:
+                result_ = Value::make_bool(!is_subset(right, left, expr.diagnostic_token));
                 return;
             default:
                 fail(expr.diagnostic_token, "Unsupported binary operator");
