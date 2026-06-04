@@ -6,6 +6,10 @@
 #include <string_view>
 #include <vector>
 
+namespace chirp::frontend {
+class LambdaExpr;
+}
+
 namespace chirp::interpreter {
 
 class Type;
@@ -25,6 +29,10 @@ public:
         std::shared_ptr<std::vector<Value>> elements;
         bool operator==(const EnumeratedSetTag& other) const;
     };
+    struct LambdaTag {
+        const frontend::LambdaExpr* lambda;
+        bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
+    };
 
     // Constructs a Chirp `void` value.
     Value();
@@ -36,6 +44,7 @@ public:
     static Value make_type(std::shared_ptr<const Type> type_val);
     static Value make_binding(std::shared_ptr<Binding> binding_val);
     static Value make_enumerated_set(std::vector<Value> elements);
+    static Value make_lambda(const frontend::LambdaExpr& lambda);
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
     std::shared_ptr<const Type> getType() const;
@@ -61,18 +70,21 @@ public:
     bool isEnumeratedSet() const;
     const std::vector<Value>& asEnumeratedSet() const;
 
+    bool isLambda() const;
+    const frontend::LambdaExpr& asLambda() const;
+
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
 
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    Value(std::shared_ptr<const Type> type, std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag> payload)
+    Value(std::shared_ptr<const Type> type, std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, LambdaTag> payload)
         : type_(std::move(type)), payload_(std::move(payload)) {}
 
 private:
     std::shared_ptr<const Type> type_;
-    std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag> payload_;
+    std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, LambdaTag> payload_;
 };
 
 

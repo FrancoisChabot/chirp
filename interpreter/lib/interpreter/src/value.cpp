@@ -47,6 +47,11 @@ std::shared_ptr<const Type> getBindingType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getFunctionType() {
+    static auto instance = std::make_shared<FunctionType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getIntType() {
     static auto instance = std::make_shared<IntType>();
     return instance;
@@ -147,6 +152,10 @@ Value Value::make_enumerated_set(std::vector<Value> elements) {
     return Value(getEnumeratedSetType(), EnumeratedSetTag{std::make_shared<std::vector<Value>>(std::move(elements))});
 }
 
+Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
+    return Value(getFunctionType(), LambdaTag{&lambda});
+}
+
 std::shared_ptr<const Type> Value::getType() const {
     return type_;
 }
@@ -221,6 +230,17 @@ const std::vector<Value>& Value::asEnumeratedSet() const {
     return *std::get<EnumeratedSetTag>(payload_).elements;
 }
 
+bool Value::isLambda() const {
+    return std::holds_alternative<LambdaTag>(payload_);
+}
+
+const frontend::LambdaExpr& Value::asLambda() const {
+    if (!isLambda()) {
+        throw std::runtime_error("Value is not a Function");
+    }
+    return *std::get<LambdaTag>(payload_).lambda;
+}
+
 bool Value::operator==(const Value& other) const {
     if (isVoid() || other.isVoid()) {
         return false;
@@ -267,6 +287,9 @@ std::string Value::toString() const {
         }
         ss << "}";
         return ss.str();
+    }
+    if (isLambda()) {
+        return "<function>";
     }
     if (type_ == getAnyType()) {
         return "any";

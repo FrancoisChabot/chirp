@@ -25,6 +25,7 @@ std::shared_ptr<const Type> getSetType();
 std::shared_ptr<const Type> getVoidType();
 std::shared_ptr<const Type> getEnumeratedSetType();
 std::shared_ptr<const Type> getBindingType();
+std::shared_ptr<const Type> getFunctionType();
 
 // Convenient types for literals
 std::shared_ptr<const Type> getIntType();

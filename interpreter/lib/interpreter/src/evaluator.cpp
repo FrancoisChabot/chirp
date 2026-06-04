@@ -245,6 +245,44 @@ private:
         }
     }
 
+    Value call_lambda(const LambdaExpr& lambda, const std::vector<Argument>& args, const token& diag) {
+        if (args.size() != lambda.parameters.size()) {
+            fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
+                " arguments, got " + std::to_string(args.size()));
+        }
+
+        std::vector<Value> arg_values;
+        arg_values.reserve(args.size());
+        for (const auto& arg : args) {
+            if (arg.name.has_value()) {
+                fail(diag, "Named function arguments are not supported yet");
+            }
+            arg_values.push_back(evaluate(*arg.value));
+        }
+
+        scopes_.emplace_back();
+        try {
+            for (size_t i = 0; i < lambda.parameters.size(); ++i) {
+                const NamedBinding& param = lambda.parameters[i];
+                Value constraint = param.type_bound ? evaluate(*param.type_bound) : Any();
+                enforce_constraint(constraint, arg_values[i], param.name);
+
+                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]));
+                define_binding(param.name.lexeme, std::move(binding), param.name);
+            }
+
+            Value return_value = evaluate(*lambda.body);
+            Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : Any();
+            enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
+
+            scopes_.pop_back();
+            return return_value;
+        } catch (...) {
+            scopes_.pop_back();
+            throw;
+        }
+    }
+
     void visit(const BinaryExpr& expr) override {
         if (expr.op == BinaryOp::And) {
             bool left = as_bool(evaluate(*expr.left), expr.diagnostic_token);
@@ -392,7 +430,7 @@ private:
     }
 
     void visit(const LambdaExpr& expr) override {
-        fail(expr.diagnostic_token, "lambda expressions are not supported yet");
+        result_ = Value::make_lambda(expr);
     }
 
     void visit(const BlockExpr& expr) override {
@@ -421,7 +459,13 @@ private:
             call_intrinsic(intrinsic->name, expr.args, expr.diagnostic_token);
             return;
         }
-        fail(expr.diagnostic_token, "Only intrinsic calls are supported yet");
+
+        Value callee = evaluate(*expr.callee);
+        if (!callee.isLambda()) {
+            fail(expr.diagnostic_token, "Value is not callable: " + callee.toString());
+        }
+
+        result_ = call_lambda(callee.asLambda(), expr.args, expr.diagnostic_token);
     }
 
     void visit(const IndexExpr& expr) override {

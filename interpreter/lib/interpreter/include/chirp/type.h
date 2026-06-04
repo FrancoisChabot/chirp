@@ -87,6 +87,11 @@ public:
     std::string_view name() const override { return "Binding"; }
 };
 
+class FunctionType : public Type {
+public:
+    std::string_view name() const override { return "Function"; }
+};
+
 // Additional convenient types for interpreter literals
 class IntType : public Type {
 public:
