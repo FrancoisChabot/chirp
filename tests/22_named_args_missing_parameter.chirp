@@ -1,0 +1,6 @@
+`expect_stdout("defined\n");
+`expect_exit(1);
+
+let sum = (x : int, y : int) : int => x + y;
+`print("defined");
+`print(sum(x=1));

@@ -246,18 +246,55 @@ private:
     }
 
     Value call_lambda(const LambdaExpr& lambda, const std::vector<Argument>& args, const token& diag) {
-        if (args.size() != lambda.parameters.size()) {
-            fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
-                " arguments, got " + std::to_string(args.size()));
+        bool has_named = false;
+        bool has_positional = false;
+        for (const auto& arg : args) {
+            has_named = has_named || arg.name.has_value();
+            has_positional = has_positional || !arg.name.has_value();
         }
 
-        std::vector<Value> arg_values;
-        arg_values.reserve(args.size());
-        for (const auto& arg : args) {
-            if (arg.name.has_value()) {
-                fail(diag, "Named function arguments are not supported yet");
+        if (has_named && has_positional) {
+            fail(diag, "Cannot mix named and positional arguments");
+        }
+
+        std::vector<Value> arg_values(lambda.parameters.size());
+        if (has_named) {
+            std::unordered_map<std::string, size_t> parameter_indices;
+            for (size_t i = 0; i < lambda.parameters.size(); ++i) {
+                parameter_indices.emplace(to_key(lambda.parameters[i].name.lexeme), i);
             }
-            arg_values.push_back(evaluate(*arg.value));
+
+            std::vector<bool> provided(lambda.parameters.size(), false);
+            for (const auto& arg : args) {
+                std::string name = to_key(arg.name->lexeme);
+                auto found = parameter_indices.find(name);
+                if (found == parameter_indices.end()) {
+                    fail(*arg.name, "Unknown parameter '" + name + "'");
+                }
+
+                size_t index = found->second;
+                if (provided[index]) {
+                    fail(*arg.name, "Duplicate argument for parameter '" + name + "'");
+                }
+
+                arg_values[index] = evaluate(*arg.value);
+                provided[index] = true;
+            }
+
+            for (size_t i = 0; i < lambda.parameters.size(); ++i) {
+                if (!provided[i]) {
+                    fail(diag, "Missing argument for parameter '" + to_key(lambda.parameters[i].name.lexeme) + "'");
+                }
+            }
+        } else {
+            if (args.size() != lambda.parameters.size()) {
+                fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
+                    " arguments, got " + std::to_string(args.size()));
+            }
+
+            for (size_t i = 0; i < args.size(); ++i) {
+                arg_values[i] = evaluate(*args[i].value);
+            }
         }
 
         scopes_.emplace_back();
