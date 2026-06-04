@@ -4,8 +4,8 @@
 `print(undecided);
 `print(undecided == undecided);
 `print(undecided != undecided);
-`print(undecided ∈ Undecided);
-`print(true ∈ Undecided);
-`print(Undecided ∈ set);
+`print(undecided ∈ `typeof(undecided));
+`print(true ∈ `typeof(undecided));
+`print(`typeof(undecided) ∈ set);
 `print(undecided ∈ set);
 `print(undecided ∈ Bool);

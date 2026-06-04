@@ -60,6 +60,36 @@ TEST(ParserTest, PointerMutabilityOperators) {
     EXPECT_EQ(print_ast(*mutable_both), "(->mut (->mut int))");
 }
 
+TEST(ParserTest, SpacedMutIsNotPointerMutabilityOperator) {
+    auto address = parse_expression(tokenize("& mut"));
+    auto pointer = parse_expression(tokenize("-> mut"));
+
+    ASSERT_NE(address, nullptr);
+    ASSERT_NE(pointer, nullptr);
+
+    EXPECT_EQ(print_ast(*address), "(& mut)");
+    EXPECT_EQ(print_ast(*pointer), "(-> mut)");
+    EXPECT_THROW(parse_expression(tokenize("& mut x")), std::runtime_error);
+    EXPECT_THROW(parse_expression(tokenize("-> mut int")), std::runtime_error);
+}
+
+TEST(ParserTest, ContextualBindingModifiers) {
+    auto final_true = parse(tokenize("let final true = `__boot_bind(\"true_val\");"));
+    auto final_identifier = parse(tokenize("let final = 1;"));
+    auto mut_identifier = parse(tokenize("let mut = 2;"));
+    auto combined = parse(tokenize("let mut final x : int = 3;"));
+
+    ASSERT_EQ(final_true.size(), 1);
+    ASSERT_EQ(final_identifier.size(), 1);
+    ASSERT_EQ(mut_identifier.size(), 1);
+    ASSERT_EQ(combined.size(), 1);
+
+    EXPECT_EQ(print_ast(*final_true[0]), "(let final true = (call `__boot_bind \"true_val\"))");
+    EXPECT_EQ(print_ast(*final_identifier[0]), "(let final = 1)");
+    EXPECT_EQ(print_ast(*mut_identifier[0]), "(let mut = 2)");
+    EXPECT_EQ(print_ast(*combined[0]), "(let final mut x:int = 3)");
+}
+
 TEST(ParserTest, IndirectedMutationStatement) {
     auto tokens = tokenize("let p: ->mut int = &mut x; *p = 1;");
     auto stmts = parse(tokens);
@@ -384,4 +414,3 @@ TEST(ParserTest, MatchExpression) {
     ASSERT_NE(expr, nullptr);
     EXPECT_EQ(print_ast(*expr), "(match x (=> 1 #one) (=> 2 #two))");
 }
-

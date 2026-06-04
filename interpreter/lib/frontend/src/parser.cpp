@@ -94,6 +94,10 @@ class Parser {
         }
     }
 
+    bool is_binding_name_token(token_type type) const {
+        return type == token_type::identifier || type == token_type::intrinsic;
+    }
+
     bool is_lambda_ahead() const {
         size_t temp = current;
         int parens = 0;
@@ -152,15 +156,40 @@ public:
     }
 
 private:
+    bool is_contextual_binding_modifier(const token& tok) const {
+        return tok.type == token_type::identifier &&
+            (tok.lexeme == "mut" || tok.lexeme == "final");
+    }
+
+    bool modifier_has_binding_name_after() const {
+        if (!is_contextual_binding_modifier(peek())) return false;
+        return is_binding_name_token(peek_next().type);
+    }
+
     token consume_binding_name() {
-        if (match(token_type::identifier, token_type::intrinsic)) {
-            return previous();
+        if (is_binding_name_token(peek().type)) {
+            return advance();
         }
         throw std::runtime_error("Expect identifier for binding. at line " + std::to_string(peek().line) + ":" + std::to_string(peek().column) + " (found: '" + std::string(peek().lexeme) + "')");
     }
 
     NamedBinding parse_binding(bool require_initializer, bool allow_initializer, bool allow_function_sugar = false) {
-        bool is_mut = match(token_type::kw_mut);
+        bool is_mut = false;
+        bool is_final = false;
+        while (modifier_has_binding_name_after()) {
+            const token& modifier = advance();
+            if (modifier.lexeme == "mut") {
+                if (is_mut) {
+                    throw std::runtime_error("Duplicate 'mut' binding modifier at line " + std::to_string(modifier.line) + ":" + std::to_string(modifier.column));
+                }
+                is_mut = true;
+            } else {
+                if (is_final) {
+                    throw std::runtime_error("Duplicate 'final' binding modifier at line " + std::to_string(modifier.line) + ":" + std::to_string(modifier.column));
+                }
+                is_final = true;
+            }
+        }
         token name = consume_binding_name();
         
         bool is_function = false;
@@ -200,7 +229,7 @@ private:
             type_bound = nullptr;
         }
 
-        return NamedBinding(std::move(name), is_mut, std::move(type_bound), std::move(initializer));
+        return NamedBinding(std::move(name), is_mut, std::move(type_bound), std::move(initializer), is_final);
     }
 
     std::unique_ptr<Stmt> statement() {
@@ -364,16 +393,16 @@ private:
     }
 
     std::unique_ptr<Expr> unary() {
-        if (match(token_type::ampersand)) {
+        if (match(token_type::ampersand, token_type::ampersand_mut)) {
             token op_tok = previous();
-            UnaryOp op = match(token_type::kw_mut) ? UnaryOp::MutableAddressOf : UnaryOp::AddressOf;
+            UnaryOp op = op_tok.type == token_type::ampersand_mut ? UnaryOp::MutableAddressOf : UnaryOp::AddressOf;
             auto right = unary();
             return std::make_unique<UnaryExpr>(op, std::move(right), op_tok);
         }
 
-        if (match(token_type::arrow)) {
+        if (match(token_type::arrow, token_type::arrow_mut)) {
             token op_tok = previous();
-            UnaryOp op = match(token_type::kw_mut) ? UnaryOp::MutablePointerType : UnaryOp::PointerType;
+            UnaryOp op = op_tok.type == token_type::arrow_mut ? UnaryOp::MutablePointerType : UnaryOp::PointerType;
             auto right = unary();
             return std::make_unique<UnaryExpr>(op, std::move(right), op_tok);
         }
@@ -506,10 +535,6 @@ private:
             return std::make_unique<IfExpr>(std::move(condition), std::move(then_branch), std::move(else_branch), if_tok);
         }
 
-        if (match(token_type::kw_false)) return std::make_unique<BoolExpr>(false, previous());
-        if (match(token_type::kw_true)) return std::make_unique<BoolExpr>(true, previous());
-        if (match(token_type::kw_undecided)) return std::make_unique<UndecidedExpr>(previous());
-        
         if (match(token_type::left_bracket)) {
             token bracket_tok = previous();
             std::vector<std::unique_ptr<Expr>> elements;

@@ -49,7 +49,7 @@ public:
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
     };
 
-    enum class HostFunction { Print };
+    enum class HostFunction { Print, TypeOf };
     struct HostFunctionTag {
         HostFunction fn;
         bool operator==(const HostFunctionTag& other) const { return fn == other.fn; }

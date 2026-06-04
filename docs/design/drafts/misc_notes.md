@@ -95,14 +95,14 @@ To keep the parser lightweight and prevent namespace collision, Chirp draws a st
 2. **Intrinsics (`` `any ``, `` `import ``, `` `type ``):** If a compiler-provided symbol acts syntactically as an identifier (a primary expression that evaluates to a value), it must be prefixed with a backtick. This guarantees absolute forward compatibility, as the compiler can add new intrinsics in the future without ever shadowing user-defined variables.
 
 **The Atom Exception:** 
-Initially, it was thought that `true` and `false` would either need to be written as `` `true `` and `` `false `` (pedantic application of the rule) or explicitly hardcoded as reserved keywords to prevent shadowing (`let true = 5;`). However, the formal ontology of Atoms provides a much cleaner solution. The compiler treats scalar literals (`42`, `"hello"`, `true`) conceptually as identifiers pre-bound in the global environment with the `unshadowable` modifier. Because they are implicitly `unshadowable`, they cannot be shadowed. This eliminates the need for them to be special parser keywords, perfectly unifying the mathematical evaluation model.
+Initially, it was thought that `true` and `false` would either need to be written as `` `true `` and `` `false `` (pedantic application of the rule) or explicitly hardcoded as reserved keywords to prevent shadowing (`let true = 5;`). However, the formal ontology of Atoms provides a much cleaner solution. The compiler treats scalar literals (`42`, `"hello"`, `true`) conceptually as identifiers pre-bound in the global environment with the `final` modifier. Because they are implicitly final, they cannot be shadowed. This eliminates the need for them to be special parser keywords, perfectly unifying the mathematical evaluation model.
 
 ## Bindings, Mutability, and Aliasing
 
-Bindings in Chirp are governed by keywords that modify the behavior of the binding itself, not the underlying value.
+Bindings in Chirp are governed by modifiers that affect the binding itself, not the underlying value.
 
 - **`mut`**: Allows the current value of the binding to be swapped (mutated) over time.
-- **`unshadowable`**: Prevents the identifier from being shadowed in any descendent scope.
+- **`final`**: Prevents the identifier from being shadowed in any descendent scope.
 
 **The `using` Statement:**
 Because "everything is a value" in Chirp, standard assignment (`let y = x;`) implies a value copy. To avoid the performance and identity issues of copying large values (like Types or whole modules), Chirp uses a dedicated `using` statement.

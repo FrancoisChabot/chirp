@@ -40,8 +40,13 @@ Keywords are reserved identifiers that have special meaning in the language gram
 
 The core keywords are:
 ```chirp
-let    mut    struct    int    if    for    else    while    match    true    false    break    do
+let    struct    if    for    else    while    match    break    do
 ```
+
+`mut` and `final` are contextual binding modifiers, not reserved keywords. They
+remain ordinary identifiers outside binding-modifier position. `true` and
+`false` are ordinary identifiers bound by the boot prelude as final core values.
+`undecided` is also a final boot binding.
 
 ---
 
@@ -79,7 +84,7 @@ A hash symbol `#` followed directly by an identifier.
 A backtick `` ` `` followed directly by an identifier.
 * **Lexical Rule:** `` ` `` followed by a sequence of alphanumeric characters/underscores.
 * **The Formalism:** If a compiler-reserved keyword acts syntactically as an identifier (i.e., a primary expression that evaluates to a value), it must be given the backtick prefix. This creates an open namespace allowing the compiler to introduce new built-ins (like `` `import `` or `` `type ``) without ever shadowing user code. Standard keywords (like `if` or `match`) dictate grammar and do not receive backticks.
-* **The Pragmatic Exception:** The boolean literals `true` and `false` are primary expressions, but pedantically forcing `` `true `` and `` `false `` damages developer ergonomics. Therefore, they are carved out and treated as standard reserved keywords.
+* **Boot Constants:** The core constants `true`, `false`, and `undecided` are final boot bindings. They keep ordinary literal-like ergonomics without needing lexer keyword special cases.
 * **Boot Definitions:** Bootstrap sources may define backtick-prefixed bindings. User code may reference those bindings, but may not introduce new ones.
 * Examples: `` `print ``, `` `import ``, `` `type ``.
 

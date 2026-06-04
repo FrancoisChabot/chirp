@@ -101,7 +101,6 @@ The following **values** are predefined as part of the core:
 - `Bool`      - The type of the boolean constants
 - `true`      - boolean truth constant
 - `false`     - boolean falsehood constant
-- `Undecided` - The singleton type of `undecided`
 - `undecided` - an undecided belonging result
 - `Type`      - the type of all types
 - `any`       - the set of all values 
@@ -204,7 +203,7 @@ if (x != 1) do {
 
 While domain refinement is always semantically sound when applied, domain narrowing is a best-effort process performed by the compiler.
 
-In practice, mutability needs to be opted-in by the `mut` keyword. However, that is purely a syntactical construct.
+In practice, mutability needs to be opted-in by the contextual `mut` binding modifier. However, that is purely a syntactical construct.
 
 Changing the value of a binding is assigning it a new value. This may seem evident when considering booleans and integers, but this also applies to larger and more complicated categories of values.
 

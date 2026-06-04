@@ -1,0 +1,5 @@
+`expect_exit(1);
+
+do {
+    let undecided = true;
+}

@@ -7,7 +7,7 @@ TEST(LexerTest, BasicTokens) {
     auto tokens = tokenize("let mut x = 0..3;");
     ASSERT_EQ(tokens.size(), 9); 
     EXPECT_EQ(tokens[0].type, token_type::kw_let);
-    EXPECT_EQ(tokens[1].type, token_type::kw_mut);
+    EXPECT_EQ(tokens[1].type, token_type::identifier);
     EXPECT_EQ(tokens[2].type, token_type::identifier);
     EXPECT_EQ(tokens[3].type, token_type::equal);
     EXPECT_EQ(tokens[4].type, token_type::number);
@@ -95,23 +95,43 @@ TEST(LexerTest, CharacterLiteralsRejectMalformedBodies) {
     EXPECT_EQ(tokens[7].type, token_type::eof);
 }
 
-TEST(LexerTest, Keywords) {
+TEST(LexerTest, KeywordsAndContextualIdentifiers) {
     auto tokens = tokenize("do let mut struct if else while for true false undecided break match");
     ASSERT_EQ(tokens.size(), 14);
     EXPECT_EQ(tokens[0].type, token_type::kw_do);
     EXPECT_EQ(tokens[1].type, token_type::kw_let);
-    EXPECT_EQ(tokens[2].type, token_type::kw_mut);
+    EXPECT_EQ(tokens[2].type, token_type::identifier);
     EXPECT_EQ(tokens[3].type, token_type::kw_struct);
     EXPECT_EQ(tokens[4].type, token_type::kw_if);
     EXPECT_EQ(tokens[5].type, token_type::kw_else);
     EXPECT_EQ(tokens[6].type, token_type::kw_while);
     EXPECT_EQ(tokens[7].type, token_type::kw_for);
-    EXPECT_EQ(tokens[8].type, token_type::kw_true);
-    EXPECT_EQ(tokens[9].type, token_type::kw_false);
-    EXPECT_EQ(tokens[10].type, token_type::kw_undecided);
+    EXPECT_EQ(tokens[8].type, token_type::identifier);
+    EXPECT_EQ(tokens[9].type, token_type::identifier);
+    EXPECT_EQ(tokens[10].type, token_type::identifier);
     EXPECT_EQ(tokens[11].type, token_type::kw_break);
     EXPECT_EQ(tokens[12].type, token_type::kw_match);
     EXPECT_EQ(tokens[13].type, token_type::eof);
+}
+
+TEST(LexerTest, MutablePointerOperatorsAreFused) {
+    auto tokens = tokenize("&mut x & mut y &mutx ->mut int -> mut int ->mutx");
+    ASSERT_EQ(tokens.size(), 15);
+    EXPECT_EQ(tokens[0].type, token_type::ampersand_mut);
+    EXPECT_EQ(tokens[1].type, token_type::identifier);
+    EXPECT_EQ(tokens[2].type, token_type::ampersand);
+    EXPECT_EQ(tokens[3].type, token_type::identifier);
+    EXPECT_EQ(tokens[4].type, token_type::identifier);
+    EXPECT_EQ(tokens[5].type, token_type::ampersand);
+    EXPECT_EQ(tokens[6].type, token_type::identifier);
+    EXPECT_EQ(tokens[7].type, token_type::arrow_mut);
+    EXPECT_EQ(tokens[8].type, token_type::identifier);
+    EXPECT_EQ(tokens[9].type, token_type::arrow);
+    EXPECT_EQ(tokens[10].type, token_type::identifier);
+    EXPECT_EQ(tokens[11].type, token_type::identifier);
+    EXPECT_EQ(tokens[12].type, token_type::arrow);
+    EXPECT_EQ(tokens[13].type, token_type::identifier);
+    EXPECT_EQ(tokens[14].type, token_type::eof);
 }
 
 TEST(LexerTest, LocationsAndComments) {

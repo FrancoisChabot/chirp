@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <ostream>
 #include <sstream>
@@ -175,6 +176,15 @@ private:
         }
 
         std::string key = to_key(name);
+        if (!scopes_.empty()) {
+            for (auto scope = scopes_.begin(); scope != std::prev(scopes_.end()); ++scope) {
+                auto found = scope->find(key);
+                if (found != scope->end() && found->second->isFinal()) {
+                    fail(diag, "Identifier '" + key + "' cannot shadow final binding");
+                }
+            }
+        }
+
         auto [_, inserted] = scopes_.back().emplace(key, std::move(binding));
         if (!inserted) {
             fail(diag, "Identifier '" + key + "' is already defined in this scope");
@@ -227,7 +237,7 @@ private:
 
         scopes_.emplace_back();
         try {
-            auto binding = std::make_shared<Binding>(bound, bound, value);
+            auto binding = std::make_shared<Binding>(bound, bound, value, expr.binding.is_final);
             define_binding(expr.binding.name.lexeme, std::move(binding), expr.binding.name);
 
             Value predicate_result = evaluate(*expr.condition);
@@ -377,8 +387,6 @@ private:
     Value builtin_identifier(std::string_view name, const token& diag) const {
         if (is_name(name, "int")) return Value::make_type(getIntType());
         if (is_name(name, "string")) return Value::make_type(getStringType());
-        if (is_name(name, "Bool")) return Bool();
-        if (is_name(name, "Undecided")) return Undecided();
         if (is_name(name, "Type")) return TypeVal();
         if (is_name(name, "any")) return Any();
         if (is_name(name, "empty")) return Empty();
@@ -396,12 +404,17 @@ private:
     }
 
     Value boot_bind(std::string_view name, const token& diag) const {
-        if (is_name(name, "print")) return Value::make_host_function(Value::HostFunction::Print);
-        if (is_name(name, "void")) return VoidVal();
-        if (is_name(name, "any")) return Any();
-        if (is_name(name, "empty")) return Empty();
-        if (is_name(name, "set")) return Set();
-        if (is_name(name, "type")) return TypeVal();
+        if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
+        if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
+        if (is_name(name, "true_val")) return True();
+        if (is_name(name, "false_val")) return False();
+        if (is_name(name, "bool_type")) return Bool();
+        if (is_name(name, "undecided_val")) return UndecidedVal();
+        if (is_name(name, "void_val")) return VoidVal();
+        if (is_name(name, "any_val")) return Any();
+        if (is_name(name, "empty_val")) return Empty();
+        if (is_name(name, "set_val")) return Set();
+        if (is_name(name, "type_val_and_type")) return TypeVal();
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
 
@@ -428,6 +441,13 @@ private:
                 Value value = evaluate(*args.front().value);
                 out_ << display_string(value) << '\n';
                 return VoidVal();
+            }
+            case Value::HostFunction::TypeOf: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`typeof expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                return Value::make_type(value.getType());
             }
         }
         fail(diag, "Unknown host function");
@@ -510,7 +530,7 @@ private:
                 Value constraint = param.type_bound ? evaluate(*param.type_bound) : Any();
                 enforce_constraint(constraint, arg_values[i], param.name);
 
-                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]));
+                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final);
                 define_binding(param.name.lexeme, std::move(binding), param.name);
             }
 
@@ -530,7 +550,7 @@ private:
         Value constraint = binding.type_bound ? evaluate(*binding.type_bound) : Any();
         enforce_constraint(constraint, value, diag);
 
-        auto iterator_binding = std::make_shared<Binding>(constraint, constraint, std::move(value));
+        auto iterator_binding = std::make_shared<Binding>(constraint, constraint, std::move(value), binding.is_final);
         define_binding(binding.name.lexeme, std::move(iterator_binding), binding.name);
     }
 
@@ -883,7 +903,7 @@ private:
         Value constraint = stmt.binding.type_bound ? evaluate(*stmt.binding.type_bound) : Any();
         enforce_constraint(constraint, initializer, stmt.diagnostic_token);
 
-        auto binding = std::make_shared<Binding>(constraint, constraint, initializer);
+        auto binding = std::make_shared<Binding>(constraint, constraint, initializer, stmt.binding.is_final);
         define_binding(stmt.binding.name.lexeme, std::move(binding), stmt.binding.name);
     }
 

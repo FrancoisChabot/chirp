@@ -14,7 +14,7 @@ enum class token_type {
     left_brace, right_brace,
     left_bracket, right_bracket,
     comma, dot, minus, plus, semicolon, colon, slash, star,
-    ampersand, pipe, percent, bang,
+    ampersand, ampersand_mut, pipe, percent, bang,
 
     // One or two character tokens
     bang_equal,
@@ -25,6 +25,7 @@ enum class token_type {
     dot_dot,             // ..
     dot_dot_equal,       // ..=
     arrow,      // ->
+    arrow_mut,  // ->mut
     fat_arrow,  // =>
     and_and,    // &&
     or_or,      // ||
@@ -52,15 +53,11 @@ enum class token_type {
 
     // Keywords
     kw_let,
-    kw_mut,
     kw_struct,
     kw_if,
     kw_else,
     kw_while,
     kw_for,
-    kw_true,
-    kw_false,
-    kw_undecided,
     kw_break,
     kw_match,
     kw_do,
@@ -200,11 +197,12 @@ public:
 struct NamedBinding {
     token name;
     bool is_mut;
+    bool is_final;
     std::unique_ptr<Expr> type_bound;
     std::unique_ptr<Expr> initializer;
 
-    NamedBinding(token name, bool is_mut = false, std::unique_ptr<Expr> type_bound = nullptr, std::unique_ptr<Expr> initializer = nullptr)
-        : name(std::move(name)), is_mut(is_mut), type_bound(std::move(type_bound)), initializer(std::move(initializer)) {}
+    NamedBinding(token name, bool is_mut = false, std::unique_ptr<Expr> type_bound = nullptr, std::unique_ptr<Expr> initializer = nullptr, bool is_final = false)
+        : name(std::move(name)), is_mut(is_mut), is_final(is_final), type_bound(std::move(type_bound)), initializer(std::move(initializer)) {}
 };
 
 struct Argument {

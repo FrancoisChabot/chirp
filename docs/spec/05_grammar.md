@@ -76,15 +76,18 @@ Bindings:
 
 ```ebnf
 BindingName            = Identifier | Intrinsic ;
-BindingWithInitializer = [ "mut" ] BindingName [ ParamList ] [ ":" Expr ] "=" Expr ;
-BindingNoInitializer   = [ "mut" ] BindingName [ ":" Expr ] ;
-NamedBinding           = [ "mut" ] BindingName [ ":" Expr ] [ "=" Expr ] ;
-FieldBinding           = NamedBinding | [ "mut" ] BindingName ParamList [ ":" Expr ] "=" Expr ;
+BindingModifier        = "mut" | "final" ;
+BindingWithInitializer = { BindingModifier } BindingName [ ParamList ] [ ":" Expr ] "=" Expr ;
+BindingNoInitializer   = { BindingModifier } BindingName [ ":" Expr ] ;
+NamedBinding           = { BindingModifier } BindingName [ ":" Expr ] [ "=" Expr ] ;
+FieldBinding           = NamedBinding | { BindingModifier } BindingName ParamList [ ":" Expr ] "=" Expr ;
 
 ParamList = "(" [ BindingNoInitializer { "," BindingNoInitializer } ] ")" ;
 ```
 
 `let name(params): bound = body;` is function sugar. The parser lowers it to a let binding whose initializer is a lambda with the parsed parameters, optional return bound, and body expression.
+
+`mut` and `final` are contextual modifiers in binding position. Outside that position they are ordinary identifiers. `final` marks a binding as unshadowable by descendant scopes; it does not imply assignment immutability.
 
 Backtick-prefixed binding names are accepted by the parser so boot sources can define public intrinsics, but ordinary user code is not allowed to define them.
 
@@ -101,8 +104,10 @@ Comparison  = Range { ComparisonOp Range } ;
 Range       = Term { RangeOp Term } ;
 Term        = Factor { ( "+" | "-" | "∪" ) Factor } ;
 Factor      = Unary { ( "*" | "/" | "%" | "∩" ) Unary } ;
-Unary       = "&" [ "mut" ] Unary
-            | "->" [ "mut" ] Unary
+Unary       = "&" Unary
+            | "&mut" Unary
+            | "->" Unary
+            | "->mut" Unary
             | ( "!" | "-" | "*" | "~" ) Unary
             | Postfix ;
 Postfix     = Primary { "." Primary | CallArgs | IndexArgs } ;
@@ -126,7 +131,8 @@ Postfix struct literals such as `Point { x: 1, y: 2 }` are intentionally not par
 
 Index expressions require at least one index expression.
 
-`mut` after `&` or `->` belongs to that pointer layer only:
+`&mut` and `->mut` are fused operators; whitespace is not allowed inside them.
+Their mutability belongs to that pointer layer only:
 
 ```chirp
 &x              // address-of
@@ -149,7 +155,6 @@ Primary =
   | "while" "(" Expr ")" Expr
   | "if" "(" Expr ")" Expr "else" Expr
   | MatchExpr
-  | "true" | "false" | "undecided"
   | ListExpr
   | Number | String | Character | SymbolicConstant
   | Identifier | Intrinsic

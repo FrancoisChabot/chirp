@@ -60,6 +60,23 @@ class Lexer {
         return false;
     }
 
+    static bool is_identifier_continue(unsigned char c) {
+        return std::isalnum(c) || c == '_';
+    }
+
+    bool match_word(std::string_view expected) {
+        if (current + expected.length() > source.length()) return false;
+        if (source.substr(current, expected.length()) != expected) return false;
+        unsigned char next = current + expected.length() < source.length()
+            ? static_cast<unsigned char>(source[current + expected.length()])
+            : '\0';
+        if (is_identifier_continue(next)) return false;
+        for (size_t i = 0; i < expected.length(); i++) {
+            advance();
+        }
+        return true;
+    }
+
     static bool is_continuation_byte(unsigned char c) {
         return (c & 0xC0) == 0x80;
     }
@@ -232,15 +249,11 @@ class Lexer {
         token_type type = token_type::identifier;
         
         if (text == "let") type = token_type::kw_let;
-        else if (text == "mut") type = token_type::kw_mut;
         else if (text == "struct") type = token_type::kw_struct;
         else if (text == "if") type = token_type::kw_if;
         else if (text == "else") type = token_type::kw_else;
         else if (text == "while") type = token_type::kw_while;
         else if (text == "for") type = token_type::kw_for;
-        else if (text == "true") type = token_type::kw_true;
-        else if (text == "false") type = token_type::kw_false;
-        else if (text == "undecided") type = token_type::kw_undecided;
         else if (text == "break") type = token_type::kw_break;
         else if (text == "match") type = token_type::kw_match;
         else if (text == "do") type = token_type::kw_do;
@@ -361,7 +374,10 @@ class Lexer {
                 else add_token(token_type::dot);
                 break;
             case '-':
-                if (match('>')) add_token(token_type::arrow);
+                if (match('>')) {
+                    if (match_word("mut")) add_token(token_type::arrow_mut);
+                    else add_token(token_type::arrow);
+                }
                 else if (match('=')) add_token(token_type::minus_equal);
                 else add_token(token_type::minus);
                 break;
@@ -385,6 +401,7 @@ class Lexer {
                 break;
             case '&':
                 if (match('&')) add_token(token_type::and_and);
+                else if (match_word("mut")) add_token(token_type::ampersand_mut);
                 else add_token(token_type::ampersand);
                 break;
             case '!':

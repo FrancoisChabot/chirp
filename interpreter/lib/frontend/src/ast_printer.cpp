@@ -84,6 +84,7 @@ public:
 
     void visit(const ConstructedSetExpr& expr) override {
         result += "(c_set ";
+        if (expr.binding.is_final) result += "final ";
         if (expr.binding.is_mut) result += "mut ";
         result += expr.binding.name.lexeme;
         if (expr.binding.type_bound) {
@@ -105,6 +106,7 @@ public:
 
     void visit(const ForExpr& expr) override {
         result += "(for ";
+        if (expr.iterator_binding.is_final) result += "final ";
         if (expr.iterator_binding.is_mut) result += "mut ";
         result += expr.iterator_binding.name.lexeme;
         if (expr.iterator_binding.type_bound) {
@@ -132,6 +134,7 @@ public:
         result += "(lambda (";
         for (size_t i = 0; i < expr.parameters.size(); ++i) {
             if (i > 0) result += " ";
+            if (expr.parameters[i].is_final) result += "final ";
             if (expr.parameters[i].is_mut) result += "mut ";
             result += expr.parameters[i].name.lexeme;
             if (expr.parameters[i].type_bound) {
@@ -153,6 +156,7 @@ public:
         result += "(struct";
         for (const auto& field : expr.fields) {
             result += " (field ";
+            if (field.is_final) result += "final ";
             if (field.is_mut) result += "mut ";
             result += field.name.lexeme;
             if (field.type_bound) {
@@ -231,6 +235,7 @@ public:
 
     void visit(const LetStmt& stmt) override {
         result += "(let ";
+        if (stmt.binding.is_final) result += "final ";
         if (stmt.binding.is_mut) result += "mut ";
         result += stmt.binding.name.lexeme;
         if (stmt.binding.type_bound) {
