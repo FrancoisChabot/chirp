@@ -1,0 +1,11 @@
+`expect_test_failure;
+`expect_stdout("#foo\n#foo\ntrue\nfalse\ntrue\nfalse\n");
+`expect_exit(0);
+
+let x = #foo;
+`print(x);
+`print(#foo);
+`print(x == #foo);
+`print(x != #foo);
+`print(#foo == #foo);
+`print(#foo == #bar);
