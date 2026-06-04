@@ -1,0 +1,16 @@
+// Types are sets of their instances. Using a type like `int` as a match
+// pattern tests `subject ∈ int`, i.e. `typeof(subject) == int`.
+`expect_test_failure;
+`expect_stdout("integer\nboolean\ntext\n");
+`expect_exit(0);
+
+let describe(v) = match v {
+    int => "integer",
+    Bool => "boolean",
+    string => "text",
+    `any => "unknown"
+};
+
+`print(describe(42));
+`print(describe(true));
+`print(describe("hello"));

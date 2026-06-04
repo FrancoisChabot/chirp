@@ -1,0 +1,13 @@
+// Match against literal patterns. Each literal acts as a singleton set,
+// so `match x { 2 => ... }` is equivalent to testing `x ∈ {2}`.
+`expect_test_failure;
+`expect_stdout("two\n");
+`expect_exit(0);
+
+let x = 2;
+let result = match x {
+    1 => "one",
+    2 => "two",
+    3 => "three"
+};
+`print(result);

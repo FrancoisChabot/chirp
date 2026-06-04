@@ -1,0 +1,17 @@
+// Match patterns can be stored in bindings (indirected sets), since patterns
+// are just ordinary set values.
+`expect_test_failure;
+`expect_stdout("even\nodd\neven\n");
+`expect_exit(0);
+
+let even = {x : int | x % 2 == 0};
+let odd = {x : int | x % 2 != 0};
+
+let parity(n) = match n {
+    even => "even",
+    odd => "odd"
+};
+
+`print(parity(4));
+`print(parity(7));
+`print(parity(0));

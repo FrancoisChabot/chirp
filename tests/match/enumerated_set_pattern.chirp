@@ -1,0 +1,15 @@
+// A match pattern can be an enumerated set. The subject is tested for
+// membership in that set, so `{1, 2} => ...` fires when `subject ∈ {1, 2}`.
+`expect_test_failure;
+`expect_stdout("small\nsmall\nbig\n");
+`expect_exit(0);
+
+let classify(n) = match n {
+    {1, 2, 3} => "small",
+    {4, 5, 6} => "big",
+    `any => "unknown"
+};
+
+`print(classify(2));
+`print(classify(3));
+`print(classify(5));

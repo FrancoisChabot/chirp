@@ -1,0 +1,14 @@
+// Match arm bodies can be block expressions with arbitrary statements.
+`expect_test_failure;
+`expect_stdout("6\n");
+`expect_exit(0);
+
+let x = 3;
+let result = match x {
+    {n : int | n > 0} => do {
+        let doubled = x * 2;
+        break doubled;
+    },
+    `any => 0
+};
+`print(result);
