@@ -1,6 +1,5 @@
 `expect_stdout("4\n");
 `expect_exit(0);
-`expect_test_failure;
 
 let x : {n : int | n % 2 == 0} = 4;
 `print(x);

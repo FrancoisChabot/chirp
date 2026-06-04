@@ -1,6 +1,5 @@
 `expect_stdout("true\nfalse\ntrue\nfalse\n");
 `expect_exit(0);
-`expect_test_failure;
 
 let positive = {x : int | x > 0};
 let even = {x : int | x % 2 == 0};

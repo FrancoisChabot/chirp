@@ -1,6 +1,5 @@
 `expect_stdout("true\nfalse\nfalse\n");
 `expect_exit(0);
-`expect_test_failure;
 
 let small_even = {x : 1..=10 | x % 2 == 0};
 

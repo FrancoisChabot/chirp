@@ -178,8 +178,41 @@ private:
         return value.asInt();
     }
 
+    Value belongs_to(const Value& set, const Value& value, const token& diag) {
+        if (!set.isConstructedSet()) {
+            return belongsTo(set, value);
+        }
+
+        const ConstructedSetExpr& expr = set.asConstructedSet();
+        Value bound = expr.binding.type_bound ? evaluate(*expr.binding.type_bound) : Any();
+        Value in_bound = belongs_to(bound, value, expr.diagnostic_token);
+        if (!in_bound.isBool()) {
+            fail(expr.diagnostic_token, "Set bound belonging predicate did not return Bool");
+        }
+        if (!in_bound.asBool()) {
+            return Value::make_bool(false);
+        }
+
+        scopes_.emplace_back();
+        try {
+            auto binding = std::make_shared<Binding>(bound, bound, value);
+            define_binding(expr.binding.name.lexeme, std::move(binding), expr.binding.name);
+
+            Value predicate_result = evaluate(*expr.condition);
+            if (!predicate_result.isBool()) {
+                fail(expr.diagnostic_token, "Constructed set predicate must evaluate to Bool");
+            }
+
+            scopes_.pop_back();
+            return predicate_result;
+        } catch (...) {
+            scopes_.pop_back();
+            throw;
+        }
+    }
+
     void enforce_constraint(const Value& constraint, const Value& value, const token& diag) {
-        Value belongs = belongsTo(constraint, value);
+        Value belongs = belongs_to(constraint, value, diag);
         if (!belongs.isBool()) {
             fail(diag, "Constraint belonging predicate did not return Bool");
         }
@@ -389,10 +422,10 @@ private:
                     true);
                 return;
             case BinaryOp::In:
-                result_ = belongsTo(right, left);
+                result_ = belongs_to(right, left, expr.diagnostic_token);
                 return;
             case BinaryOp::NotIn:
-                result_ = Value::make_bool(!as_bool(belongsTo(right, left), expr.diagnostic_token));
+                result_ = Value::make_bool(!as_bool(belongs_to(right, left, expr.diagnostic_token), expr.diagnostic_token));
                 return;
             default:
                 fail(expr.diagnostic_token, "Unsupported binary operator");
@@ -473,7 +506,7 @@ private:
     }
 
     void visit(const ConstructedSetExpr& expr) override {
-        fail(expr.diagnostic_token, "Constructed sets are not supported yet");
+        result_ = Value::make_constructed_set(expr);
     }
 
     void visit(const IfExpr& expr) override {

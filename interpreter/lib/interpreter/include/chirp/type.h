@@ -89,6 +89,14 @@ public:
     Value br(const Value& S, const Value& lc) const override;
 };
 
+class ConstructedSetType : public Type {
+public:
+    std::string_view name() const override { return "ConstructedSet"; }
+    bool hasSetness() const override { return true; }
+    Value bp(const Value& S, const Value& v) const override;
+    Value br(const Value& S, const Value& lc) const override;
+};
+
 // Subclass for BindingType
 class BindingType : public Type {
 public:

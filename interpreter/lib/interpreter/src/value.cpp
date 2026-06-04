@@ -47,6 +47,11 @@ std::shared_ptr<const Type> getRangeType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getConstructedSetType() {
+    static auto instance = std::make_shared<ConstructedSetType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getBindingType() {
     static auto instance = std::make_shared<BindingType>();
     return instance;
@@ -161,6 +166,10 @@ Value Value::make_range(int64_t start, int64_t end, bool inclusive_end) {
     return Value(getRangeType(), RangeTag{start, end, inclusive_end});
 }
 
+Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set) {
+    return Value(getConstructedSetType(), ConstructedSetTag{&set});
+}
+
 Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
     return Value(getFunctionType(), LambdaTag{&lambda});
 }
@@ -250,6 +259,17 @@ Value::RangeTag Value::asRange() const {
     return std::get<RangeTag>(payload_);
 }
 
+bool Value::isConstructedSet() const {
+    return std::holds_alternative<ConstructedSetTag>(payload_);
+}
+
+const frontend::ConstructedSetExpr& Value::asConstructedSet() const {
+    if (!isConstructedSet()) {
+        throw std::runtime_error("Value is not a ConstructedSet");
+    }
+    return *std::get<ConstructedSetTag>(payload_).set;
+}
+
 bool Value::isLambda() const {
     return std::holds_alternative<LambdaTag>(payload_);
 }
@@ -313,6 +333,9 @@ std::string Value::toString() const {
         std::stringstream ss;
         ss << range.start << (range.inclusive_end ? "..=" : "..") << range.end;
         return ss.str();
+    }
+    if (isConstructedSet()) {
+        return "<constructed-set>";
     }
     if (isLambda()) {
         return "<function>";
@@ -431,6 +454,16 @@ Value RangeType::bp(const Value& S, const Value& v) const {
 }
 
 Value RangeType::br(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+// --- ConstructedSetType bp/br implementations ({x | predicate}) ---
+
+Value ConstructedSetType::bp(const Value& S, const Value& v) const {
+    throw std::runtime_error("ConstructedSetType::bp requires evaluator context");
+}
+
+Value ConstructedSetType::br(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
