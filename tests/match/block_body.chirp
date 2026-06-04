@@ -1,5 +1,4 @@
 // Match arm bodies can be block expressions with arbitrary statements.
-`expect_test_failure;
 `expect_stdout("6\n");
 `expect_exit(0);
 

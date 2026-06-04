@@ -52,6 +52,11 @@ std::shared_ptr<const Type> getConstructedSetType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getCompositeSetType() {
+    static auto instance = std::make_shared<CompositeSetType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getBindingType() {
     static auto instance = std::make_shared<BindingType>();
     return instance;
@@ -170,6 +175,10 @@ Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set) {
     return Value(getConstructedSetType(), ConstructedSetTag{&set});
 }
 
+Value Value::make_composite_set(Value left, Value right, CompositeSetOp op) {
+    return Value(getCompositeSetType(), CompositeSetTag{std::make_shared<Value>(std::move(left)), std::make_shared<Value>(std::move(right)), op});
+}
+
 Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
     return Value(getFunctionType(), LambdaTag{&lambda});
 }
@@ -279,6 +288,17 @@ const frontend::LambdaExpr& Value::asLambda() const {
         throw std::runtime_error("Value is not a Function");
     }
     return *std::get<LambdaTag>(payload_).lambda;
+}
+
+bool Value::isCompositeSet() const {
+    return std::holds_alternative<CompositeSetTag>(payload_);
+}
+
+const Value::CompositeSetTag& Value::asCompositeSet() const {
+    if (!isCompositeSet()) {
+        throw std::runtime_error("Value is not a CompositeSet");
+    }
+    return std::get<CompositeSetTag>(payload_);
 }
 
 bool Value::operator==(const Value& other) const {
@@ -464,6 +484,32 @@ Value ConstructedSetType::bp(const Value& S, const Value& v) const {
 }
 
 Value ConstructedSetType::br(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+// --- CompositeSetType bp/br implementations (A ∪ B, A ∩ B) ---
+
+Value CompositeSetType::bp(const Value& S, const Value& v) const {
+    if (!S.isCompositeSet()) {
+        throw std::runtime_error("CompositeSetType::bp: S must be a CompositeSet value");
+    }
+    const auto& comp = S.asCompositeSet();
+    Value left_res = belongsTo(*comp.left, v);
+    if (!left_res.isBool()) {
+        throw std::runtime_error("Left operand of composite set did not return Bool for belonging");
+    }
+
+    if (comp.op == Value::CompositeSetOp::Union) {
+        if (left_res.asBool()) return Value::make_bool(true);
+        return belongsTo(*comp.right, v);
+    } else {
+        // Intersection
+        if (!left_res.asBool()) return Value::make_bool(false);
+        return belongsTo(*comp.right, v);
+    }
+}
+
+Value CompositeSetType::br(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 

@@ -49,6 +49,16 @@ public:
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
     };
 
+    enum class CompositeSetOp { Union, Intersection };
+    struct CompositeSetTag {
+        std::shared_ptr<Value> left;
+        std::shared_ptr<Value> right;
+        CompositeSetOp op;
+        bool operator==(const CompositeSetTag& other) const {
+            return left == other.left && right == other.right && op == other.op;
+        }
+    };
+
     // Constructs a Chirp `void` value.
     Value();
     
@@ -62,6 +72,7 @@ public:
     static Value make_range(int64_t start, int64_t end, bool inclusive_end);
     static Value make_constructed_set(const frontend::ConstructedSetExpr& set);
     static Value make_lambda(const frontend::LambdaExpr& lambda);
+    static Value make_composite_set(Value left, Value right, CompositeSetOp op);
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
     std::shared_ptr<const Type> getType() const;
@@ -96,18 +107,23 @@ public:
     bool isLambda() const;
     const frontend::LambdaExpr& asLambda() const;
 
+    bool isCompositeSet() const;
+    const CompositeSetTag& asCompositeSet() const;
+
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
 
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    Value(std::shared_ptr<const Type> type, std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag> payload)
+    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, CompositeSetTag>;
+
+    Value(std::shared_ptr<const Type> type, Payload payload)
         : type_(std::move(type)), payload_(std::move(payload)) {}
 
 private:
     std::shared_ptr<const Type> type_;
-    std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag> payload_;
+    Payload payload_;
 };
 
 

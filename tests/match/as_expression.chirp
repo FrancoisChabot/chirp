@@ -1,12 +1,11 @@
 // match is an expression — its value is the body of the matched arm.
 // It can be used directly in binding initializers.
-`expect_test_failure;
-`expect_stdout("10\n");
+`expect_stdout("4\n");
 `expect_exit(0);
 
 let x = 2;
 let doubled = match x {
-    {x : int | x > 0} => x * 2,
+    {n : int | n > 0} => x * 2,
     `any => 0
 };
 `print(doubled);

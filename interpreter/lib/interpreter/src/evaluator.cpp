@@ -179,6 +179,21 @@ private:
     }
 
     Value belongs_to(const Value& set, const Value& value, const token& diag) {
+        if (set.isCompositeSet()) {
+            const auto& comp = set.asCompositeSet();
+            Value left_res = belongs_to(*comp.left, value, diag);
+            if (!left_res.isBool()) {
+                fail(diag, "Left operand of composite set did not return Bool for belonging");
+            }
+            if (comp.op == Value::CompositeSetOp::Union) {
+                if (left_res.asBool()) return Value::make_bool(true);
+                return belongs_to(*comp.right, value, diag);
+            } else {
+                if (!left_res.asBool()) return Value::make_bool(false);
+                return belongs_to(*comp.right, value, diag);
+            }
+        }
+
         if (!set.isConstructedSet()) {
             return belongsTo(set, value);
         }
@@ -278,6 +293,25 @@ private:
             return elements;
         }
 
+        if (set.isCompositeSet()) {
+            const auto& comp = set.asCompositeSet();
+            std::vector<Value> elements = finite_elements(*comp.left, diag);
+            if (comp.op == Value::CompositeSetOp::Union) {
+                for (const auto& element : finite_elements(*comp.right, diag)) {
+                    append_unique(elements, element);
+                }
+            } else { // Intersection
+                std::vector<Value> intersected;
+                for (const auto& element : elements) {
+                    if (as_bool(belongs_to(*comp.right, element, diag), diag)) {
+                        append_unique(intersected, element);
+                    }
+                }
+                return intersected;
+            }
+            return elements;
+        }
+
         if (set == Empty()) {
             return {};
         }
@@ -292,25 +326,13 @@ private:
     Value set_union(const Value& left, const Value& right, const token& diag) {
         require_set_operand(left, diag);
         require_set_operand(right, diag);
-
-        std::vector<Value> elements = finite_elements(left, diag);
-        for (const auto& element : finite_elements(right, diag)) {
-            append_unique(elements, element);
-        }
-        return Value::make_enumerated_set(std::move(elements));
+        return Value::make_composite_set(left, right, Value::CompositeSetOp::Union);
     }
 
     Value set_intersection(const Value& left, const Value& right, const token& diag) {
         require_set_operand(left, diag);
         require_set_operand(right, diag);
-
-        std::vector<Value> elements;
-        for (const auto& element : finite_elements(left, diag)) {
-            if (as_bool(belongs_to(right, element, diag), diag)) {
-                append_unique(elements, element);
-            }
-        }
-        return Value::make_enumerated_set(std::move(elements));
+        return Value::make_composite_set(left, right, Value::CompositeSetOp::Intersection);
     }
 
     bool is_subset(const Value& left, const Value& right, const token& diag) {
@@ -755,7 +777,28 @@ private:
     }
 
     void visit(const MatchExpr& expr) override {
-        fail(expr.diagnostic_token, "match expressions are not supported yet");
+        Value subject = evaluate(*expr.subject);
+
+        for (const auto& arm : expr.arms) {
+            Value pattern = evaluate(*arm.pattern);
+
+            bool matched = false;
+            if (pattern.getType()->hasSetness()) {
+                // Pattern is a set: test subject ∈ pattern
+                Value result = belongs_to(pattern, subject, expr.diagnostic_token);
+                matched = as_bool(result, expr.diagnostic_token);
+            } else {
+                // Pattern is a literal value (int, string, etc.): test equality
+                matched = (subject == pattern);
+            }
+
+            if (matched) {
+                result_ = evaluate(*arm.body);
+                return;
+            }
+        }
+
+        fail(expr.diagnostic_token, "Non-exhaustive match: no arm matched value " + display_string(subject));
     }
 
     void visit(const ExprStmt& stmt) override {

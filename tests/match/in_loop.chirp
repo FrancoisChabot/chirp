@@ -1,5 +1,4 @@
 // Match used inside a for loop with computed subject expression.
-`expect_test_failure;
 `expect_stdout("odd\neven\nodd\neven\n");
 `expect_exit(0);
 

@@ -1,6 +1,5 @@
 // Match with set union (∪) in a pattern. The subject is tested for membership
 // in the union of the two sets.
-`expect_test_failure;
 `expect_stdout("special\nspecial\nnormal\n");
 `expect_exit(0);
 

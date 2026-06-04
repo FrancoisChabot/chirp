@@ -1,6 +1,5 @@
 // `any is the set of all values. An arm with `any as its pattern always
 // matches, serving as the catch-all / default case.
-`expect_test_failure;
 `expect_stdout("other\n");
 `expect_exit(0);
 

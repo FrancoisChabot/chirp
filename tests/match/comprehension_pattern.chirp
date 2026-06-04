@@ -1,6 +1,5 @@
 // A match pattern can be a constructed set (comprehension). The subject is
 // tested for membership via the comprehension's belonging predicate.
-`expect_test_failure;
 `expect_stdout("positive\nnon-positive\n");
 `expect_exit(0);
 

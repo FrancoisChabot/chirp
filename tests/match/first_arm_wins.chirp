@@ -1,5 +1,4 @@
 // Arms are tested in order; the first arm whose pattern contains the subject wins.
-`expect_test_failure;
 `expect_stdout("first\n");
 `expect_exit(0);
 
