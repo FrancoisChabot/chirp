@@ -75,15 +75,38 @@ def find_test_files(tests_dir):
                 test_files.append(os.path.join(dirpath, filename))
     return sorted(test_files, key=lambda path: os.path.relpath(path, tests_dir))
 
-def main():
-    # Find chirp executable
-    if len(sys.argv) <= 1:
-        print("Usage: test_conformance.py <path_to_chirp_executable>")
+def print_usage():
+    print("Usage: test_conformance.py <path_to_chirp_executable> [--filter TEXT]")
+
+def parse_args(argv):
+    if len(argv) <= 1:
+        print_usage()
         sys.exit(1)
 
+    chirp_bin = argv[1]
+    test_filter = None
+
+    i = 2
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--filter":
+            if i + 1 >= len(argv):
+                print("Error: --filter requires a value.")
+                print_usage()
+                sys.exit(1)
+            test_filter = argv[i + 1]
+            i += 2
+        else:
+            print(f"Unknown argument: {arg}")
+            print_usage()
+            sys.exit(1)
+
+    return chirp_bin, test_filter
+
+def main():
+    chirp_bin, test_filter = parse_args(sys.argv)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
-    chirp_bin = sys.argv[1]
     
     if not os.path.exists(chirp_bin):
         print(f"Error: Chirp executable not found at '{chirp_bin}'. Did you build the project?")
@@ -91,13 +114,24 @@ def main():
         
     tests_dir = os.path.join(root_dir, "tests")
     test_files = find_test_files(tests_dir)
+    if test_filter is not None:
+        test_files = [
+            path for path in test_files
+            if test_filter in os.path.relpath(path, tests_dir)
+        ]
     
     if not test_files:
-        print("No .chirp tests found.")
+        if test_filter is None:
+            print("No .chirp tests found.")
+        else:
+            print(f"No .chirp tests matched filter: {test_filter}")
         sys.exit(1)
     
     test_word = "test" if len(test_files) == 1 else "tests"
-    print(f"Running {len(test_files)} {test_word}...")
+    if test_filter is None:
+        print(f"Running {len(test_files)} {test_word}...")
+    else:
+        print(f"Running {len(test_files)} {test_word} matching filter: {test_filter}")
     print("=" * 60)
     
     passed_count = 0
