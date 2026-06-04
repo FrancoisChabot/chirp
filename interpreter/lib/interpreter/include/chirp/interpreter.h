@@ -7,6 +7,7 @@
 #include <exception>
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,6 +74,14 @@ Value belongsTo(const Value& S, const Value& v);
 // Set range helper: typeof(S).br(S, lc)
 Value belongsRange(const Value& S, const Value& lc);
 
+struct SessionExpectations {
+    std::optional<std::string> expected_stdout;
+    std::optional<int> expected_interpreter_exit;
+    std::optional<int> expected_script_exit;
+    bool expect_test_failure = false;
+    bool has_expectations = false;
+};
+
 class Session {
 public:
     explicit Session(std::ostream& out);
@@ -86,6 +95,8 @@ public:
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts);
     void execute_source(std::string source, std::string label);
     void execute_boot_source(std::string source, std::string label);
+
+    SessionExpectations getExpectations() const;
 
 private:
     class Impl;

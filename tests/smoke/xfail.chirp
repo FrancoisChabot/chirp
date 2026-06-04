@@ -1,0 +1,2 @@
+`expect_test_failure;
+let x = ; // Intentional syntax error to verify the XFAIL test pipeline

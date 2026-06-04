@@ -121,6 +121,8 @@ constexpr int64_t MAX_LOOP_ITERATIONS = 1'000'000;
 
 class Evaluator : public ASTVisitor, public StmtVisitor {
 public:
+    SessionExpectations expectations;
+
     explicit Evaluator(std::ostream& out) : out_(out) {
         scopes_.emplace_back();
     }
@@ -717,6 +719,12 @@ private:
     }
 
     void visit(const IntrinsicExpr& expr) override {
+        if (is_name(expr.name, "`expect_test_failure")) {
+            expectations.has_expectations = true;
+            expectations.expect_test_failure = true;
+            result_ = VoidVal();
+            return;
+        }
         result_ = builtin_intrinsic(expr.name, expr.diagnostic_token);
     }
 
@@ -829,6 +837,35 @@ private:
                 return;
             }
             if (is_harness_intrinsic(intrinsic->name)) {
+                if (is_name(intrinsic->name, "`expect_stdout")) {
+                    if (expr.args.size() == 1) {
+                        Value arg = evaluate(*expr.args.front().value);
+                        if (arg.isString()) {
+                            expectations.has_expectations = true;
+                            if (!expectations.expected_stdout.has_value()) {
+                                expectations.expected_stdout = arg.asString();
+                            } else {
+                                *expectations.expected_stdout += arg.asString();
+                            }
+                        }
+                    }
+                } else if (is_name(intrinsic->name, "`expect_interpreter_exit")) {
+                    if (expr.args.size() == 1) {
+                        Value arg = evaluate(*expr.args.front().value);
+                        if (arg.isInt()) {
+                            expectations.has_expectations = true;
+                            expectations.expected_interpreter_exit = static_cast<int>(arg.asInt());
+                        }
+                    }
+                } else if (is_name(intrinsic->name, "`expect_script_exit")) {
+                    if (expr.args.size() == 1) {
+                        Value arg = evaluate(*expr.args.front().value);
+                        if (arg.isInt()) {
+                            expectations.has_expectations = true;
+                            expectations.expected_script_exit = static_cast<int>(arg.asInt());
+                        }
+                    }
+                }
                 result_ = VoidVal();
                 return;
             }
@@ -906,6 +943,10 @@ private:
     void visit(const ExprStmt& stmt) override {
         if (const auto* intrinsic = dynamic_cast<const IntrinsicExpr*>(stmt.expression.get());
             intrinsic != nullptr && is_harness_intrinsic(intrinsic->name)) {
+            if (is_name(intrinsic->name, "`expect_test_failure")) {
+                expectations.has_expectations = true;
+                expectations.expect_test_failure = true;
+            }
             return;
         }
         evaluate(*stmt.expression);
@@ -987,6 +1028,10 @@ class Session::Impl {
 public:
     explicit Impl(std::ostream& out) : evaluator(out) {}
 
+    SessionExpectations getExpectations() const {
+        return evaluator.expectations;
+    }
+
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
         evaluator.execute(stmts);
     }
@@ -1039,6 +1084,10 @@ void Session::execute_source(std::string source, std::string label) {
 
 void Session::execute_boot_source(std::string source, std::string label) {
     impl_->execute_source(std::move(source), std::move(label), true);
+}
+
+SessionExpectations Session::getExpectations() const {
+    return impl_->getExpectations();
 }
 
 void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::ostream& out) {

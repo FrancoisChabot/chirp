@@ -6,51 +6,16 @@ import json
 import subprocess
 import tempfile
 
-def parse_expectations(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    # Strip line comments (// ...) while preserving double-quoted string literals.
-    comment_pattern = r'("(?:[^"\\]|\\.)*")|(//[^\n]*)'
-    def strip_comment(match):
-        if match.group(1):
-            return match.group(1)
-        return ""
-    clean_content = re.sub(comment_pattern, strip_comment, content)
-    
-    # Extract expected stdout. Can be multiple calls, which we concatenate.
-    stdout_matches = re.findall(r'`expect_stdout\("((?:[^"\\]|\\.)*)"\);', clean_content)
-    expected_stdout = None
-    if stdout_matches:
-        expected_stdout = ""
-        for match in stdout_matches:
-            decoded = match.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
-            expected_stdout += decoded
-        
-    # Extract expected interpreter exit code. If a script exit is expected and
-    # no interpreter exit is specified, the interpreter is expected to forward
-    # the script's status code.
-    interpreter_exit_match = re.search(r'`expect_interpreter_exit\((\d+)\);', clean_content)
-    expected_interpreter_exit = int(interpreter_exit_match.group(1)) if interpreter_exit_match else None
-
-    script_exit_match = re.search(r'`expect_script_exit\((\d+)\);', clean_content)
-    expected_script_exit = int(script_exit_match.group(1)) if script_exit_match else None
-
-    if expected_interpreter_exit is None:
-        expected_interpreter_exit = expected_script_exit if expected_script_exit is not None else 0
-    
-    # Check for `expect_test_failure; tag
-    expect_test_failure = bool(re.search(r'`expect_test_failure\s*;', clean_content))
-    
-    return expected_stdout, expected_interpreter_exit, expected_script_exit, expect_test_failure
-
 def run_test(chirp_bin, file_path, report_path):
-    expected_stdout, expected_interpreter_exit, expected_script_exit, expect_test_failure = parse_expectations(file_path)
-    
     # Run the interpreter
     # Truncate the report file to prevent reading stale data if the interpreter crashes early
     open(report_path, 'w').close()
     
+    expected_stdout = None
+    expected_interpreter_exit = None
+    expected_script_exit = None
+    expect_test_failure = False
+
     try:
         result = subprocess.run(
             [chirp_bin, "--run-report", report_path, file_path],
@@ -71,11 +36,19 @@ def run_test(chirp_bin, file_path, report_path):
                     elif event.get("event") == "outcome":
                         report["outcome"] = event.get("outcome")
                         report["script_exit"] = event.get("script_exit")
+                    elif event.get("event") == "expectations":
+                        expected_stdout = event.get("expected_stdout")
+                        expected_interpreter_exit = event.get("expected_interpreter_exit")
+                        expected_script_exit = event.get("expected_script_exit")
+                        expect_test_failure = event.get("expect_test_failure", False)
             except json.JSONDecodeError as e:
                 return False, f"Could not read run report: {e}", expect_test_failure
     except subprocess.TimeoutExpired:
         return False, f"Execution timed out after 5 seconds", expect_test_failure
     
+    if expected_interpreter_exit is None:
+        expected_interpreter_exit = expected_script_exit if expected_script_exit is not None else 0
+        
     actual_exit = result.returncode
     actual_stdout = result.stdout
     actual_stderr = result.stderr
