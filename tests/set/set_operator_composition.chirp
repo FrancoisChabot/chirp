@@ -1,5 +1,5 @@
 `expect_stdout("true\ntrue\nfalse\ntrue\nfalse\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let odds_or_evens = {1, 3} ∪ {2, 4};
 let small_even = {x : 1..=6 | x % 2 == 0};

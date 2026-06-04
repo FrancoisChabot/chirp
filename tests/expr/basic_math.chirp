@@ -1,5 +1,5 @@
 `expect_stdout("3\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 
 `print(1 + 2);

@@ -1,7 +1,7 @@
 // match is an expression — its value is the body of the matched arm.
 // It can be used directly in binding initializers.
 `expect_stdout("4\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let x = 2;
 let doubled = match x {

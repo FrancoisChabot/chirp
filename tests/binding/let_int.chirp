@@ -1,5 +1,5 @@
 `expect_stdout("1\n2\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let x : int = 1;
 `print(x);

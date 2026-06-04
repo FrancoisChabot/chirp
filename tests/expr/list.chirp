@@ -1,5 +1,5 @@
 `expect_stdout("2\n3\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let my_list = [1, 2, 3];
 `print(my_list[1]);

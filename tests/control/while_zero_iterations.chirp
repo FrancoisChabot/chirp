@@ -1,5 +1,5 @@
 `expect_stdout("done\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let n = 5;
 while (n < 5) do {

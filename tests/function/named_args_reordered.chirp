@@ -1,5 +1,5 @@
 `expect_stdout("3\n12\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let sum = (x : int, y : int) : int => x + y;
 let product = (x : int, y : int) : int => x * y;

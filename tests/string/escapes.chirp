@@ -1,5 +1,5 @@
 `expect_stdout("a\nb\ntab\tend\nquote: \"\nslash: \\\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 `print("a\nb");
 `print("tab\tend");

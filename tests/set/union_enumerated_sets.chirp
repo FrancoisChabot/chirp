@@ -1,5 +1,5 @@
 `expect_stdout("true\ntrue\ntrue\nfalse\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let s = {1, 2} ∪ {2, 3};
 

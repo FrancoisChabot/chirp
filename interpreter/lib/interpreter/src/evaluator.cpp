@@ -112,7 +112,8 @@ bool is_name(std::string_view actual, std::string_view expected) {
 
 bool is_harness_intrinsic(std::string_view name) {
     return is_name(name, "`expect_stdout") ||
-        is_name(name, "`expect_exit") ||
+        is_name(name, "`expect_interpreter_exit") ||
+        is_name(name, "`expect_script_exit") ||
         is_name(name, "`expect_test_failure");
 }
 
@@ -406,6 +407,7 @@ private:
     Value boot_bind(std::string_view name, const token& diag) const {
         if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
+        if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "bool_type")) return Bool();
@@ -448,6 +450,17 @@ private:
                 }
                 Value value = evaluate(*args.front().value);
                 return Value::make_type(value.getType());
+            }
+            case Value::HostFunction::Exit: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`exit expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                int64_t code = as_int(value, diag);
+                if (code < 0 || code > 255) {
+                    fail(diag, "`exit expects an integer exit code between 0 and 255");
+                }
+                throw ScriptExit(static_cast<int>(code));
             }
         }
         fail(diag, "Unknown host function");
@@ -996,6 +1009,8 @@ public:
             } else {
                 evaluator.execute(loaded->stmts);
             }
+        } catch (const ScriptExit&) {
+            throw;
         } catch (const std::exception& e) {
             if (error_label.empty()) {
                 throw;

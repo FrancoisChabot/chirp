@@ -1,5 +1,5 @@
 `expect_stdout("1\n2\n3\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 for (n ∈ 1..=3) do {
     `print(n);

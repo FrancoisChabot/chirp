@@ -2,6 +2,7 @@
 // once Chirp has the user-facing mechanisms needed to express them.
 let `print = `__boot_bind("print_func");
 let `typeof = `__boot_bind("typeof_func");
+let `exit = `__boot_bind("exit_func");
 let final true = `__boot_bind("true_val");
 let final false = `__boot_bind("false_val");
 let final Bool = `__boot_bind("bool_type");

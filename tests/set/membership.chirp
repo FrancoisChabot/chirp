@@ -1,5 +1,5 @@
 `expect_stdout("true\nfalse\nfalse\ntrue\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 `print(2 ∈ {1, 2});
 `print(3 ∈ {1, 2});

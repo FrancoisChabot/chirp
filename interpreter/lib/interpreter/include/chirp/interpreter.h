@@ -4,6 +4,7 @@
 #include "type.h"
 #include "binding.h"
 
+#include <exception>
 #include <iosfwd>
 #include <memory>
 #include <string>
@@ -14,6 +15,17 @@ class Stmt;
 }
 
 namespace chirp::interpreter {
+
+class ScriptExit : public std::exception {
+public:
+    explicit ScriptExit(int code) : code_(code) {}
+
+    int code() const noexcept { return code_; }
+    const char* what() const noexcept override { return "script exit"; }
+
+private:
+    int code_;
+};
 
 // Getters for the core predefined interpreter values and types
 

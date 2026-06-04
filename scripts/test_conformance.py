@@ -2,7 +2,9 @@
 import os
 import re
 import sys
+import json
 import subprocess
+import tempfile
 
 def parse_expectations(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
@@ -25,27 +27,52 @@ def parse_expectations(file_path):
             decoded = match.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
             expected_stdout += decoded
         
-    # Extract expected exit code (defaults to 0 if not specified)
-    exit_match = re.search(r'`expect_exit\((\d+)\);', clean_content)
-    expected_exit = int(exit_match.group(1)) if exit_match else 0
+    # Extract expected interpreter exit code. If a script exit is expected and
+    # no interpreter exit is specified, the interpreter is expected to forward
+    # the script's status code.
+    interpreter_exit_match = re.search(r'`expect_interpreter_exit\((\d+)\);', clean_content)
+    expected_interpreter_exit = int(interpreter_exit_match.group(1)) if interpreter_exit_match else None
+
+    script_exit_match = re.search(r'`expect_script_exit\((\d+)\);', clean_content)
+    expected_script_exit = int(script_exit_match.group(1)) if script_exit_match else None
+
+    if expected_interpreter_exit is None:
+        expected_interpreter_exit = expected_script_exit if expected_script_exit is not None else 0
     
     # Check for `expect_test_failure; tag
     expect_test_failure = bool(re.search(r'`expect_test_failure\s*;', clean_content))
     
-    return expected_stdout, expected_exit, expect_test_failure
+    return expected_stdout, expected_interpreter_exit, expected_script_exit, expect_test_failure
 
-def run_test(chirp_bin, file_path):
-    expected_stdout, expected_exit, expect_test_failure = parse_expectations(file_path)
+def run_test(chirp_bin, file_path, report_path):
+    expected_stdout, expected_interpreter_exit, expected_script_exit, expect_test_failure = parse_expectations(file_path)
     
     # Run the interpreter
+    # Truncate the report file to prevent reading stale data if the interpreter crashes early
+    open(report_path, 'w').close()
+    
     try:
         result = subprocess.run(
-            [chirp_bin, file_path],
+            [chirp_bin, "--run-report", report_path, file_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             timeout=5
         )
+        with open(report_path, "r", encoding="utf-8") as f:
+            try:
+                report = {"diagnostics": []}
+                for line in f:
+                    line = line.strip()
+                    if not line: continue
+                    event = json.loads(line)
+                    if event.get("event") == "diagnostic":
+                        report["diagnostics"].append(event)
+                    elif event.get("event") == "outcome":
+                        report["outcome"] = event.get("outcome")
+                        report["script_exit"] = event.get("script_exit")
+            except json.JSONDecodeError as e:
+                return False, f"Could not read run report: {e}", expect_test_failure
     except subprocess.TimeoutExpired:
         return False, f"Execution timed out after 5 seconds", expect_test_failure
     
@@ -54,10 +81,19 @@ def run_test(chirp_bin, file_path):
     actual_stderr = result.stderr
 
     failures = []
-    if actual_exit != expected_exit:
-        failures.append(f"Exit code mismatch: expected {expected_exit}, got {actual_exit}")
+    if actual_exit != expected_interpreter_exit:
+        failures.append(f"Interpreter exit code mismatch: expected {expected_interpreter_exit}, got {actual_exit}")
         if actual_stderr:
             failures.append(f"Stderr output:\n{actual_stderr.strip()}")
+
+    actual_script_exit = report.get("script_exit")
+    if expected_script_exit is not None:
+        if report.get("outcome") != "script_exit":
+            failures.append(f"Run outcome mismatch: expected script_exit, got {report.get('outcome')!r}")
+        if actual_script_exit != expected_script_exit:
+            failures.append(f"Script exit code mismatch: expected {expected_script_exit}, got {actual_script_exit}")
+    elif report.get("outcome") == "script_exit":
+        failures.append(f"Unexpected script exit with code {actual_script_exit}")
             
     if expected_stdout is not None and actual_stdout != expected_stdout:
         failures.append(f"Stdout mismatch:\n  Expected: {repr(expected_stdout)}\n  Actual:   {repr(actual_stdout)}")
@@ -145,37 +181,44 @@ def main():
     COLOR_YELLOW = "\033[93m"
     COLOR_RESET = "\033[0m"
     
-    for test_file in test_files:
-        name = os.path.relpath(test_file, tests_dir)
-        passed, detail, expect_test_failure = run_test(chirp_bin, test_file)
-        
-        if passed:
-            if expect_test_failure:
-                print(f"{COLOR_RED}[XPASS] {name}{COLOR_RESET} (Unexpectedly passed; please remove `expect_test_failure;)")
-                xpass_count += 1
-            else:
-                # N.B. extra space is for alignment with [XFAIL] and [XPASS]
-                print(f"{COLOR_GREEN}[PASS]  {name}{COLOR_RESET}")
-                passed_count += 1
-        else:
-            if expect_test_failure:
-                print(f"{COLOR_YELLOW}[XFAIL] {name}{COLOR_RESET}")
-                xfail_count += 1
-            else:
-                # N.B. extra space is for alignment with [XFAIL] and [XPASS]
-                print(f"{COLOR_RED}[FAIL]  {name}{COLOR_RESET}")
-                print("-" * 40)
-                print(detail)
-                print("-" * 40)
-                failed_count += 1
+    report_fd, report_path = tempfile.mkstemp(suffix=".json", prefix="chirp_report_")
+    os.close(report_fd)
+    
+    try:
+        for test_file in test_files:
+            name = os.path.relpath(test_file, tests_dir)
+            passed, detail, expect_test_failure = run_test(chirp_bin, test_file, report_path)
             
-    print("=" * 60)
-    print(f"Summary: {passed_count} passed, {xfail_count} expected failures (XFAIL)")
-    if xpass_count > 0 or failed_count > 0:
-        print(f"Errors: {failed_count} unexpected failures, {xpass_count} unexpected passes (XPASS)")
-        sys.exit(1)
-    else:
-        sys.exit(0)
+            if passed:
+                if expect_test_failure:
+                    print(f"{COLOR_RED}[XPASS] {name}{COLOR_RESET} (Unexpectedly passed; please remove `expect_test_failure;)")
+                    xpass_count += 1
+                else:
+                    # N.B. extra space is for alignment with [XFAIL] and [XPASS]
+                    print(f"{COLOR_GREEN}[PASS]  {name}{COLOR_RESET}")
+                    passed_count += 1
+            else:
+                if expect_test_failure:
+                    print(f"{COLOR_YELLOW}[XFAIL] {name}{COLOR_RESET}")
+                    xfail_count += 1
+                else:
+                    # N.B. extra space is for alignment with [XFAIL] and [XPASS]
+                    print(f"{COLOR_RED}[FAIL]  {name}{COLOR_RESET}")
+                    print("-" * 40)
+                    print(detail)
+                    print("-" * 40)
+                    failed_count += 1
+                
+        print("=" * 60)
+        print(f"Summary: {passed_count} passed, {xfail_count} expected failures (XFAIL)")
+        if xpass_count > 0 or failed_count > 0:
+            print(f"Errors: {failed_count} unexpected failures, {xpass_count} unexpected passes (XPASS)")
+            sys.exit(1)
+        else:
+            sys.exit(0)
+    finally:
+        if os.path.exists(report_path):
+            os.remove(report_path)
 
 if __name__ == "__main__":
     main()

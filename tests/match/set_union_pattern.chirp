@@ -1,7 +1,7 @@
 // Match with set union (∪) in a pattern. The subject is tested for membership
 // in the union of the two sets.
 `expect_stdout("special\nspecial\nnormal\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let low = {1, 2, 3};
 let high = {98, 99, 100};

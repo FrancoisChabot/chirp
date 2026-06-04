@@ -177,15 +177,17 @@ bool runAstDump(const fs::path& path) {
     }
 }
 
-bool runFile(const fs::path& path, const Options& options) {
+int runFile(const fs::path& path, const Options& options) {
     try {
         chirp::interpreter::Session session(std::cout);
         loadConfiguredBoot(session, options);
         session.execute_source(readFile(path), path.string());
-        return true;
+        return 0;
+    } catch (const chirp::interpreter::ScriptExit& e) {
+        return e.code();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
-        return false;
+        return 1;
     }
 }
 
@@ -226,57 +228,48 @@ void writeJsonString(std::ostream& out, std::string_view text) {
     out << '"';
 }
 
-bool writeRunReport(const fs::path& path, const RunReport& report) {
-    std::ofstream out(path);
-    if (!out.is_open()) {
-        std::cerr << "Error: could not write run report: " << path.string() << "\n";
-        return false;
+bool writeRunReport(std::ostream& out, const RunReport& report) {
+    out << "{\"schema\": \"chirp-run-report/v2\"}\n";
+    for (const auto& diagnostic : report.diagnostics) {
+        out << "{\"event\": \"diagnostic\", \"phase\": ";
+        writeJsonString(out, diagnostic.phase);
+        out << ", \"message\": ";
+        writeJsonString(out, diagnostic.message);
+        out << ", \"file\": ";
+        writeJsonString(out, diagnostic.file);
+        out << "}\n";
     }
-
-    out << "{\n";
-    out << "  \"schema\": \"chirp-run-report/v1\",\n";
-    out << "  \"outcome\": ";
+    out << "{\"event\": \"outcome\", \"outcome\": ";
     writeJsonString(out, report.outcome);
-    out << ",\n";
-    out << "  \"script_exit\": ";
+    out << ", \"script_exit\": ";
     if (report.script_exit.has_value()) {
         out << *report.script_exit;
     } else {
         out << "null";
     }
-    out << ",\n";
-    out << "  \"diagnostics\": [";
-    for (size_t i = 0; i < report.diagnostics.size(); ++i) {
-        const auto& diagnostic = report.diagnostics[i];
-        out << (i == 0 ? "\n" : ",\n");
-        out << "    {\n";
-        out << "      \"phase\": ";
-        writeJsonString(out, diagnostic.phase);
-        out << ",\n";
-        out << "      \"message\": ";
-        writeJsonString(out, diagnostic.message);
-        out << ",\n";
-        out << "      \"file\": ";
-        writeJsonString(out, diagnostic.file);
-        out << "\n";
-        out << "    }";
-    }
-    if (!report.diagnostics.empty()) {
-        out << "\n  ";
-    }
-    out << "],\n";
-    out << "  \"tests\": []\n";
     out << "}\n";
 
     if (!out) {
-        std::cerr << "Error: failed while writing run report: " << path.string() << "\n";
+        std::cerr << "Error: failed while writing run report\n";
         return false;
     }
     return true;
 }
 
-bool runFileWithReport(const fs::path& path, const Options& options) {
+int runFileWithReport(const fs::path& path, const Options& options) {
     RunReport report;
+    int process_exit = 0;
+    std::ofstream report_file;
+    std::ostream* report_out = nullptr;
+
+    if (options.run_report.has_value()) {
+        report_file.open(*options.run_report);
+        if (!report_file.is_open()) {
+            std::cerr << "Error: could not write run report: " << *options.run_report << "\n";
+            return 1;
+        }
+        report_out = &report_file;
+    }
 
     try {
         chirp::interpreter::Session session(std::cout);
@@ -286,6 +279,7 @@ bool runFileWithReport(const fs::path& path, const Options& options) {
         } catch (const std::exception& e) {
             report.outcome = "boot_failure";
             report.diagnostics.push_back({"boot", e.what(), ""});
+            process_exit = 1;
         }
 
         std::string source;
@@ -296,6 +290,7 @@ bool runFileWithReport(const fs::path& path, const Options& options) {
             } catch (const std::exception& e) {
                 report.outcome = "load_failure";
                 report.diagnostics.push_back({"load", e.what(), path.string()});
+                process_exit = 1;
             }
         }
 
@@ -306,25 +301,35 @@ bool runFileWithReport(const fs::path& path, const Options& options) {
             } catch (const std::exception& e) {
                 report.outcome = "syntax_failure";
                 report.diagnostics.push_back({"parse", e.what(), path.string()});
+                process_exit = 1;
             }
         }
 
         if (report.diagnostics.empty()) {
             try {
                 session.execute(stmts);
+            } catch (const chirp::interpreter::ScriptExit& e) {
+                report.outcome = "script_exit";
+                report.script_exit = e.code();
+                process_exit = e.code();
             } catch (const std::exception& e) {
                 report.outcome = "evaluation_failure";
                 report.diagnostics.push_back({"evaluate", e.what(), path.string()});
+                process_exit = 1;
             }
         }
     } catch (const std::exception& e) {
         report.outcome = "internal_failure";
         report.diagnostics.push_back({"internal", e.what(), ""});
+        process_exit = 1;
     }
 
-    bool report_written = options.run_report.has_value() &&
-        writeRunReport(*options.run_report, report);
-    return report_written && report.outcome == "success";
+    if (report_out != nullptr) {
+        if (!writeRunReport(*report_out, report)) {
+            return 1;
+        }
+    }
+    return process_exit;
 }
 
 bool runPrompt(const Options& options) {
@@ -434,26 +439,26 @@ int main(int argc, char* argv[]) {
     if (!options.script_path.empty()) {
         if (options.format) {
             if (options.run_report.has_value()) {
-                std::cerr << "Error: --run-report cannot be used with --format.\n";
+                std::cerr << "Error: run-report options cannot be used with --format.\n";
                 return 1;
             }
             return formatFile(options.script_path) ? 0 : 1;
         }
         if (options.ast_dump) {
             if (options.run_report.has_value()) {
-                std::cerr << "Error: --run-report cannot be used with --ast-dump.\n";
+                std::cerr << "Error: run-report options cannot be used with --ast-dump.\n";
                 return 1;
             }
             return runAstDump(options.script_path) ? 0 : 1;
         }
         if (options.run_report.has_value()) {
-            return runFileWithReport(options.script_path, options) ? 0 : 1;
+            return runFileWithReport(options.script_path, options);
         }
-        return runFile(options.script_path, options) ? 0 : 1;
+        return runFile(options.script_path, options);
     }
 
     if (options.run_report.has_value()) {
-        std::cerr << "Error: --run-report requires a script path.\n";
+        std::cerr << "Error: run-report options require a script path.\n";
         return 1;
     }
     if (options.format) {

@@ -1,5 +1,5 @@
 `expect_stdout("6\n2\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let subtract(x : int, y : int) : int = x - y;
 let choose(flag : Bool, yes : int, no : int) : int = if (flag) yes else no;

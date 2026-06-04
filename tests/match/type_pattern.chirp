@@ -1,7 +1,7 @@
 // Types are sets of their instances. Using a type like `int` as a match
 // pattern tests `subject ∈ int`, i.e. `typeof(subject) == int`.
 `expect_stdout("integer\nboolean\ntext\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 let describe(v) = match v {
     int => "integer",

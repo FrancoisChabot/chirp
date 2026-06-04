@@ -1,5 +1,5 @@
 `expect_stdout("defined\n");
-`expect_exit(1);
+`expect_interpreter_exit(1);
 
 let bad_return() : {1, 2} = 3;
 `print("defined");

@@ -1,5 +1,5 @@
 `expect_stdout("int\nBool\nUndecided\nType\ntrue\n");
-`expect_exit(0);
+`expect_interpreter_exit(0);
 
 `print(`typeof(42));
 `print(`typeof(true));
