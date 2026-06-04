@@ -1,6 +1,5 @@
 // Match against string literal patterns. Each string literal acts as a
 // singleton set for membership testing.
-`expect_test_failure;
 `expect_stdout("#in\n");
 `expect_exit(0);
 

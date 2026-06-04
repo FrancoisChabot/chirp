@@ -33,6 +33,7 @@ std::shared_ptr<const Type> getFunctionType();
 // Convenient types for literals
 std::shared_ptr<const Type> getIntType();
 std::shared_ptr<const Type> getStringType();
+std::shared_ptr<const Type> getSymbolType();
 
 // Core Values (as Value objects)
 const Value& Bool();

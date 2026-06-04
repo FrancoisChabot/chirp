@@ -127,5 +127,11 @@ public:
     std::string_view name() const override { return "string"; }
 };
 
+class SymbolType : public Type {
+public:
+    std::string_view name() const override { return "Symbol"; }
+};
+
+
 
 } // namespace chirp::interpreter

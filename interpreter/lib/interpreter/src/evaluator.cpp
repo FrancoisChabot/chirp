@@ -657,7 +657,7 @@ private:
     }
 
     void visit(const SymbolicConstantExpr& expr) override {
-        fail(expr.diagnostic_token, "Symbolic constants are not supported yet");
+        result_ = Value::make_symbol(std::string(expr.value));
     }
 
     void visit(const EnumeratedSetExpr& expr) override {

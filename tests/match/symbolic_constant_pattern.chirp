@@ -1,6 +1,6 @@
 // Match can be used as a mapping function (finite matching function).
 // This pattern is used throughout the examples for lookup tables.
-`expect_test_failure;
+// Symbolic constant pattern matching test
 `expect_stdout("16\n18\n0\n");
 `expect_exit(0);
 

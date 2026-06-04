@@ -1,4 +1,3 @@
-`expect_test_failure;
 `expect_stdout("#foo\n#foo\ntrue\nfalse\ntrue\nfalse\n");
 `expect_exit(0);
 

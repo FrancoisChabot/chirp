@@ -77,6 +77,11 @@ std::shared_ptr<const Type> getStringType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getSymbolType() {
+    static auto instance = std::make_shared<SymbolType>();
+    return instance;
+}
+
 // --- Core Value Accessors ---
 
 const Value& Bool() {
@@ -183,6 +188,10 @@ Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
     return Value(getFunctionType(), LambdaTag{&lambda});
 }
 
+Value Value::make_symbol(std::string name) {
+    return Value(getSymbolType(), SymbolTag{std::move(name)});
+}
+
 std::shared_ptr<const Type> Value::getType() const {
     return type_;
 }
@@ -222,6 +231,17 @@ const std::string& Value::asString() const {
         throw std::runtime_error("Value is not a string");
     }
     return std::get<std::string>(payload_);
+}
+
+bool Value::isSymbol() const {
+    return std::holds_alternative<SymbolTag>(payload_);
+}
+
+const std::string& Value::asSymbol() const {
+    if (!isSymbol()) {
+        throw std::runtime_error("Value is not a Symbol");
+    }
+    return std::get<SymbolTag>(payload_).name;
 }
 
 bool Value::isType() const {
@@ -330,6 +350,9 @@ std::string Value::toString() const {
     }
     if (isString()) {
         return "\"" + asString() + "\"";
+    }
+    if (isSymbol()) {
+        return asSymbol();
     }
     if (isType()) {
         return std::string(asType()->name());
