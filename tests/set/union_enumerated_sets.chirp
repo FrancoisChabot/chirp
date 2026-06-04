@@ -1,0 +1,10 @@
+`expect_stdout("true\ntrue\ntrue\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let s = {1, 2} ∪ {2, 3};
+
+`print(1 ∈ s);
+`print(2 ∈ s);
+`print(3 ∈ s);
+`print(4 ∈ s);

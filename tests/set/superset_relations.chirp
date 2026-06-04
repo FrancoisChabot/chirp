@@ -1,0 +1,8 @@
+`expect_stdout("true\ntrue\nfalse\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+`print({1, 2, 3} ⊇ {1, 2});
+`print({1, 2} ⊇ {1, 2});
+`print({1, 2, 3} ⊇ {1, 4});
+`print({1, 2} ⊇ {1, 2, 3});

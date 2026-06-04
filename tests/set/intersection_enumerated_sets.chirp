@@ -1,0 +1,9 @@
+`expect_stdout("false\ntrue\nfalse\n");
+`expect_exit(0);
+`expect_test_failure;
+
+let s = {1, 2, 3} ∩ {2, 4};
+
+`print(1 ∈ s);
+`print(2 ∈ s);
+`print(4 ∈ s);
