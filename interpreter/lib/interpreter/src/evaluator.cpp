@@ -361,6 +361,7 @@ private:
         if (is_name(name, "int")) return Value::make_type(getIntType());
         if (is_name(name, "string")) return Value::make_type(getStringType());
         if (is_name(name, "Bool")) return Bool();
+        if (is_name(name, "Undecided")) return Undecided();
         if (is_name(name, "Type")) return TypeVal();
         if (is_name(name, "any")) return Any();
         if (is_name(name, "empty")) return Empty();
@@ -653,7 +654,7 @@ private:
     }
 
     void visit(const UndecidedExpr& expr) override {
-        fail(expr.diagnostic_token, "undecided is not supported yet");
+        result_ = UndecidedVal();
     }
 
     void visit(const SymbolicConstantExpr& expr) override {

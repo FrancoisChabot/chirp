@@ -17,6 +17,11 @@ std::shared_ptr<const Type> getBoolType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getUndecidedType() {
+    static auto instance = std::make_shared<UndecidedType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getAnyType() {
     static auto instance = std::make_shared<AnyType>();
     return instance;
@@ -102,6 +107,16 @@ const Value& True() {
 
 const Value& False() {
     static Value instance = Value::make_bool(false);
+    return instance;
+}
+
+const Value& Undecided() {
+    static Value instance = Value::make_type(getUndecidedType());
+    return instance;
+}
+
+const Value& UndecidedVal() {
+    static Value instance = Value(getUndecidedType(), std::monostate{});
     return instance;
 }
 
@@ -424,6 +439,9 @@ std::string Value::toString() const {
     }
     if (isLambda()) {
         return "<function>";
+    }
+    if (type_ == getUndecidedType()) {
+        return "undecided";
     }
     if (type_ == getAnyType()) {
         return "any";

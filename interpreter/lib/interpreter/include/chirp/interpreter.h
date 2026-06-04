@@ -14,10 +14,11 @@ class Stmt;
 
 namespace chirp::interpreter {
 
-// Getters for the 12 core predefined interpreter values and types
+// Getters for the core predefined interpreter values and types
 
 // Core Types (as std::shared_ptr<const Type>)
 std::shared_ptr<const Type> getBoolType();
+std::shared_ptr<const Type> getUndecidedType();
 std::shared_ptr<const Type> getMetaType(); // represents the "Type" type
 std::shared_ptr<const Type> getAnyType();
 std::shared_ptr<const Type> getEmptyType();
@@ -41,6 +42,8 @@ std::shared_ptr<const Type> getListType();
 const Value& Bool();
 const Value& True();
 const Value& False();
+const Value& Undecided();
+const Value& UndecidedVal();
 const Value& TypeVal();
 const Value& Any();
 const Value& AnyTypeVal();

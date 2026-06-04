@@ -101,6 +101,8 @@ The following **values** are predefined as part of the core:
 - `Bool`      - The type of the boolean constants
 - `true`      - boolean truth constant
 - `false`     - boolean falsehood constant
+- `Undecided` - The singleton type of `undecided`
+- `undecided` - an undecided belonging result
 - `Type`      - the type of all types
 - `any`       - the set of all values 
 - `AnyType`   - the type of `any`

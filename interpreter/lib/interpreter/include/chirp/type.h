@@ -39,6 +39,11 @@ public:
     std::string_view name() const override { return "Bool"; }
 };
 
+class UndecidedType : public Type {
+public:
+    std::string_view name() const override { return "Undecided"; }
+};
+
 // Subclass for AnyType
 class AnyType : public Type {
 public:

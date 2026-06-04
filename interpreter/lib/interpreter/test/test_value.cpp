@@ -7,11 +7,15 @@ using namespace chirp::interpreter;
 TEST(InterpreterTest, TypeTagIdentity) {
     EXPECT_EQ(True().getType(), getBoolType());
     EXPECT_EQ(False().getType(), getBoolType());
+    EXPECT_EQ(UndecidedVal().getType(), getUndecidedType());
     EXPECT_EQ(Value::make_int(42).getType(), getIntType());
     EXPECT_EQ(Value::make_string("hello").getType(), getStringType());
     
     // typeof(Bool) == Type
     EXPECT_EQ(Bool().getType(), getMetaType());
+
+    // typeof(Undecided) == Type
+    EXPECT_EQ(Undecided().getType(), getMetaType());
     
     // typeof(Type) == Type
     EXPECT_EQ(TypeVal().getType(), getMetaType());
@@ -58,9 +62,14 @@ TEST(InterpreterTest, BelongingPredicate) {
     // true ∈ Bool  -->  typeof(Bool).bp(Bool, true) -> Type.bp(Bool, true)
     EXPECT_EQ(belongsTo(Bool(), True()), Value::make_bool(true));
     EXPECT_EQ(belongsTo(Bool(), False()), Value::make_bool(true));
+    EXPECT_EQ(belongsTo(Bool(), UndecidedVal()), Value::make_bool(false));
     
     // 42 ∈ Bool -> false
     EXPECT_EQ(belongsTo(Bool(), Value::make_int(42)), Value::make_bool(false));
+
+    // undecided ∈ Undecided -> true
+    EXPECT_EQ(belongsTo(Undecided(), UndecidedVal()), Value::make_bool(true));
+    EXPECT_EQ(belongsTo(Undecided(), True()), Value::make_bool(false));
 
     // true ∈ any -> true
     EXPECT_EQ(belongsTo(Any(), True()), Value::make_bool(true));
@@ -76,6 +85,7 @@ TEST(InterpreterTest, BelongingPredicate) {
 
     // true ∈ set -> false (since True's type is Bool, which does not have setness)
     EXPECT_EQ(belongsTo(Set(), True()), Value::make_bool(false));
+    EXPECT_EQ(belongsTo(Set(), UndecidedVal()), Value::make_bool(false));
 }
 
 // 4. Enumerated sets
