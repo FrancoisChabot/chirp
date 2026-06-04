@@ -66,6 +66,15 @@ def run_test(chirp_bin, file_path):
         return False, "\n".join(failures), expect_test_failure
     return True, "", expect_test_failure
 
+def find_test_files(tests_dir):
+    test_files = []
+    for dirpath, dirnames, filenames in os.walk(tests_dir):
+        dirnames.sort()
+        for filename in sorted(filenames):
+            if filename.endswith(".chirp"):
+                test_files.append(os.path.join(dirpath, filename))
+    return sorted(test_files, key=lambda path: os.path.relpath(path, tests_dir))
+
 def main():
     # Find chirp executable
     if len(sys.argv) <= 1:
@@ -81,12 +90,7 @@ def main():
         sys.exit(1)
         
     tests_dir = os.path.join(root_dir, "tests")
-    # Find all test files
-    test_files = sorted([
-        os.path.join(tests_dir, f)
-        for f in os.listdir(tests_dir)
-        if f.endswith(".chirp")
-    ])
+    test_files = find_test_files(tests_dir)
     
     if not test_files:
         print("No .chirp tests found.")
@@ -108,7 +112,7 @@ def main():
     COLOR_RESET = "\033[0m"
     
     for test_file in test_files:
-        name = os.path.basename(test_file)
+        name = os.path.relpath(test_file, tests_dir)
         passed, detail, expect_test_failure = run_test(chirp_bin, test_file)
         
         if passed:
