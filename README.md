@@ -10,18 +10,36 @@ This repo is all content, little guidance for the time being, but you are still 
 
 ## Getting started
 
-There's not much you can concretely do with chirp at the moment. The interpreter's AST-dump mode works pretty well though, so you can poke around the syntax easily at least. 
-
 **Requirements**: CMake 3.20+, a C++20 compiler and a network connection for `FetchContent()` to be able to do its thing for googletest.
 
 ```bash
 cmake -B build
 cmake --build build && ctest --test-dir build
 
-build/interpreter/chirp --ast-dump examples/lexer.chirp
+build/interpreter/chirp script.chirp
 ```
 
-There's also a prompt mode if you invoke `chirp` without any arguments, but it's not much more than a stub at the moment.
+Here's a sample script you can try:
+
+```chirp
+let fizz = { x:int | x % 3 == 0 };
+let buzz = { x:int | x % 5 == 0 };
+
+for (v ∈ 1..100) do {
+    let out = match v {
+        fizz ∩ buzz => "fizzbuzz",
+        fizz => "fizz",
+        buzz => "buzz",
+        `any => v
+    };
+
+    `print(out);
+};
+```
+
+> [!NOTE]
+> Don't let the Unicode `∈` scare you. You can write `` `in `` instead and use `chirp --format` to swap it out for you. I have it hooked up as my format-on-save in VSCode. 
+
 
 ### Running the test suite
 
@@ -58,32 +76,13 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 ### Current objective
 
-Reach the point where Chirp is useful as an interpreted scripting language, already showing off how it bridges declarative and imperative programming:
-
-```chirp
-let fizz = { x:int | x % 3 == 0 };
-let buzz = { x:int | x % 5 == 0 };
-
-for (v ∈ 1..100) do {
-    let out = match v {
-        fizz ∩ buzz => "fizzbuzz",
-        fizz => "fizz",
-        buzz => "buzz",
-        `any => v
-    };
-
-    print(out);
-};
-```
-
-> [!NOTE]
-> Don't let the Unicode `∈` scare you. You can write `` `in `` instead and use `chirp --format` to swap it out for you. I have it hooked up as my format-on-save in VSCode. 
+Fully support all of Chirp's semantics in the interpreter's VM. We're getting close, but there's still some pieces missing. Notably structs, pointers, and undecided.
 
 ### Long-term direction
 
 Chirp is interpreter-first, but not interpreter-only. It's ultimately meant to be a metaprogramming systems-level tool. To get there, the roadmap looks roughly like this:
 
-- Step 1: Fully support all of Chirp's semantics in the interpreter's VM
+- Step 1: Fully support all of Chirp's semantics in the interpreter's VM (IN PROGRESS)
 - Step 2: Get the constraint solver to a useful (as-in TypeScript-level-ish) state
 - Step 3: Implement the Calcification process to narrow bindings down to representable types.
 - Step 4: Implement low-level code emission
