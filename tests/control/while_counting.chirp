@@ -1,6 +1,5 @@
 `expect_stdout("1\n2\n3\n");
 `expect_exit(0);
-`expect_test_failure;
 
 let n = 1;
 while (n <= 3) do {

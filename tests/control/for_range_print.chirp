@@ -1,6 +1,5 @@
 `expect_stdout("1\n2\n3\n");
 `expect_exit(0);
-`expect_test_failure;
 
 for (n ∈ 1..=3) do {
     `print(n);

@@ -115,6 +115,8 @@ bool is_harness_intrinsic(std::string_view name) {
         is_name(name, "`expect_test_failure");
 }
 
+constexpr int64_t MAX_LOOP_ITERATIONS = 1'000'000;
+
 class Evaluator : public ASTVisitor, public StmtVisitor {
 public:
     explicit Evaluator(std::ostream& out) : out_(out) {
@@ -320,6 +322,18 @@ private:
         }
     }
 
+    void bind_loop_iterator(const NamedBinding& binding, Value value, const token& diag) {
+        Value constraint = binding.type_bound ? evaluate(*binding.type_bound) : Any();
+        enforce_constraint(constraint, value, diag);
+
+        auto iterator_binding = std::make_shared<Binding>(constraint, constraint, std::move(value));
+        define_binding(binding.name.lexeme, std::move(iterator_binding), binding.name);
+    }
+
+    void run_loop_body(const Expr& body) {
+        evaluate(body);
+    }
+
     void visit(const BinaryExpr& expr) override {
         if (expr.op == BinaryOp::And) {
             bool left = as_bool(evaluate(*expr.left), expr.diagnostic_token);
@@ -471,11 +485,51 @@ private:
     }
 
     void visit(const WhileExpr& expr) override {
-        fail(expr.diagnostic_token, "while expressions are not supported yet");
+        int64_t iterations = 0;
+        while (as_bool(evaluate(*expr.condition), expr.diagnostic_token)) {
+            if (iterations++ >= MAX_LOOP_ITERATIONS) {
+                fail(expr.diagnostic_token, "Loop iteration limit exceeded");
+            }
+            run_loop_body(*expr.body);
+        }
+        result_ = VoidVal();
     }
 
     void visit(const ForExpr& expr) override {
-        fail(expr.diagnostic_token, "for expressions are not supported yet");
+        Value iterable = evaluate(*expr.iterable);
+        if (!iterable.isRange()) {
+            fail(expr.diagnostic_token, "for loops only support Range iteration for now");
+        }
+
+        auto range = iterable.asRange();
+        int64_t current = range.start;
+        int64_t iterations = 0;
+        auto in_range = [&]() {
+            return range.inclusive_end ? current <= range.end : current < range.end;
+        };
+
+        while (in_range()) {
+            if (iterations++ >= MAX_LOOP_ITERATIONS) {
+                fail(expr.diagnostic_token, "Loop iteration limit exceeded");
+            }
+
+            scopes_.emplace_back();
+            try {
+                bind_loop_iterator(expr.iterator_binding, Value::make_int(current), expr.diagnostic_token);
+                run_loop_body(*expr.body);
+                scopes_.pop_back();
+            } catch (...) {
+                scopes_.pop_back();
+                throw;
+            }
+
+            if (current == std::numeric_limits<int64_t>::max()) {
+                break;
+            }
+            current += 1;
+        }
+
+        result_ = VoidVal();
     }
 
     void visit(const LambdaExpr& expr) override {
