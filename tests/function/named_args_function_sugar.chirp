@@ -1,8 +1,9 @@
-`expect_stdout("6\n2\n");
 `expect_exit(0);
 
 let subtract(x : int, y : int) : int = x - y;
 let choose(flag : bool, yes : int, no : int) : int = if (flag) yes else no;
 
+`expect_stdout("6\n");
 `print(subtract(y=4, x=10));
+`expect_stdout("2\n");
 `print(choose(no=2, flag=false, yes=1));

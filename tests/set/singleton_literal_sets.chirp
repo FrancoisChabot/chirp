@@ -1,15 +1,24 @@
-`expect_stdout("true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n");
 `expect_exit(0);
 
+`expect_stdout("true\n");
 `print(1 ∈ 1);
+`expect_stdout("true\n");
 `print(2 ∉ 1);
+`expect_stdout("true\n");
 `print(1 ⊆ {1, 2});
+`expect_stdout("true\n");
 `print(1 ⊂ {1, 2});
+`expect_stdout("true\n");
 `print({1, 2} ⊄ 1);
+`expect_stdout("true\n");
 `print(true ⊆ bool);
+`expect_stdout("true\n");
 `print("" ⊆ {""});
+`expect_stdout("true\n");
 `print(#ok ⊆ {#ok, #other});
+`expect_stdout("true\n");
 `print(undecided ⊆ `typeof(undecided));
 
 let constrained : 1 = 1;
+`expect_stdout("1\n");
 `print(constrained);

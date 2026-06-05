@@ -1,9 +1,12 @@
-`expect_stdout("true\ntrue\ntrue\nfalse\n");
 `expect_exit(0);
 
 let s = {1, 2} ∪ {2, 3};
 
+`expect_stdout("true\n");
 `print(1 ∈ s);
+`expect_stdout("true\n");
 `print(2 ∈ s);
+`expect_stdout("true\n");
 `print(3 ∈ s);
+`expect_stdout("false\n");
 `print(4 ∈ s);

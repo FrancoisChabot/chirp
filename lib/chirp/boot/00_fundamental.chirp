@@ -24,6 +24,7 @@
 // Can't get around these.
 let final `typeof = `import("typeof_func", "__chirp_boot");
 let final `mint = `import("mint_func", "__chirp_boot");
+let final `trait = `import("trait_func", "__chirp_boot");
 let final `interface = `import("interface_func", "__chirp_boot");
 let final `implement = `import("implement_func", "__chirp_boot");
 

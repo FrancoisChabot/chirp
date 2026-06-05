@@ -1,10 +1,10 @@
 // Match used inside a for loop with computed subject expression.
-`expect_stdout("odd\neven\nodd\neven\n");
 `expect_exit(0);
 
 let even = {x : int | x % 2 == 0};
 let odd = {x : int | x % 2 != 0};
 
+`expect_stdout("odd\neven\nodd\neven\n");
 for (n ∈ 1..=4) do {
     `print(match n {
         even => "even",

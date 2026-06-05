@@ -189,7 +189,14 @@ private:
     Value result_;
     bool boot_mode_ = false;
     uint64_t next_mint_id_ = 1;
-    std::unordered_map<std::shared_ptr<const Type>, Value> setness_registry_;
+    uint64_t next_trait_id_ = 1;
+
+    struct Implementation {
+        Value trait;
+        std::shared_ptr<const Type> on;
+        Value impl;
+    };
+    std::vector<Implementation> implementations_;
 
     Value evaluate(const Expr& expr) {
         expr.accept(*this);
@@ -257,15 +264,23 @@ private:
         return value.asInt();
     }
 
-    const Value* registered_setness_impl_for(std::shared_ptr<const Type> dispatch_target) const {
-        auto found = setness_registry_.find(std::move(dispatch_target));
-        if (found == setness_registry_.end()) {
-            return nullptr;
+    const Value* registered_impl_for(const Value& trait, const std::shared_ptr<const Type>& dispatch_target) const {
+        for (const auto& implementation : implementations_) {
+            if (implementation.trait == trait && implementation.on == dispatch_target) {
+                return &implementation.impl;
+            }
         }
-        return &found->second;
+        return nullptr;
+    }
+
+    const Value* registered_setness_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
+        return registered_impl_for(Set(), dispatch_target);
     }
 
     bool has_setness(const Value& value) const {
+        if (value.isTrait()) {
+            return true;
+        }
         return registered_setness_impl_for(value.getType()) != nullptr ||
             value.getType()->hasSetness();
     }
@@ -273,6 +288,10 @@ private:
     Value call_setness_bp(const Value& set, const Value& value, const token& diag) {
         if (set == Set()) {
             return Value::make_bool(has_setness(value));
+        }
+
+        if (set.isTrait()) {
+            return Value::make_bool(registered_impl_for(set, value.getType()) != nullptr);
         }
 
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
@@ -288,6 +307,10 @@ private:
 
     Value call_setness_br(const Value& set, const Value& lc, const token& diag) {
         if (set == Set()) {
+            return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+        }
+
+        if (set.isTrait()) {
             return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
         }
 
@@ -509,6 +532,7 @@ private:
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
         if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
+        if (is_name(name, "trait_func")) return Value::make_host_function(Value::HostFunction::Trait);
         if (is_name(name, "interface_func")) return Value::make_host_function(Value::HostFunction::Interface);
         if (is_name(name, "implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
         if (is_name(name, "true_val")) return True();
@@ -580,15 +604,28 @@ private:
                 auto type = std::make_shared<MintedType>(id);
                 return Value::make_minted(std::move(type), id);
             }
+            case Value::HostFunction::Trait: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`trait expects one positional argument");
+                }
+                Value interface = evaluate(*args.front().value);
+                if (!has_setness(interface)) {
+                    fail(diag, "`trait interface must be a set");
+                }
+                return Value::make_trait(next_trait_id_++, std::move(interface));
+            }
             case Value::HostFunction::Interface: {
                 if (args.size() != 1 || args.front().name.has_value()) {
                     fail(diag, "`interface expects one positional argument");
                 }
                 Value trait = evaluate(*args.front().value);
-                if (trait != Set()) {
-                    fail(diag, "`interface currently only supports `set");
+                if (trait == Set()) {
+                    return Value::make_host_function(Value::HostFunction::SetnessConstructor);
                 }
-                return Value::make_host_function(Value::HostFunction::SetnessConstructor);
+                if (trait.isTrait()) {
+                    return trait.asTraitInterface();
+                }
+                fail(diag, "`interface expects a trait");
             }
             case Value::HostFunction::SetnessConstructor: {
                 const Argument* bp_arg = nullptr;
@@ -674,20 +711,29 @@ private:
                 Value trait = evaluate(*trait_arg->value);
                 Value on = evaluate(*on_arg->value);
                 Value impl = evaluate(*impl_arg->value);
-                if (trait != Set()) {
-                    fail(*trait_arg->name, "`implement currently only supports trait=`set");
+                if (trait != Set() && !trait.isTrait()) {
+                    fail(*trait_arg->name, "`implement trait must be a trait");
                 }
                 if (!on.isType()) {
                     fail(*on_arg->name, "`implement on must be a type value");
                 }
-                if (!impl.isSetnessImpl()) {
-                    fail(*impl_arg->name, "`implement impl must be a Setness implementation");
+
+                if (trait == Set()) {
+                    if (!impl.isSetnessImpl()) {
+                        fail(*impl_arg->name, "`implement impl must be a Setness implementation");
+                    }
+                } else {
+                    enforce_constraint(trait.asTraitInterface(), impl, *impl_arg->name);
                 }
 
-                auto [_, inserted] = setness_registry_.emplace(on.asType(), std::move(impl));
-                if (!inserted) {
+                if (registered_impl_for(trait, on.asType()) != nullptr) {
                     fail(*on_arg->name, "Duplicate implementation for trait/on pair");
                 }
+                implementations_.push_back(Implementation{
+                    std::move(trait),
+                    on.asType(),
+                    std::move(impl)
+                });
                 return VoidVal();
             }
         }

@@ -1,9 +1,11 @@
-`expect_stdout("1\n2\ntrue\n");
 `expect_exit(0);
 
 let final = 1;
 let mut = 2;
 
+`expect_stdout("1\n");
 `print(final);
+`expect_stdout("2\n");
 `print(mut);
+`expect_stdout("true\n");
 `print(true);

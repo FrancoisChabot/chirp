@@ -1,6 +1,7 @@
-`expect_stdout("true\nfalse\n");
 `expect_exit(0);
 
 let x : {1, 2, 3} = 2;
+`expect_stdout("true\n");
 `print(x == 2);
+`expect_stdout("false\n");
 `print(x == 3);

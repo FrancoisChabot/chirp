@@ -1,6 +1,5 @@
 // A match pattern can be a constructed set (comprehension). The subject is
 // tested for membership via the comprehension's belonging predicate.
-`expect_stdout("positive\nnon-positive\n");
 `expect_exit(0);
 
 let classify(n) = match n {
@@ -8,5 +7,7 @@ let classify(n) = match n {
     `any => "non-positive"
 };
 
+`expect_stdout("positive\n");
 `print(classify(5));
+`expect_stdout("non-positive\n");
 `print(classify(-3));

@@ -1,12 +1,16 @@
-`expect_stdout("true\ntrue\nfalse\ntrue\nfalse\n");
 `expect_exit(0);
 
 let odds_or_evens = {1, 3} ∪ {2, 4};
 let small_even = {x : 1..=6 | x % 2 == 0};
 let selected_even = small_even ∩ ({2, 5} ∪ {6});
 
+`expect_stdout("true\n");
 `print(4 ∈ odds_or_evens);
+`expect_stdout("true\n");
 `print(2 ∈ selected_even);
+`expect_stdout("false\n");
 `print(4 ∈ selected_even);
+`expect_stdout("true\n");
 `print(selected_even ⊆ small_even);
+`expect_stdout("false\n");
 `print(small_even ⊆ selected_even);

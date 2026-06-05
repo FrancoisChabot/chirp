@@ -1,10 +1,14 @@
-`expect_stdout("-9223372036854775808\n9223372036854775807\ntrue\ntrue\n3\n");
 `expect_exit(0);
 
+`expect_stdout("-9223372036854775808\n");
 `print(-9223372036854775808);
+`expect_stdout("9223372036854775807\n");
 `print(9223372036854775807);
+`expect_stdout("true\n");
 `print(-9223372036854775808 ∈ int64);
+`expect_stdout("true\n");
 `print(9223372036854775807 ∈ int64);
 
 let x : int64 = 3;
+`expect_stdout("3\n");
 `print(x);

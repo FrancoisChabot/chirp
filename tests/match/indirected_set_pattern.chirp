@@ -1,6 +1,5 @@
 // Match patterns can be stored in bindings (indirected sets), since patterns
 // are just ordinary set values.
-`expect_stdout("even\nodd\neven\n");
 `expect_exit(0);
 
 let even = {x : int | x % 2 == 0};
@@ -11,6 +10,9 @@ let parity(n) = match n {
     odd => "odd"
 };
 
+`expect_stdout("even\n");
 `print(parity(4));
+`expect_stdout("odd\n");
 `print(parity(7));
+`expect_stdout("even\n");
 `print(parity(0));

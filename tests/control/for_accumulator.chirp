@@ -1,8 +1,8 @@
-`expect_stdout("10\n");
 `expect_exit(0);
 
 let total = 0;
 for (n ∈ 1..=4) do {
     total += n;
 };
+`expect_stdout("10\n");
 `print(total);

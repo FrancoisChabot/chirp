@@ -45,10 +45,10 @@ for (v ∈ 1..100) do {
 
 The [`tests/`](tests/) directory contains a bunch of chirp-written tests,
 
-To run the suite, launch the python script, passing it the chirp executable as parameter.
+It's hooked up to run automatically when invoking on ctest. But you can also run it manually, passing it the chirp executable as parameter.  
 
 ```bash
-python scripts/test_conformance.py path/to/chirp
+python scripts/test_conformance.py -j auto path/to/chirp
 ```
 
 ### Misleading intuition warning

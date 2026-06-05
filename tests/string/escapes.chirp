@@ -1,7 +1,13 @@
-`expect_stdout("a\nb\ntab\tend\nquote: \"\nslash: \\\n");
 `expect_exit(0);
 
+`expect_stdout("a\nb\n");
 `print("a\nb");
+
+`expect_stdout("tab\tend\n");
 `print("tab\tend");
+
+`expect_stdout("quote: \"\n");
 `print("quote: \"");
+
+`expect_stdout("slash: \\\n");
 `print("slash: \\");

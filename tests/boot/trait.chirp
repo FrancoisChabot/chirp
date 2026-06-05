@@ -1,0 +1,36 @@
+`expect_exit(0);
+
+let Marker = `trait(`any);
+let Other = `trait(`any);
+
+`implement(
+    trait=Marker,
+    on=int,
+    impl=#marker_impl
+);
+
+`expect_stdout("true\n");
+`print(`interface(Marker) == `any);
+
+`expect_stdout("true\n");
+`print(1 ∈ Marker);
+
+`expect_stdout("false\n");
+`print("" ∈ Marker);
+
+`expect_stdout("true\n");
+`print(Marker ∈ `set);
+
+`expect_stdout("true\n");
+`print(Marker != Other);
+
+`expect_stdout("false\n");
+`print(1 ∈ Other);
+
+let constrained : Marker = 5;
+
+`expect_stdout("true\n");
+`print(constrained == 5);
+
+`expect_stdout("true\n");
+`print(Marker ∈ `typeof(Marker));

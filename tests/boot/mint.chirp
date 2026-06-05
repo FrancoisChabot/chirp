@@ -1,4 +1,3 @@
-`expect_stdout("true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\ntrue\ntrue\n");
 `expect_exit(0);
 
 let a = `mint();
@@ -6,14 +5,25 @@ let same = a;
 let b = `mint();
 let constrained : `typeof(a) = a;
 
+`expect_stdout("true\n");
 `print(a == same);
+`expect_stdout("false\n");
 `print(a == b);
+`expect_stdout("true\n");
 `print(`typeof(a) == `typeof(same));
+`expect_stdout("false\n");
 `print(`typeof(a) == `typeof(b));
+`expect_stdout("true\n");
 `print(a ∈ `typeof(a));
+`expect_stdout("false\n");
 `print(a ∈ `typeof(b));
+`expect_stdout("true\n");
 `print(b ∈ `typeof(b));
+`expect_stdout("false\n");
 `print(a ∈ `set);
+`expect_stdout("true\n");
 `print(`typeof(a) ∈ `type);
+`expect_stdout("true\n");
 `print(`typeof(a) ∈ `set);
+`expect_stdout("true\n");
 `print(constrained == a);

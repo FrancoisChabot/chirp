@@ -1,7 +1,8 @@
-`expect_stdout("1\n2\n3\n");
 `expect_exit(0);
 
 let n = 1;
+
+`expect_stdout("1\n2\n3\n");
 while (n <= 3) do {
     `print(n);
     n += 1;

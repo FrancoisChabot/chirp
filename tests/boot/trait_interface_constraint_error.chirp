@@ -1,0 +1,9 @@
+`expect_exit(1);
+
+let IntImpl = `trait(int);
+
+`implement(
+    trait=IntImpl,
+    on=string,
+    impl="not an int"
+);

@@ -1,6 +1,7 @@
-`expect_stdout("defined\n");
 `expect_exit(1);
 
 let only_small(x : {1, 2}) : int = x;
+
+`expect_stdout("defined\n");
 `print("defined");
 `print(only_small(3));

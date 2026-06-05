@@ -1,7 +1,10 @@
-`expect_stdout("false\ntrue\nfalse\ntrue\n");
 `expect_exit(0);
 
+`expect_stdout("false\n");
 `print(3 ∉ 1..5);
+`expect_stdout("true\n");
 `print(5 ∉ 1..5);
+`expect_stdout("false\n");
 `print(5 ∉ 1..=5);
+`expect_stdout("true\n");
 `print(6 ∉ 1..=5);

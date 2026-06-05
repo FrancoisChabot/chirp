@@ -1,5 +1,5 @@
-`expect_stdout("42\n");
 `expect_exit(0);
 
 let identity = (x : int) : int => x;
+`expect_stdout("42\n");
 `print(identity(42));

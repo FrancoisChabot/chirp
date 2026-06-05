@@ -1,5 +1,4 @@
 // Range patterns: ranges are sets, so `1..4` as a pattern tests `subject ∈ 1..4`.
-`expect_stdout("low\nmid\nhigh\n");
 `expect_exit(0);
 
 let classify(n) = match n {
@@ -9,6 +8,9 @@ let classify(n) = match n {
     `any => "out of range"
 };
 
+`expect_stdout("low\n");
 `print(classify(2));
+`expect_stdout("mid\n");
 `print(classify(5));
+`expect_stdout("high\n");
 `print(classify(8));

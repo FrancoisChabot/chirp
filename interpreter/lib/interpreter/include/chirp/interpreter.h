@@ -49,6 +49,7 @@ std::shared_ptr<const Type> getIntType();
 std::shared_ptr<const Type> getStringType();
 std::shared_ptr<const Type> getSymbolType();
 std::shared_ptr<const Type> getListType();
+std::shared_ptr<const Type> getTraitType();
 
 
 // Core Values (as Value objects)

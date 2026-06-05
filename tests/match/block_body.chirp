@@ -1,5 +1,4 @@
 // Match arm bodies can be block expressions with arbitrary statements.
-`expect_stdout("6\n");
 `expect_exit(0);
 
 let x = 3;
@@ -10,4 +9,5 @@ let result = match x {
     },
     `any => 0
 };
+`expect_stdout("6\n");
 `print(result);

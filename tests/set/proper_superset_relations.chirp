@@ -1,6 +1,8 @@
-`expect_stdout("true\nfalse\nfalse\n");
 `expect_exit(0);
 
+`expect_stdout("true\n");
 `print({1, 2, 3} ⊃ {1, 2});
+`expect_stdout("false\n");
 `print({1, 2} ⊃ {1, 2});
+`expect_stdout("false\n");
 `print({1, 2, 3} ⊃ {1, 4});

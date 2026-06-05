@@ -1,6 +1,5 @@
 // A match pattern can be an enumerated set. The subject is tested for
 // membership in that set, so `{1, 2} => ...` fires when `subject ∈ {1, 2}`.
-`expect_stdout("small\nsmall\nbig\n");
 `expect_exit(0);
 
 let classify(n) = match n {
@@ -9,6 +8,9 @@ let classify(n) = match n {
     `any => "unknown"
 };
 
+`expect_stdout("small\n");
 `print(classify(2));
+`expect_stdout("small\n");
 `print(classify(3));
+`expect_stdout("big\n");
 `print(classify(5));

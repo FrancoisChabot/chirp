@@ -1,7 +1,8 @@
-`expect_stdout("1\n2\n");
 `expect_exit(0);
 
 let x : int = 1;
+`expect_stdout("1\n");
 `print(x);
 x = 2;
+`expect_stdout("2\n");
 `print(x);

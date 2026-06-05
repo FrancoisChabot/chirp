@@ -1,11 +1,12 @@
-`expect_stdout("2\n1\n");
 `expect_exit(0);
 
 let x = 1;
 
 do {
     let x = 2;
+    `expect_stdout("2\n");
     `print(x);
 };
 
+`expect_stdout("1\n");
 `print(x);

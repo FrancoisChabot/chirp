@@ -1,0 +1,15 @@
+`expect_exit(1);
+
+let Marker = `trait(`any);
+
+`implement(
+    trait=Marker,
+    on=int,
+    impl=#first_impl
+);
+
+`implement(
+    trait=Marker,
+    on=int,
+    impl=#second_impl
+);

@@ -1,7 +1,6 @@
 // Match can be used as a mapping function (finite matching function).
 // This pattern is used throughout the examples for lookup tables.
 // Symbolic constant pattern matching test
-`expect_stdout("16\n18\n0\n");
 `expect_exit(0);
 
 let BP(op_type) = match op_type {
@@ -10,6 +9,9 @@ let BP(op_type) = match op_type {
     `any => 0
 };
 
+`expect_stdout("16\n");
 `print(BP(#plus));
+`expect_stdout("18\n");
 `print(BP(#star));
+`expect_stdout("0\n");
 `print(BP(#unknown));

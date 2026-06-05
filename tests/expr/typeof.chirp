@@ -1,8 +1,12 @@
-`expect_stdout("int\nbool\nUndecided\nType\ntrue\n");
 `expect_exit(0);
 
+`expect_stdout("int\n");
 `print(`typeof(42));
+`expect_stdout("bool\n");
 `print(`typeof(true));
+`expect_stdout("Undecided\n");
 `print(`typeof(undecided));
+`expect_stdout("Type\n");
 `print(`typeof(`typeof(42)));
+`expect_stdout("true\n");
 `print(42 ∈ `typeof(42));

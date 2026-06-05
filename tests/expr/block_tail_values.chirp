@@ -1,5 +1,6 @@
-`expect_stdout("3\ndone\n");
 `expect_exit(0);
 
+`expect_stdout("3\n");
 `print(do { let y = 1; y + 2 });
+`expect_stdout("done\n");
 `print(do { break "done"; });

@@ -50,7 +50,7 @@ public:
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
     };
 
-    enum class HostFunction { Print, TypeOf, Exit, Mint, Interface, Implement, SetnessConstructor };
+    enum class HostFunction { Print, TypeOf, Exit, Mint, Trait, Interface, Implement, SetnessConstructor };
     struct HostFunctionTag {
         HostFunction fn;
         bool operator==(const HostFunctionTag& other) const { return fn == other.fn; }
@@ -77,6 +77,11 @@ public:
         uint64_t id;
         bool operator==(const MintedTag& other) const { return id == other.id; }
     };
+    struct TraitTag {
+        uint64_t id;
+        std::shared_ptr<Value> interface;
+        bool operator==(const TraitTag& other) const { return id == other.id; }
+    };
     struct SetnessImplTag {
         std::shared_ptr<Value> bp;
         std::shared_ptr<Value> br;
@@ -102,6 +107,7 @@ public:
     static Value make_symbol(std::string name);
     static Value make_list(std::vector<Value> elements);
     static Value make_minted(std::shared_ptr<const Type> type, uint64_t id);
+    static Value make_trait(uint64_t id, Value interface);
     static Value make_setness_impl(Value bp, Value br);
 
 
@@ -154,6 +160,10 @@ public:
     bool isMinted() const;
     uint64_t asMintedId() const;
 
+    bool isTrait() const;
+    uint64_t asTraitId() const;
+    const Value& asTraitInterface() const;
+
     bool isSetnessImpl() const;
     const SetnessImplTag& asSetnessImpl() const;
 
@@ -163,7 +173,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, SetnessImplTag>;
+    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

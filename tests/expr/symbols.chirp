@@ -1,10 +1,15 @@
-`expect_stdout("#foo\n#foo\ntrue\nfalse\ntrue\nfalse\n");
 `expect_exit(0);
 
 let x = #foo;
+`expect_stdout("#foo\n");
 `print(x);
+`expect_stdout("#foo\n");
 `print(#foo);
+`expect_stdout("true\n");
 `print(x == #foo);
+`expect_stdout("false\n");
 `print(x != #foo);
+`expect_stdout("true\n");
 `print(#foo == #foo);
+`expect_stdout("false\n");
 `print(#foo == #bar);

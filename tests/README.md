@@ -13,9 +13,9 @@ The script relies on the reference interpreter's `--run-report` mechanism. If yo
 Each test is an ordinary `.chirp` file with optional harness directives:
 
 ```chirp
-`expect_stdout("Hello World\n");
 `expect_exit(0);
 
+`expect_stdout("Hello World\n");
 `print("Hello World");
 ```
 
@@ -26,7 +26,7 @@ To verify syntactical, lexical, or parse-phase failures, place the test script i
 ### Supported Directives
 For successful compilations (VM runtime tests), you can specify expectations dynamically:
 
-- `` `expect_stdout("..."); `` sets the exact expected stdout. Multiple directives are concatenated in file order. If omitted, stdout has no impact on the test passing/failing.
+- `` `expect_stdout("..."); `` appends to the exact expected stdout. Prefer placing stdout expectations next to the statements or control-flow blocks that produce them. If omitted, stdout has no impact on the test passing/failing.
 
 - `` `expect_exit(n); `` sets the expected process exit code of the interpreter (regardless of whether it exits via normal execution, a runtime error, or an explicit `` `exit(n) `` intrinsic). Defaults to `0` if omitted.
 

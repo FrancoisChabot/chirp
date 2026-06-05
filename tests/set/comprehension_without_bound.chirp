@@ -1,7 +1,8 @@
-`expect_stdout("true\nfalse\n");
 `expect_exit(0);
 
 let small_answer = {x | x == 42};
 
+`expect_stdout("true\n");
 `print(42 ∈ small_answer);
+`expect_stdout("false\n");
 `print(41 ∈ small_answer);

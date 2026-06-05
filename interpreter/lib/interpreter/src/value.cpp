@@ -85,6 +85,11 @@ std::shared_ptr<const Type> getListType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getTraitType() {
+    static auto instance = std::make_shared<TraitType>();
+    return instance;
+}
+
 
 // --- Core Value Accessors ---
 
@@ -198,6 +203,10 @@ Value Value::make_list(std::vector<Value> elements) {
 
 Value Value::make_minted(std::shared_ptr<const Type> type, uint64_t id) {
     return Value(std::move(type), MintedTag{id});
+}
+
+Value Value::make_trait(uint64_t id, Value interface) {
+    return Value(getTraitType(), TraitTag{id, std::make_shared<Value>(std::move(interface))});
 }
 
 Value Value::make_setness_impl(Value bp, Value br) {
@@ -371,6 +380,28 @@ uint64_t Value::asMintedId() const {
     return std::get<MintedTag>(payload_).id;
 }
 
+bool Value::isTrait() const {
+    return std::holds_alternative<TraitTag>(payload_);
+}
+
+uint64_t Value::asTraitId() const {
+    if (!isTrait()) {
+        throw std::runtime_error("Value is not a trait");
+    }
+    return std::get<TraitTag>(payload_).id;
+}
+
+const Value& Value::asTraitInterface() const {
+    if (!isTrait()) {
+        throw std::runtime_error("Value is not a trait");
+    }
+    const auto& interface = std::get<TraitTag>(payload_).interface;
+    if (!interface) {
+        throw std::runtime_error("Trait has no interface");
+    }
+    return *interface;
+}
+
 bool Value::isSetnessImpl() const {
     return std::holds_alternative<SetnessImplTag>(payload_);
 }
@@ -475,6 +506,9 @@ std::string Value::toString() const {
     }
     if (isMinted()) {
         return "<mint " + std::to_string(asMintedId()) + ">";
+    }
+    if (isTrait()) {
+        return "<trait " + std::to_string(asTraitId()) + ">";
     }
     if (isConstructedSet()) {
         return "<constructed-set>";
@@ -620,6 +654,16 @@ Value CompositeSetType::bp(const Value& S, const Value& v) const {
 }
 
 Value CompositeSetType::br(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+// --- TraitType bp/br implementations (user-defined traits) ---
+
+Value TraitType::bp(const Value& S, const Value& v) const {
+    throw std::runtime_error("TraitType::bp requires evaluator context");
+}
+
+Value TraitType::br(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 

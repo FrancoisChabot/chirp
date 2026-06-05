@@ -1,11 +1,18 @@
-`expect_stdout("undecided\ntrue\nfalse\ntrue\nfalse\ntrue\ntrue\nfalse\n");
 `expect_exit(0);
 
+`expect_stdout("undecided\n");
 `print(undecided);
+`expect_stdout("true\n");
 `print(undecided == undecided);
+`expect_stdout("false\n");
 `print(undecided != undecided);
+`expect_stdout("true\n");
 `print(undecided ∈ `typeof(undecided));
+`expect_stdout("false\n");
 `print(true ∈ `typeof(undecided));
+`expect_stdout("true\n");
 `print(`typeof(undecided) ∈ `set);
+`expect_stdout("true\n");
 `print(undecided ∈ `set);
+`expect_stdout("false\n");
 `print(undecided ∈ bool);

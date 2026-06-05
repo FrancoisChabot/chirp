@@ -1,8 +1,9 @@
-`expect_stdout("3\n12\n");
 `expect_exit(0);
 
 let sum = (x : int, y : int) : int => x + y;
 let product = (x : int, y : int) : int => x * y;
 
+`expect_stdout("3\n");
 `print(sum(y=2, x=1));
+`expect_stdout("12\n");
 `print(product(y=4, x=3));

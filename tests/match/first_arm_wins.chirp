@@ -1,8 +1,8 @@
 // Arms are tested in order; the first arm whose pattern contains the subject wins.
-`expect_stdout("first\n");
 `expect_exit(0);
 
 // Both `any arms match, but the first one should be selected.
+`expect_stdout("first\n");
 `print(match 42 {
     `any => "first",
     `any => "second"

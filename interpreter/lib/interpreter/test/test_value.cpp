@@ -36,6 +36,13 @@ TEST(InterpreterTest, TypeTagIdentity) {
     EXPECT_EQ(host_print.getType(), getFunctionType());
     EXPECT_TRUE(host_print.isHostFunction());
     EXPECT_EQ(host_print.asHostFunction(), Value::HostFunction::Print);
+
+    Value trait = Value::make_trait(1, Set());
+    EXPECT_EQ(trait.getType(), getTraitType());
+    EXPECT_TRUE(trait.isTrait());
+    EXPECT_EQ(trait.asTraitId(), 1);
+    EXPECT_EQ(trait.asTraitInterface(), Set());
+    EXPECT_EQ(belongsTo(Set(), trait), Value::make_bool(true));
 }
 
 // 2. Void is equal to itself (reflexive)
@@ -121,5 +128,3 @@ TEST(InterpreterTest, Bindings) {
     EXPECT_TRUE(val.isBinding());
     EXPECT_EQ(val.asBinding(), binding);
 }
-
-

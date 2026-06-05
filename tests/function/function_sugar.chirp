@@ -1,8 +1,9 @@
-`expect_stdout("12\n2\n");
 `expect_exit(0);
 
 let double(x : int) : int = do { break x * 2; };
 let choose(flag : bool) : int = if (flag) 1 else 2;
 
+`expect_stdout("12\n");
 `print(double(6));
+`expect_stdout("2\n");
 `print(choose(false));
