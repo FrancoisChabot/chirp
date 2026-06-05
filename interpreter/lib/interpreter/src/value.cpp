@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <sstream>
+#include <utility>
 
 namespace chirp::interpreter {
 
@@ -221,6 +222,10 @@ Value Value::make_list(std::vector<Value> elements) {
     return Value(getListType(), ListTag{std::make_shared<std::vector<Value>>(std::move(elements))});
 }
 
+Value Value::make_minted(std::shared_ptr<const Type> type, uint64_t id) {
+    return Value(std::move(type), MintedTag{id});
+}
+
 
 std::shared_ptr<const Type> Value::getType() const {
     return type_;
@@ -374,6 +379,17 @@ const Value::CompositeSetTag& Value::asCompositeSet() const {
     return std::get<CompositeSetTag>(payload_);
 }
 
+bool Value::isMinted() const {
+    return std::holds_alternative<MintedTag>(payload_);
+}
+
+uint64_t Value::asMintedId() const {
+    if (!isMinted()) {
+        throw std::runtime_error("Value is not a minted value");
+    }
+    return std::get<MintedTag>(payload_).id;
+}
+
 bool Value::operator==(const Value& other) const {
     if (isVoid() && other.isVoid()) {
         return true;
@@ -452,6 +468,9 @@ std::string Value::toString() const {
         ss << range.start << (range.inclusive_end ? "..=" : "..") << range.end;
         return ss.str();
     }
+    if (isMinted()) {
+        return "<mint " + std::to_string(asMintedId()) + ">";
+    }
     if (isConstructedSet()) {
         return "<constructed-set>";
     }
@@ -475,6 +494,9 @@ std::string Value::toString() const {
     }
     return "Value(type=" + std::string(type_->name()) + ")";
 }
+
+MintedType::MintedType(uint64_t id)
+    : id_(id), name_("MintType(" + std::to_string(id) + ")") {}
 
 // --- Set belonging/range helper implementations ---
 

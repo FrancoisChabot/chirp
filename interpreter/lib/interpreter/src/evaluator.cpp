@@ -188,6 +188,7 @@ private:
     std::vector<Scope> scopes_;
     Value result_;
     bool boot_mode_ = false;
+    uint64_t next_mint_id_ = 1;
 
     Value evaluate(const Expr& expr) {
         expr.accept(*this);
@@ -439,6 +440,7 @@ private:
         if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
+        if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
@@ -501,6 +503,14 @@ private:
                     fail(diag, "`exit expects an integer exit code between 0 and 255");
                 }
                 throw ScriptExit(static_cast<int>(code));
+            }
+            case Value::HostFunction::Mint: {
+                if (!args.empty()) {
+                    fail(diag, "`mint expects no arguments");
+                }
+                uint64_t id = next_mint_id_++;
+                auto type = std::make_shared<MintedType>(id);
+                return Value::make_minted(std::move(type), id);
             }
         }
         fail(diag, "Unknown host function");

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
 #include <string_view>
 #include <memory>
 #include "value.h"
@@ -140,6 +142,18 @@ public:
 class ListType : public Type {
 public:
     std::string_view name() const override { return "List"; }
+};
+
+class MintedType : public Type {
+public:
+    explicit MintedType(uint64_t id);
+
+    std::string_view name() const override { return name_; }
+    uint64_t id() const { return id_; }
+
+private:
+    uint64_t id_;
+    std::string name_;
 };
 
 

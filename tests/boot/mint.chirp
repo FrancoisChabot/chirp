@@ -1,0 +1,19 @@
+`expect_stdout("true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\ntrue\ntrue\n");
+`expect_exit(0);
+
+let a = `mint();
+let same = a;
+let b = `mint();
+let constrained : `typeof(a) = a;
+
+`print(a == same);
+`print(a == b);
+`print(`typeof(a) == `typeof(same));
+`print(`typeof(a) == `typeof(b));
+`print(a ∈ `typeof(a));
+`print(a ∈ `typeof(b));
+`print(b ∈ `typeof(b));
+`print(a ∈ `set);
+`print(`typeof(a) ∈ `type);
+`print(`typeof(a) ∈ `set);
+`print(constrained == a);

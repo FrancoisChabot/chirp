@@ -23,6 +23,7 @@
 
 // Can't get around that one.
 let final `typeof = `import("typeof_func", "__chirp_boot");
+let final `mint = `import("mint_func", "__chirp_boot");
 
 // Values we have no choice but get from the interpreter. We want to keep this to a minimum.
 let final true = `import("true_val", "__chirp_boot");
