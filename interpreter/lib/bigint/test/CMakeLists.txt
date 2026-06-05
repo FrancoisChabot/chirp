@@ -1,0 +1,6 @@
+add_executable(chirp_bigint_test test_bigint.cpp)
+target_link_libraries(chirp_bigint_test PRIVATE chirp_bigint gtest_main)
+target_compile_features(chirp_bigint_test PUBLIC cxx_std_20)
+
+include(GoogleTest)
+gtest_discover_tests(chirp_bigint_test)

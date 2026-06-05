@@ -66,28 +66,39 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 ## State of the project
 
-- The core language design feels stable enough that the remaining abstractions look buildable on top of it. There is still a lot of design and implementation work ahead, but I don’t currently expect any *fundamental* problems to pop up in the model.
-
-- Empirical experimentation in the interpreter and boot prelude is currently overtaking the design docs. The docs still capture the intended direction, but runtime experiments are more representative of the finer implementation details. We'll circle back to another round of formalization once the dust settles. In practice, this means that opportunities for outside contributions are very limited at the moment.
-
-- I am very happy with the syntax as it is right now. It exposes the foundations directly, without abstraction, yet reads intuitively.
-
-- I currently don't foresee any major roadblocks to building an interpreter that *works*. Building one that runs *fast* and contains a smart-enough solver will be tough, but there's nothing precluding its existence. As far as I can tell, of course.
-
-- The `chirp` executable is good enough to parse chirp code and dump it as AST. It's a far cry from a proper interpreter, but that part is currently reliable enough to build on.
-
 ### Current objective
 
-Fully support all of Chirp's semantics in the interpreter's VM. We're getting close, but there's still some pieces missing. Notably structs, pointers, and undecided.
+Fully support all of Chirp's semantics in the interpreter's VM. The core syntax is there, but there are still some important pieces missing:
 
-### Long-term direction
+- structs
+- references/pointers
+- modules
+- C-ABI FFI
 
-Chirp is interpreter-first, but not interpreter-only. It's ultimately meant to be a metaprogramming systems-level tool. To get there, the roadmap looks roughly like this:
+### Roadmap
 
-- Step 1: Fully support all of Chirp's semantics in the interpreter's VM (IN PROGRESS)
-- Step 2: Get the constraint solver to a useful (as-in TypeScript-level-ish) state
-- Step 3: Implement the Calcification process to narrow bindings down to representable types.
-- Step 4: Implement low-level code emission
+Chirp is interpreter-first, but not interpreter-only. It's ultimately meant to be a metaprogramming systems-level tool. But at the same time, the dynamic interpreter meta-language makes a suitable scripting tool in its own right, as a sort of "dynamically enforced TypeScript".
+
+Because of this, the roadmap is split up in two:
+
+#### Part 1: Dynamic Chirp
+
+1. Fully support all of Chirp's semantics in the interpreter's VM (IN PROGRESS)
+
+MILESTONE: Start publishing Dynamic Chirp v0.1
+
+2. Populate the standard library
+3. Perform an optimization pass on the interpreter
+
+MILESTONE: Evaluate the road to a Dynamic Chirp v1.0
+
+#### Part 2: Static Chirp
+
+1. Implement the static solver, the target should be TypeScript-ish level of provability
+2. Implement the Calcification process to narrow bindings down to representable types.
+3. Implement low-level code emission
+
+MILESTONE: Start publishing Static Chirp v0.1
 
 How far we can take it from there is unclear. I am reasonably confident that it will work for straightforward single-threaded computations (which is already something!). But where will the framework hit a hard wall? I have no idea at the moment.
 
