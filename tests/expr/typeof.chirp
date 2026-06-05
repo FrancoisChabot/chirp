@@ -8,5 +8,4 @@
 `print(`typeof(undecided));
 `expect_stdout("Type\n");
 `print(`typeof(`typeof(42)));
-`expect_stdout("true\n");
-`print(42 ∈ `typeof(42));
+`expect(42 ∈ `typeof(42));

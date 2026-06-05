@@ -204,6 +204,7 @@ struct RunReport {
     std::optional<std::string> expected_stdout;
     std::optional<int> expected_exit;
     bool expect_test_failure = false;
+    int expectation_checks = 0;
 };
 
 
@@ -258,6 +259,8 @@ bool writeRunReport(std::ostream& out, const RunReport& report) {
     }
     out << ", \"expect_test_failure\": " << (report.expect_test_failure ? "true" : "false");
     out << "}\n";
+
+    out << "{\"event\": \"expectation_checks\", \"count\": " << report.expectation_checks << "}\n";
 
     out << "{\"event\": \"outcome\", \"outcome\": ";
     writeJsonString(out, report.outcome);
@@ -349,6 +352,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
                 report.expected_stdout = dynamic_expectations.expected_stdout;
                 report.expected_exit = dynamic_expectations.expected_exit;
                 report.expect_test_failure = dynamic_expectations.expect_test_failure;
+                report.expectation_checks = dynamic_expectations.expectation_checks;
             }
         }
     } catch (const std::exception& e) {

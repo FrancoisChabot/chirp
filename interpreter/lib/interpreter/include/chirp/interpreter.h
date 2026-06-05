@@ -75,6 +75,7 @@ struct SessionExpectations {
     std::optional<std::string> expected_stdout;
     std::optional<int> expected_exit;
     bool expect_test_failure = false;
+    int expectation_checks = 0;
     bool has_expectations = false;
 };
 

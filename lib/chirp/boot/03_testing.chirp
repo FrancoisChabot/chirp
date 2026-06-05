@@ -1,0 +1,10 @@
+// N.B. This file, as well has others in the `boot` directory operate under special rules:
+// - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
+// - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
+// - Identifiers defined here appear in the global namespace. This is the only place where that happens.
+
+// Test harness bindings. These are part of the reference test environment, not Chirp's core model.
+let final `expect = `import("expect_func", "__chirp_boot");
+let final `expect_stdout = `import("expect_stdout_func", "__chirp_boot");
+let final `expect_exit = `import("expect_exit_func", "__chirp_boot");
+let final `expect_test_failure = `import("expect_test_failure_func", "__chirp_boot");

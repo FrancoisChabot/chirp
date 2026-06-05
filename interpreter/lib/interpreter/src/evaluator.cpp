@@ -111,12 +111,6 @@ bool is_name(std::string_view actual, std::string_view expected) {
     return actual == expected;
 }
 
-bool is_harness_intrinsic(std::string_view name) {
-    return is_name(name, "`expect_stdout") ||
-        is_name(name, "`expect_exit") ||
-        is_name(name, "`expect_test_failure");
-}
-
 constexpr int64_t MAX_LOOP_ITERATIONS = 1'000'000;
 constexpr uint64_t INT64_MAX_MAGNITUDE = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
 constexpr uint64_t INT64_MIN_MAGNITUDE = INT64_MAX_MAGNITUDE + 1;
@@ -520,7 +514,6 @@ private:
     }
 
     Value builtin_intrinsic(std::string_view name, const token& diag) const {
-        if (is_harness_intrinsic(name)) return VoidVal();
         if (is_name(name, "`import")) {
             fail(diag, "`import is only available as a call");
         }
@@ -535,6 +528,10 @@ private:
         if (is_name(name, "trait_func")) return Value::make_host_function(Value::HostFunction::Trait);
         if (is_name(name, "interface_func")) return Value::make_host_function(Value::HostFunction::Interface);
         if (is_name(name, "implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
+        if (is_name(name, "expect_func")) return Value::make_host_function(Value::HostFunction::Expect);
+        if (is_name(name, "expect_stdout_func")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
+        if (is_name(name, "expect_exit_func")) return Value::make_host_function(Value::HostFunction::ExpectExit);
+        if (is_name(name, "expect_test_failure_func")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
@@ -734,6 +731,58 @@ private:
                     on.asType(),
                     std::move(impl)
                 });
+                return VoidVal();
+            }
+            case Value::HostFunction::Expect: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`expect expects one positional argument");
+                }
+                expectations.has_expectations = true;
+                expectations.expectation_checks += 1;
+                Value value = evaluate(*args.front().value);
+                if (!value.isBool()) {
+                    fail(diag, "`expect expects a Bool expression, got " + value.toString());
+                }
+                if (!value.asBool()) {
+                    fail(diag, "`expect check failed");
+                }
+                return VoidVal();
+            }
+            case Value::HostFunction::ExpectStdout: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`expect_stdout expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                if (!value.isString()) {
+                    fail(diag, "`expect_stdout expects a string");
+                }
+                expectations.has_expectations = true;
+                if (!expectations.expected_stdout.has_value()) {
+                    expectations.expected_stdout = value.asString();
+                } else {
+                    *expectations.expected_stdout += value.asString();
+                }
+                return VoidVal();
+            }
+            case Value::HostFunction::ExpectExit: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`expect_exit expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                int64_t code = as_int(value, diag);
+                if (code < 0 || code > 255) {
+                    fail(diag, "`expect_exit expects an integer exit code between 0 and 255");
+                }
+                expectations.has_expectations = true;
+                expectations.expected_exit = static_cast<int>(code);
+                return VoidVal();
+            }
+            case Value::HostFunction::ExpectTestFailure: {
+                if (!args.empty()) {
+                    fail(diag, "`expect_test_failure expects no arguments");
+                }
+                expectations.has_expectations = true;
+                expectations.expect_test_failure = true;
                 return VoidVal();
             }
         }
@@ -1001,12 +1050,6 @@ private:
     }
 
     void visit(const IntrinsicExpr& expr) override {
-        if (is_name(expr.name, "`expect_test_failure")) {
-            expectations.has_expectations = true;
-            expectations.expect_test_failure = true;
-            result_ = VoidVal();
-            return;
-        }
         result_ = builtin_intrinsic(expr.name, expr.diagnostic_token);
     }
 
@@ -1118,31 +1161,6 @@ private:
                 result_ = call_import(expr.args, expr.diagnostic_token);
                 return;
             }
-            if (is_harness_intrinsic(intrinsic->name)) {
-                if (is_name(intrinsic->name, "`expect_stdout")) {
-                    if (expr.args.size() == 1) {
-                        Value arg = evaluate(*expr.args.front().value);
-                        if (arg.isString()) {
-                            expectations.has_expectations = true;
-                            if (!expectations.expected_stdout.has_value()) {
-                                expectations.expected_stdout = arg.asString();
-                            } else {
-                                *expectations.expected_stdout += arg.asString();
-                            }
-                        }
-                    }
-                } else if (is_name(intrinsic->name, "`expect_exit")) {
-                    if (expr.args.size() == 1) {
-                        Value arg = evaluate(*expr.args.front().value);
-                        if (arg.isInt()) {
-                            expectations.has_expectations = true;
-                            expectations.expected_exit = static_cast<int>(arg.asInt());
-                        }
-                    }
-                }
-                result_ = VoidVal();
-                return;
-            }
         }
 
         Value callee = evaluate(*expr.callee);
@@ -1215,14 +1233,6 @@ private:
     }
 
     void visit(const ExprStmt& stmt) override {
-        if (const auto* intrinsic = dynamic_cast<const IntrinsicExpr*>(stmt.expression.get());
-            intrinsic != nullptr && is_harness_intrinsic(intrinsic->name)) {
-            if (is_name(intrinsic->name, "`expect_test_failure")) {
-                expectations.has_expectations = true;
-                expectations.expect_test_failure = true;
-            }
-            return;
-        }
         evaluate(*stmt.expression);
     }
 

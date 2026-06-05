@@ -4,10 +4,8 @@
 `print(-9223372036854775808);
 `expect_stdout("9223372036854775807\n");
 `print(9223372036854775807);
-`expect_stdout("true\n");
-`print(-9223372036854775808 ∈ int64);
-`expect_stdout("true\n");
-`print(9223372036854775807 ∈ int64);
+`expect(-9223372036854775808 ∈ int64);
+`expect(9223372036854775807 ∈ int64);
 
 let x : int64 = 3;
 `expect_stdout("3\n");

@@ -81,6 +81,8 @@ def run_test(chirp_bin, file_path):
                         expected_stdout = event.get("expected_stdout")
                         expected_exit = event.get("expected_exit")
                         expect_test_failure = event.get("expect_test_failure", False)
+                    elif event.get("event") == "expectation_checks":
+                        report["expectation_checks"] = event.get("count", 0)
     except json.JSONDecodeError as e:
         return False, f"Could not read run report: {e}", expect_test_failure, runner_id
     except subprocess.TimeoutExpired:

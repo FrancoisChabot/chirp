@@ -50,7 +50,20 @@ public:
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
     };
 
-    enum class HostFunction { Print, TypeOf, Exit, Mint, Trait, Interface, Implement, SetnessConstructor };
+    enum class HostFunction {
+        Print,
+        TypeOf,
+        Exit,
+        Mint,
+        Trait,
+        Interface,
+        Implement,
+        SetnessConstructor,
+        Expect,
+        ExpectStdout,
+        ExpectExit,
+        ExpectTestFailure
+    };
     struct HostFunctionTag {
         HostFunction fn;
         bool operator==(const HostFunctionTag& other) const { return fn == other.fn; }

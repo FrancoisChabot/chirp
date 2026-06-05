@@ -2,11 +2,7 @@
 
 let s = {1, 2} ∪ {2, 3};
 
-`expect_stdout("true\n");
-`print(1 ∈ s);
-`expect_stdout("true\n");
-`print(2 ∈ s);
-`expect_stdout("true\n");
-`print(3 ∈ s);
-`expect_stdout("false\n");
-`print(4 ∈ s);
+`expect(1 ∈ s);
+`expect(2 ∈ s);
+`expect(3 ∈ s);
+`expect(!(4 ∈ s));

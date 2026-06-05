@@ -9,28 +9,20 @@ let Other = `trait(`any);
     impl=#marker_impl
 );
 
-`expect_stdout("true\n");
-`print(`interface(Marker) == `any);
+`expect(`interface(Marker) == `any);
 
-`expect_stdout("true\n");
-`print(1 ∈ Marker);
+`expect(1 ∈ Marker);
 
-`expect_stdout("false\n");
-`print("" ∈ Marker);
+`expect("" ∉ Marker);
 
-`expect_stdout("true\n");
-`print(Marker ∈ `set);
+`expect(Marker ∈ `set);
 
-`expect_stdout("true\n");
-`print(Marker != Other);
+`expect(Marker != Other);
 
-`expect_stdout("false\n");
-`print(1 ∈ Other);
+`expect(1 ∉ Other);
 
 let constrained : Marker = 5;
 
-`expect_stdout("true\n");
-`print(constrained == 5);
+`expect(constrained == 5);
 
-`expect_stdout("true\n");
-`print(Marker ∈ `typeof(Marker));
+`expect(Marker ∈ `typeof(Marker));

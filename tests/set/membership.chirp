@@ -1,10 +1,6 @@
 `expect_exit(0);
 
-`expect_stdout("true\n");
-`print(2 ∈ {1, 2});
-`expect_stdout("false\n");
-`print(3 ∈ {1, 2});
-`expect_stdout("false\n");
-`print(2 ∉ {1, 2});
-`expect_stdout("true\n");
-`print(3 ∉ {1, 2});
+`expect(2 ∈ {1, 2});
+`expect(!(3 ∈ {1, 2}));
+`expect(!(2 ∉ {1, 2}));
+`expect(3 ∉ {1, 2});

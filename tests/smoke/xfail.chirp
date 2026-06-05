@@ -1,2 +1,2 @@
-`expect_test_failure;
+`expect_test_failure();
 let x : {1} = 2; // Runtime constraint violation for TDD validation

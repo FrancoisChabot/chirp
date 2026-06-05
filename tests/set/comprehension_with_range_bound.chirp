@@ -2,9 +2,6 @@
 
 let small_even = {x : 1..=10 | x % 2 == 0};
 
-`expect_stdout("true\n");
-`print(8 ∈ small_even);
-`expect_stdout("false\n");
-`print(9 ∈ small_even);
-`expect_stdout("false\n");
-`print(12 ∈ small_even);
+`expect(8 ∈ small_even);
+`expect(!(9 ∈ small_even));
+`expect(!(12 ∈ small_even));

@@ -15,8 +15,8 @@ Each test is an ordinary `.chirp` file with optional harness directives:
 ```chirp
 `expect_exit(0);
 
-`expect_stdout("Hello World\n");
-`print("Hello World");
+let value = 1 + 2;
+`expect(value == 3);
 ```
 
 ### Directory-Based Routing
@@ -28,8 +28,10 @@ For successful compilations (VM runtime tests), you can specify expectations dyn
 
 - `` `expect_stdout("..."); `` appends to the exact expected stdout. Prefer placing stdout expectations next to the statements or control-flow blocks that produce them. If omitted, stdout has no impact on the test passing/failing.
 
+- `` `expect(expr); `` evaluates `expr`, requires it to be `true`, and reports a runtime failure otherwise. Prefer this for semantic checks that do not need to verify printed output.
+
 - `` `expect_exit(n); `` sets the expected process exit code of the interpreter (regardless of whether it exits via normal execution, a runtime error, or an explicit `` `exit(n) `` intrinsic). Defaults to `0` if omitted.
 
-- `` `expect_test_failure; `` marks the test as an expected runtime failure (XFAIL). This is a TDD tool, not a way to unbreak builds. Please do not make future-me regret adding it.
+- `` `expect_test_failure(); `` marks the test as an expected runtime failure (XFAIL). This is a TDD tool, not a way to unbreak builds. Please do not make future-me regret adding it.
 
-Since the directives are proper chirp intrinsics, commenting them out works as expected.
+Since the directives are ordinary Chirp calls, commenting them out works as expected.

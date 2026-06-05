@@ -3,11 +3,7 @@
 let start = 1 + 1;
 let stop = 2 * 4;
 
-`expect_stdout("true\n");
-`print(2 ∈ start..stop);
-`expect_stdout("false\n");
-`print(8 ∈ start..stop);
-`expect_stdout("true\n");
-`print(8 ∈ start..=stop);
-`expect_stdout("false\n");
-`print(9 ∈ start..=stop);
+`expect(2 ∈ start..stop);
+`expect(!(8 ∈ start..stop));
+`expect(8 ∈ start..=stop);
+`expect(!(9 ∈ start..=stop));
