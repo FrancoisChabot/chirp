@@ -429,6 +429,10 @@ private:
             return {};
         }
 
+        if (set.isBool() || set.isInt() || set.isString() || set.isSymbol() || set.getType() == getUndecidedType()) {
+            return {set};
+        }
+
         if (set.isType() && set.asType() == getBoolType()) {
             return {True(), False()};
         }

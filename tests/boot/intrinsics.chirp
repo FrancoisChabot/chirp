@@ -33,9 +33,9 @@
 `print(`any ∈ `set);
 `print(`empty ∈ `set);
 `print(`set ∈ `set);
-`print(true ∉ `set);
-`print(1 ∉ `set);
-`print("" ∉ `set);
+`print(true ∈ `set);
+`print(1 ∈ `set);
+`print("" ∈ `set);
 
 `print("--- Top (any) and Bottom (empty) Relations ---");
 `print(true ∈ `any);

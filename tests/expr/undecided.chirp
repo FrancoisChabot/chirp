@@ -1,4 +1,4 @@
-`expect_stdout("undecided\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\nfalse\n");
+`expect_stdout("undecided\ntrue\nfalse\ntrue\nfalse\ntrue\ntrue\nfalse\n");
 `expect_exit(0);
 
 `print(undecided);

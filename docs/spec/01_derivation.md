@@ -223,23 +223,23 @@ let str = match v {
 
 ```chirp
 //...
-do {
-   // This makes each instance of a type a set of itself, which is really convenient for match arms.
-   let make_type_a_self_set(t) => {
-     `inject_set_capability(t, Setness(
-        bp= (this, v) => v == this,
-        br= (this, lc) =>
-          if (this ∉ lc) {false}
-          else if ({this} == lc) {true}
-          else {true, false}
-     ));
-   };
+   let make_type_a_self_set(t) = do {
+        `implement(
+            trait=`set,
+            on=t,
+            impl=`Setness(
+                bp = (this, v) => v == this,
+                br = (this, lc) =>
+                    if (this ∉ lc) {false}
+                    else if ({this} == lc) {true}
+                    else {true, false}
+            )
+        );
+    };
 
-   make_type_a_self_set(bool);
-   make_type_a_self_set(int);
-   make_type_a_self_set(string);
-   // ...
-};
+    make_type_a_self_set(bool);
+    make_type_a_self_set(int);
+    make_type_a_self_set(string);
 ```
 
 If you zero-in on the `br` (Belonging Range) portion, notice what it calculates:

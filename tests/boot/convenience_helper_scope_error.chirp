@@ -1,0 +1,3 @@
+`expect_exit(1);
+
+make_type_a_self_set(int);

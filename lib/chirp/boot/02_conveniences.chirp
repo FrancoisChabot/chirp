@@ -19,34 +19,37 @@ let final uint32 = 0..=4294967295;
 // ---------- literals as singleton sets ----------
 
 // Without these, we'd have to wrap every literal in a singleton set when matching, ew!
-// It also doesn't conflict with anything because none of them are sets.
 //
 // match (v) => {
 //   {0} => "zero"
 //   {1} => "one"
 //   `any => "other"
 // }
-// 
-
-// N.B. `inject_set_capability() and Setness are real things yet, and the actual machinery will likely be different. 
-// // The do is to avoid bleeding out the intermediate symbol into the global namespace.
-// do {
-//    // This makes each instance of a type a set of itself, which is really convenient for match arms.
-//    let make_type_a_self_set(t) => {
-//      `inject_set_capability(t, Setness(
-//         bp = (this, v) => v == this,
-//         br = (this, lc) =>
-//           if (this ∉ lc) {false}
-//           else if ({this} == lc) {true}
-//           else {true, false}
-//      ));
-//    };
 //
-//    make_type_a_self_set(bool);
-//    make_type_a_self_set(int);
-//    make_type_a_self_set(string);
-//    make_type_a_self_set(`typeof(undecided));
-// };
+
+// The do is to avoid bleeding out the intermediate symbol into the global namespace.
+do {
+    // This makes each instance of a type a set of itself, which is really convenient for match arms.
+    let make_type_a_self_set(t) = do {
+        `implement(
+            trait=`set,
+            on=t,
+            impl=`Setness(
+                bp = (this, v) => v == this,
+                br = (this, lc) =>
+                    if (this ∉ lc) {false}
+                    else if ({this} == lc) {true}
+                    else {true, false}
+            )
+        );
+    };
+
+    make_type_a_self_set(bool);
+    make_type_a_self_set(int);
+    make_type_a_self_set(string);
+    make_type_a_self_set(`symbol);
+    make_type_a_self_set(`typeof(undecided));
+};
 
 
 // We could just force returning from main. But being able to bail out is nice and easy to implement, 
