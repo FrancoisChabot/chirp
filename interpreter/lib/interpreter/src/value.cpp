@@ -23,15 +23,7 @@ std::shared_ptr<const Type> getUndecidedType() {
     return instance;
 }
 
-std::shared_ptr<const Type> getAnyType() {
-    static auto instance = std::make_shared<AnyType>();
-    return instance;
-}
 
-std::shared_ptr<const Type> getEmptyType() {
-    static auto instance = std::make_shared<EmptyType>();
-    return instance;
-}
 
 std::shared_ptr<const Type> getSetType() {
     static auto instance = std::make_shared<SetType>();
@@ -126,25 +118,7 @@ const Value& TypeVal() {
     return instance;
 }
 
-const Value& Any() {
-    static Value instance = Value(getAnyType(), std::monostate{});
-    return instance;
-}
 
-const Value& AnyTypeVal() {
-    static Value instance = Value::make_type(getAnyType());
-    return instance;
-}
-
-const Value& Empty() {
-    static Value instance = Value(getEmptyType(), std::monostate{});
-    return instance;
-}
-
-const Value& EmptyTypeVal() {
-    static Value instance = Value::make_type(getEmptyType());
-    return instance;
-}
 
 const Value& Set() {
     static Value instance = Value(getSetType(), std::monostate{});
@@ -517,12 +491,7 @@ std::string Value::toString() const {
     if (type_ == getUndecidedType()) {
         return "undecided";
     }
-    if (type_ == getAnyType()) {
-        return "any";
-    }
-    if (type_ == getEmptyType()) {
-        return "empty";
-    }
+
     if (type_ == getSetType()) {
         return "set";
     }
@@ -571,25 +540,6 @@ Value MetaType::br(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
-// --- AnyType bp/br implementations (any) ---
-
-Value AnyType::bp(const Value& S, const Value& v) const {
-    return Value::make_bool(true);
-}
-
-Value AnyType::br(const Value& S, const Value& lc) const {
-    return Value::make_enumerated_set({Value::make_bool(true)});
-}
-
-// --- EmptyType bp/br implementations (empty) ---
-
-Value EmptyType::bp(const Value& S, const Value& v) const {
-    return Value::make_bool(false);
-}
-
-Value EmptyType::br(const Value& S, const Value& lc) const {
-    return Value::make_enumerated_set({Value::make_bool(false)});
-}
 
 // --- SetType bp/br implementations (set) ---
 

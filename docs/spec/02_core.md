@@ -103,16 +103,14 @@ The following **values** are predefined as part of the core:
 - `false`     - boolean falsehood constant
 - `undecided` - an undecided belonging result
 - `Type`      - the type of all types
-- `any`       - the set of all values 
-- `AnyType`   - the type of `any`
-- `empty`     - the empty set (contains no values)
-- `EmptyType` - the type of `empty`
+- `any`       - the set of all values (defined dynamically via bootstrap)
+- `empty`     - the empty set (contains no values, defined dynamically via bootstrap)
 - `set`       - the set of values whose type has set-ness
 - `SetType`   - the type of `set`
 - `Void`      - The type of the void value
 - `` `void `` - the single value of type `Void` representing no returned data
 
-**Auxiliary notes:** Why do `any` and `empty` need their own unique types? Because a set's belonging logic depends on its **Type**. If `any` were simply of type `Type` (like `Bool`), checking `v ∈ any` would be checking `typeof(v) == any`, which is not what we want. `AnyType` and `EmptyType` exist to provide custom set-ness predicates that always return `true` and `false`, respectively. The same logic applies to `set` with `SetType`.
+**Auxiliary notes:** In earlier designs, `any` and `empty` had their own built-in compiler types (`AnyType` and `EmptyType`) to support custom belonging predicates. With the bootstrap capabilities, they are now dynamically minted as separate types in bootstrap prelude, and their custom set capabilities are registered via the `` `set `` trait on their respective minted types. This allows the compiler to remain completely agnostic of these sets and handle them through standard trait dispatch. The same trait dispatch logic applies to `set` with `SetType`.
 
 ---
 

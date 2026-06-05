@@ -34,8 +34,7 @@ private:
 std::shared_ptr<const Type> getBoolType();
 std::shared_ptr<const Type> getUndecidedType();
 std::shared_ptr<const Type> getMetaType(); // represents the "Type" type
-std::shared_ptr<const Type> getAnyType();
-std::shared_ptr<const Type> getEmptyType();
+
 std::shared_ptr<const Type> getSetType();
 std::shared_ptr<const Type> getVoidType();
 std::shared_ptr<const Type> getEnumeratedSetType();
@@ -59,10 +58,7 @@ const Value& False();
 const Value& Undecided();
 const Value& UndecidedVal();
 const Value& TypeVal();
-const Value& Any();
-const Value& AnyTypeVal();
-const Value& Empty();
-const Value& EmptyTypeVal();
+
 const Value& Set();
 const Value& SetTypeVal();
 const Value& Void();

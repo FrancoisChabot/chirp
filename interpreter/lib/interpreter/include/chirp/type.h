@@ -46,23 +46,7 @@ public:
     std::string_view name() const override { return "Undecided"; }
 };
 
-// Subclass for AnyType
-class AnyType : public Type {
-public:
-    std::string_view name() const override { return "AnyType"; }
-    bool hasSetness() const override { return true; }
-    Value bp(const Value& S, const Value& v) const override;
-    Value br(const Value& S, const Value& lc) const override;
-};
 
-// Subclass for EmptyType
-class EmptyType : public Type {
-public:
-    std::string_view name() const override { return "EmptyType"; }
-    bool hasSetness() const override { return true; }
-    Value bp(const Value& S, const Value& v) const override;
-    Value br(const Value& S, const Value& lc) const override;
-};
 
 // Subclass for SetType
 class SetType : public Type {

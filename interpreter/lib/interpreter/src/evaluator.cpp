@@ -211,6 +211,17 @@ private:
         fail(diag, "Undefined identifier '" + key + "'");
     }
 
+    std::shared_ptr<Binding> lookup_binding_optional(std::string_view name) const {
+        std::string key = to_key(name);
+        for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+            auto found = scope->find(key);
+            if (found != scope->end()) {
+                return found->second;
+            }
+        }
+        return nullptr;
+    }
+
     void define_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
         if (diag.type == token_type::intrinsic && !(boot_mode_ && scopes_.size() == 1)) {
             fail(diag, "Backtick-prefixed bindings may only be defined by top-level boot files");
@@ -312,13 +323,15 @@ private:
         }
 
         const ConstructedSetExpr& expr = set.asConstructedSet();
-        Value bound = expr.binding.type_bound ? evaluate(*expr.binding.type_bound) : Any();
-        Value in_bound = belongs_to(bound, value, expr.diagnostic_token);
-        if (!in_bound.isBool()) {
-            fail(expr.diagnostic_token, "Set bound belonging predicate did not return Bool");
-        }
-        if (!in_bound.asBool()) {
-            return Value::make_bool(false);
+        Value bound = expr.binding.type_bound ? evaluate(*expr.binding.type_bound) : VoidVal();
+        if (expr.binding.type_bound) {
+            Value in_bound = belongs_to(bound, value, expr.diagnostic_token);
+            if (!in_bound.isBool()) {
+                fail(expr.diagnostic_token, "Set bound belonging predicate did not return Bool");
+            }
+            if (!in_bound.asBool()) {
+                return Value::make_bool(false);
+            }
         }
 
         scopes_.emplace_back();
@@ -425,8 +438,10 @@ private:
             return elements;
         }
 
-        if (set == Empty()) {
-            return {};
+        if (auto b = lookup_binding_optional("`empty")) {
+            if (set == b->getCV()) {
+                return {};
+            }
         }
 
         if (set.isBool() || set.isInt() || set.isString() || set.isSymbol() || set.getType() == getUndecidedType()) {
@@ -465,6 +480,9 @@ private:
     }
 
     void enforce_constraint(const Value& constraint, const Value& value, const token& diag) {
+        if (constraint.isVoid()) {
+            return;
+        }
         Value belongs = belongs_to(constraint, value, diag);
         if (!belongs.isBool()) {
             fail(diag, "Constraint belonging predicate did not return Bool");
@@ -496,8 +514,6 @@ private:
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
-        if (is_name(name, "any_val")) return Any();
-        if (is_name(name, "empty_val")) return Empty();
         if (is_name(name, "set_val")) return Set();
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
@@ -706,7 +722,7 @@ private:
         try {
             for (size_t i = 0; i < lambda.parameters.size(); ++i) {
                 const NamedBinding& param = lambda.parameters[i];
-                Value constraint = param.type_bound ? evaluate(*param.type_bound) : Any();
+                Value constraint = param.type_bound ? evaluate(*param.type_bound) : VoidVal();
                 enforce_constraint(constraint, arg_values[i], param.name);
 
                 auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final);
@@ -714,7 +730,7 @@ private:
             }
 
             Value return_value = evaluate(*lambda.body);
-            Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : Any();
+            Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : VoidVal();
             enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
 
             scopes_.pop_back();
@@ -788,7 +804,7 @@ private:
     }
 
     void bind_loop_iterator(const NamedBinding& binding, Value value, const token& diag) {
-        Value constraint = binding.type_bound ? evaluate(*binding.type_bound) : Any();
+        Value constraint = binding.type_bound ? evaluate(*binding.type_bound) : VoidVal();
         enforce_constraint(constraint, value, diag);
 
         auto iterator_binding = std::make_shared<Binding>(constraint, constraint, std::move(value), binding.is_final);
@@ -1166,7 +1182,7 @@ private:
 
     void visit(const LetStmt& stmt) override {
         Value initializer = evaluate(*stmt.binding.initializer);
-        Value constraint = stmt.binding.type_bound ? evaluate(*stmt.binding.type_bound) : Any();
+        Value constraint = stmt.binding.type_bound ? evaluate(*stmt.binding.type_bound) : VoidVal();
         enforce_constraint(constraint, initializer, stmt.diagnostic_token);
 
         auto binding = std::make_shared<Binding>(constraint, constraint, initializer, stmt.binding.is_final);

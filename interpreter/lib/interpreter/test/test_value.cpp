@@ -20,15 +20,7 @@ TEST(InterpreterTest, TypeTagIdentity) {
     // typeof(Type) == Type
     EXPECT_EQ(TypeVal().getType(), getMetaType());
     
-    // typeof(any) == AnyType
-    EXPECT_EQ(Any().getType(), getAnyType());
-    // typeof(AnyType) == Type
-    EXPECT_EQ(AnyTypeVal().getType(), getMetaType());
 
-    // typeof(empty) == EmptyType
-    EXPECT_EQ(Empty().getType(), getEmptyType());
-    // typeof(EmptyType) == Type
-    EXPECT_EQ(EmptyTypeVal().getType(), getMetaType());
 
     // typeof(set) == SetType
     EXPECT_EQ(Set().getType(), getSetType());
@@ -80,13 +72,7 @@ TEST(InterpreterTest, BelongingPredicate) {
     EXPECT_EQ(belongsTo(Undecided(), UndecidedVal()), Value::make_bool(true));
     EXPECT_EQ(belongsTo(Undecided(), True()), Value::make_bool(false));
 
-    // true ∈ any -> true
-    EXPECT_EQ(belongsTo(Any(), True()), Value::make_bool(true));
-    EXPECT_EQ(belongsTo(Any(), Value::make_int(42)), Value::make_bool(true));
 
-    // true ∈ empty -> false
-    EXPECT_EQ(belongsTo(Empty(), True()), Value::make_bool(false));
-    EXPECT_EQ(belongsTo(Empty(), Value::make_int(42)), Value::make_bool(false));
 
     // Bool ∈ set -> true (since Bool's type is Type, which has setness)
     EXPECT_EQ(belongsTo(Set(), Bool()), Value::make_bool(true));
@@ -136,17 +122,4 @@ TEST(InterpreterTest, Bindings) {
     EXPECT_EQ(val.asBinding(), binding);
 }
 
-// 6. Set belonging range checks
-TEST(InterpreterTest, BelongingRange) {
-    // any's belonging range is {true}
-    Value any_br = belongsRange(Any(), Value::make_type(True().getType()));
-    EXPECT_TRUE(any_br.isEnumeratedSet());
-    EXPECT_EQ(any_br.asEnumeratedSet().size(), 1);
-    EXPECT_EQ(any_br.asEnumeratedSet()[0], Value::make_bool(true));
 
-    // empty's belonging range is {false}
-    Value empty_br = belongsRange(Empty(), Value::make_type(True().getType()));
-    EXPECT_TRUE(empty_br.isEnumeratedSet());
-    EXPECT_EQ(empty_br.asEnumeratedSet().size(), 1);
-    EXPECT_EQ(empty_br.asEnumeratedSet()[0], Value::make_bool(false));
-}
