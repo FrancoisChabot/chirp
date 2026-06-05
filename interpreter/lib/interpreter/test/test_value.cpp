@@ -1,9 +1,43 @@
 #include <gtest/gtest.h>
 #include "chirp/interpreter.h"
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
+#include <stdexcept>
 
 using namespace chirp::interpreter;
+
+namespace {
+
+namespace fs = std::filesystem;
+
+struct TempDir {
+    fs::path path;
+
+    TempDir() {
+        auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        path = fs::temp_directory_path() / ("chirp_module_test_" + std::to_string(stamp));
+        fs::create_directories(path);
+    }
+
+    ~TempDir() {
+        std::error_code ec;
+        fs::remove_all(path, ec);
+    }
+};
+
+void write_file(const fs::path& path, std::string_view contents) {
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        throw std::runtime_error("could not write test file: " + path.string());
+    }
+    out << contents;
+}
+
+} // namespace
 
 // 1. Basic type tag identity (typeof(v))
 TEST(InterpreterTest, TypeTagIdentity) {
@@ -148,4 +182,82 @@ TEST(InterpreterTest, BootPublicBindingsArePublishedAndPrivateBindingsAreHidden)
         "let y : {2} = from_hidden;\n",
         "script"));
     EXPECT_THROW(session.execute_source("hidden;\n", "script-hidden"), std::runtime_error);
+}
+
+TEST(InterpreterTest, ModulePrivateExportsAreHidden) {
+    TempDir temp;
+    write_file(temp.path / "mod.chirp",
+        "let hidden = 1;\n"
+        "let pub visible = 2;\n");
+
+    std::ostringstream out;
+    Session session(out);
+
+    EXPECT_THROW(session.execute_source(
+        "let m = `import(\"./mod\");\n"
+        "let visible : {2} = m.visible;\n"
+        "m.hidden;\n",
+        (temp.path / "main.chirp").string()), std::runtime_error);
+}
+
+TEST(InterpreterTest, ModuleImportCycleIsDetected) {
+    TempDir temp;
+    write_file(temp.path / "a.chirp",
+        "let b = `import(\"./b\");\n"
+        "let pub value = 1;\n");
+    write_file(temp.path / "b.chirp",
+        "let a = `import(\"./a\");\n"
+        "let pub value = 2;\n");
+
+    std::ostringstream out;
+    Session session(out);
+
+    EXPECT_THROW(session.execute_source(
+        "let a = `import(\"./a\");\n",
+        (temp.path / "main.chirp").string()), std::runtime_error);
+}
+
+TEST(InterpreterTest, ModuleFailureIsCached) {
+    TempDir temp;
+    fs::path broken = temp.path / "broken.chirp";
+    write_file(broken, "missing;\n");
+
+    std::ostringstream out;
+    Session session(out);
+
+    EXPECT_THROW(session.execute_source(
+        "let broken = `import(\"./broken\");\n",
+        (temp.path / "first.chirp").string()), std::runtime_error);
+
+    write_file(broken, "let pub x = 1;\n");
+
+    EXPECT_THROW(session.execute_source(
+        "let broken = `import(\"./broken\");\n"
+        "let x : {1} = broken.x;\n",
+        (temp.path / "second.chirp").string()), std::runtime_error);
+}
+
+TEST(InterpreterTest, StdImportsUseConfiguredChirpRoot) {
+    TempDir temp;
+    write_file(temp.path / "std" / "sample.chirp",
+        "let private = 40;\n"
+        "let pub answer = private + 2;\n");
+
+    std::ostringstream out;
+    Session session(out);
+    session.set_chirp_root(temp.path.string());
+
+    EXPECT_NO_THROW(session.execute_source(
+        "let sample = `import(\"std/sample\");\n"
+        "let answer : {42} = sample.answer;\n",
+        (temp.path / "main.chirp").string()));
+}
+
+TEST(InterpreterTest, NonStdLogicalImportsAreRejectedInV1) {
+    std::ostringstream out;
+    Session session(out);
+
+    EXPECT_THROW(session.execute_source(
+        "let sample = `import(\"mylib/sample\");\n",
+        "main.chirp"), std::runtime_error);
 }

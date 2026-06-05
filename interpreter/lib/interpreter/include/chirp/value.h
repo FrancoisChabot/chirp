@@ -5,6 +5,7 @@
 #include <variant>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 #include "chirp/bigint.h"
 #include <map>
@@ -18,6 +19,9 @@ namespace chirp::interpreter {
 
 class Type;
 class Binding;
+
+using RuntimeScope = std::unordered_map<std::string, std::shared_ptr<Binding>>;
+using RuntimeScopeChain = std::vector<std::shared_ptr<RuntimeScope>>;
 
 class Value {
 public:
@@ -49,7 +53,10 @@ public:
     };
     struct LambdaTag {
         const frontend::LambdaExpr* lambda;
-        bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
+        std::shared_ptr<const RuntimeScopeChain> captured_scopes;
+        bool operator==(const LambdaTag& other) const {
+            return lambda == other.lambda && captured_scopes == other.captured_scopes;
+        }
     };
 
     enum class HostFunction {
@@ -107,6 +114,11 @@ public:
         std::shared_ptr<std::map<std::string, Value>> fields;
         bool operator==(const StructInstanceTag& other) const;
     };
+    struct ModuleTag {
+        std::string identity;
+        std::shared_ptr<std::map<std::string, std::shared_ptr<Binding>>> exports;
+        bool operator==(const ModuleTag& other) const { return exports == other.exports; }
+    };
 
 
     // Constructs a Chirp `void` value.
@@ -121,7 +133,7 @@ public:
     static Value make_enumerated_set(std::vector<Value> elements);
     static Value make_range(BigInt start, BigInt end, bool inclusive_end);
     static Value make_constructed_set(const frontend::ConstructedSetExpr& set);
-    static Value make_lambda(const frontend::LambdaExpr& lambda);
+    static Value make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
     static Value make_host_function(HostFunction fn);
     static Value make_composite_set(Value left, Value right, CompositeSetOp op);
     static Value make_symbol(std::string name);
@@ -130,6 +142,7 @@ public:
     static Value make_trait(uint64_t id, Value interface);
     static Value make_setness_impl(Value bp, Value br);
     static Value make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields);
+    static Value make_module(std::string identity, std::map<std::string, std::shared_ptr<Binding>> exports);
 
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
@@ -171,6 +184,7 @@ public:
 
     bool isLambda() const;
     const frontend::LambdaExpr& asLambda() const;
+    const LambdaTag& asLambdaTag() const;
 
     bool isHostFunction() const;
     HostFunction asHostFunction() const;
@@ -191,13 +205,16 @@ public:
     bool isStructInstance() const;
     const StructInstanceTag& asStructInstance() const;
 
+    bool isModule() const;
+    const ModuleTag& asModule() const;
+
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
 
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag, ModuleTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

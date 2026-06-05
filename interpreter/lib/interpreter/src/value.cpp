@@ -90,6 +90,11 @@ std::shared_ptr<const Type> getTraitType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getModuleType() {
+    static auto instance = std::make_shared<ModuleType>();
+    return instance;
+}
+
 
 // --- Core Value Accessors ---
 
@@ -185,8 +190,8 @@ Value Value::make_composite_set(Value left, Value right, CompositeSetOp op) {
     return Value(getCompositeSetType(), CompositeSetTag{std::make_shared<Value>(std::move(left)), std::make_shared<Value>(std::move(right)), op});
 }
 
-Value Value::make_lambda(const frontend::LambdaExpr& lambda) {
-    return Value(getFunctionType(), LambdaTag{&lambda});
+Value Value::make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
+    return Value(getFunctionType(), LambdaTag{&lambda, std::move(captured_scopes)});
 }
 
 Value Value::make_host_function(HostFunction fn) {
@@ -218,6 +223,13 @@ Value Value::make_setness_impl(Value bp, Value br) {
 
 Value Value::make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields) {
     return Value(std::move(type), StructInstanceTag{std::make_shared<std::map<std::string, Value>>(std::move(fields))});
+}
+
+Value Value::make_module(std::string identity, std::map<std::string, std::shared_ptr<Binding>> exports) {
+    return Value(getModuleType(), ModuleTag{
+        std::move(identity),
+        std::make_shared<std::map<std::string, std::shared_ptr<Binding>>>(std::move(exports))
+    });
 }
 
 
@@ -351,6 +363,13 @@ const frontend::LambdaExpr& Value::asLambda() const {
     return *std::get<LambdaTag>(payload_).lambda;
 }
 
+const Value::LambdaTag& Value::asLambdaTag() const {
+    if (!isLambda()) {
+        throw std::runtime_error("Value is not a Function");
+    }
+    return std::get<LambdaTag>(payload_);
+}
+
 bool Value::isHostFunction() const {
     return std::holds_alternative<HostFunctionTag>(payload_);
 }
@@ -426,6 +445,17 @@ const Value::StructInstanceTag& Value::asStructInstance() const {
         throw std::runtime_error("Value is not a struct instance");
     }
     return std::get<StructInstanceTag>(payload_);
+}
+
+bool Value::isModule() const {
+    return std::holds_alternative<ModuleTag>(payload_);
+}
+
+const Value::ModuleTag& Value::asModule() const {
+    if (!isModule()) {
+        throw std::runtime_error("Value is not a module");
+    }
+    return std::get<ModuleTag>(payload_);
 }
 
 bool Value::operator==(const Value& other) const {
@@ -546,6 +576,9 @@ std::string Value::toString() const {
     }
     if (isStructInstance()) {
         return "<struct-instance>";
+    }
+    if (isModule()) {
+        return "<module>";
     }
     if (type_ == getUndecidedType()) {
         return "undecided";

@@ -5,8 +5,13 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <set>
 #include <sstream>
@@ -143,9 +148,9 @@ class Evaluator : public ASTVisitor, public StmtVisitor {
 public:
     SessionExpectations expectations;
 
-    explicit Evaluator(std::ostream& out, bool testing_enabled = false) 
+    explicit Evaluator(std::ostream& out, bool testing_enabled = false)
         : out_(out), testing_enabled_(testing_enabled), yielder_trait_(Value::make_trait(next_trait_id_++, Set())) {
-        scopes_.emplace_back();
+        scopes_.push_back(std::make_shared<RuntimeScope>());
     }
 
     void execute(const std::vector<std::unique_ptr<Stmt>>& stmts) {
@@ -153,24 +158,58 @@ public:
         execute_statements(stmts);
     }
 
-    void execute_boot(const std::vector<std::unique_ptr<Stmt>>& stmts) {
+    void execute(const std::vector<std::unique_ptr<Stmt>>& stmts, std::string label) {
+        close_boot_private_scope();
+        source_stack_.push_back(std::move(label));
+        try {
+            execute_statements(stmts);
+            source_stack_.pop_back();
+        } catch (...) {
+            source_stack_.pop_back();
+            throw;
+        }
+    }
+
+    void execute_boot(const std::vector<std::unique_ptr<Stmt>>& stmts, std::string label) {
         ensure_boot_private_scope();
         bool was_boot_mode = boot_mode_;
         boot_mode_ = true;
+        source_stack_.push_back(std::move(label));
         try {
             execute_statements(stmts);
+            source_stack_.pop_back();
             boot_mode_ = was_boot_mode;
         } catch (...) {
+            source_stack_.pop_back();
             boot_mode_ = was_boot_mode;
             throw;
         }
     }
 
+    void set_chirp_root(std::string path) {
+        chirp_root_ = std::filesystem::absolute(std::filesystem::path(std::move(path))).lexically_normal();
+    }
+
 private:
-    using Scope = std::unordered_map<std::string, std::shared_ptr<Binding>>;
+    using Scope = RuntimeScope;
+    using ScopePtr = std::shared_ptr<Scope>;
+
+    struct SourceUnit {
+        std::string label;
+        std::string source;
+        std::vector<std::unique_ptr<frontend::Stmt>> stmts;
+    };
+
+    struct ModuleCacheEntry {
+        enum class State { Loading, Loaded, Failed };
+
+        State state = State::Loading;
+        Value value;
+        std::string error;
+    };
 
     std::ostream& out_;
-    std::vector<Scope> scopes_;
+    RuntimeScopeChain scopes_;
     Value result_;
     bool boot_mode_ = false;
     bool boot_private_scope_active_ = false;
@@ -178,6 +217,11 @@ private:
     uint64_t next_trait_id_ = 1;
     bool testing_enabled_ = false;
     Value yielder_trait_;
+    std::optional<std::filesystem::path> chirp_root_;
+    std::unordered_map<std::string, ModuleCacheEntry> module_cache_;
+    std::vector<std::unique_ptr<SourceUnit>> module_sources_;
+    std::vector<std::string> source_stack_;
+    std::vector<std::map<std::string, std::shared_ptr<Binding>>*> module_export_stack_;
 
     struct Implementation {
         Value trait;
@@ -196,7 +240,7 @@ private:
         if (boot_private_scope_active_) {
             return;
         }
-        scopes_.emplace_back();
+        scopes_.push_back(std::make_shared<Scope>());
         boot_private_scope_active_ = true;
     }
 
@@ -213,6 +257,14 @@ private:
 
     bool is_boot_top_level() const {
         return boot_mode_ && boot_private_scope_active_ && scopes_.size() == 2;
+    }
+
+    bool is_module_top_level() const {
+        return !module_export_stack_.empty() && scopes_.size() == 2;
+    }
+
+    std::shared_ptr<const RuntimeScopeChain> capture_scopes() const {
+        return std::make_shared<RuntimeScopeChain>(scopes_);
     }
 
     class PurityVisitor : public frontend::ASTVisitor, public frontend::StmtVisitor {
@@ -400,8 +452,8 @@ private:
     std::shared_ptr<Binding> lookup_binding(std::string_view name, const token& diag) const {
         std::string key = to_key(name);
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-            auto found = scope->find(key);
-            if (found != scope->end()) {
+            auto found = (*scope)->find(key);
+            if (found != (*scope)->end()) {
                 return found->second;
             }
         }
@@ -411,8 +463,8 @@ private:
     std::shared_ptr<Binding> lookup_binding_optional(std::string_view name) const {
         std::string key = to_key(name);
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-            auto found = scope->find(key);
-            if (found != scope->end()) {
+            auto found = (*scope)->find(key);
+            if (found != (*scope)->end()) {
                 return found->second;
             }
         }
@@ -427,14 +479,14 @@ private:
         std::string key = to_key(name);
         if (!scopes_.empty()) {
             for (auto scope = scopes_.begin(); scope != std::prev(scopes_.end()); ++scope) {
-                auto found = scope->find(key);
-                if (found != scope->end() && found->second->isFinal()) {
+                auto found = (*scope)->find(key);
+                if (found != (*scope)->end() && found->second->isFinal()) {
                     fail(diag, "Identifier '" + key + "' cannot shadow final binding");
                 }
             }
         }
 
-        auto [_, inserted] = scopes_.back().emplace(key, std::move(binding));
+        auto [_, inserted] = scopes_.back()->emplace(key, std::move(binding));
         if (!inserted) {
             fail(diag, "Identifier '" + key + "' is already defined in this scope");
         }
@@ -442,7 +494,7 @@ private:
 
     void publish_global_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
         std::string key = to_key(name);
-        auto [_, inserted] = scopes_.front().emplace(key, std::move(binding));
+        auto [_, inserted] = scopes_.front()->emplace(key, std::move(binding));
         if (!inserted) {
             fail(diag, "Public boot identifier '" + key + "' is already defined globally");
         }
@@ -558,7 +610,7 @@ private:
             }
         }
 
-        scopes_.emplace_back();
+        scopes_.push_back(std::make_shared<Scope>());
         try {
             auto binding = std::make_shared<Binding>(bound, bound, value, expr.binding.is_final);
             define_binding(expr.binding.name.lexeme, std::move(binding), expr.binding.name);
@@ -753,9 +805,128 @@ private:
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
 
+    static bool is_explicit_module_key(const std::string& key) {
+        return key.rfind("./", 0) == 0 ||
+            key.rfind("../", 0) == 0 ||
+            key.rfind("/", 0) == 0;
+    }
+
+    static std::filesystem::path with_chirp_extension(std::filesystem::path path) {
+        if (path.extension().empty()) {
+            path.replace_extension(".chirp");
+        }
+        return path;
+    }
+
+    static std::filesystem::path normalized_absolute_path(const std::filesystem::path& path) {
+        return std::filesystem::absolute(path).lexically_normal();
+    }
+
+    std::filesystem::path current_source_dir() const {
+        if (source_stack_.empty() || source_stack_.back().empty()) {
+            return std::filesystem::current_path();
+        }
+
+        std::filesystem::path source_path(source_stack_.back());
+        if (source_path.filename().string().rfind("<", 0) == 0) {
+            return std::filesystem::current_path();
+        }
+        return normalized_absolute_path(source_path).parent_path();
+    }
+
+    std::filesystem::path resolve_chirp_module_key(const std::string& key, const token& diag) const {
+        if (is_explicit_module_key(key)) {
+            std::filesystem::path path(key);
+            if (path.is_relative()) {
+                path = current_source_dir() / path;
+            }
+            return normalized_absolute_path(with_chirp_extension(path));
+        }
+
+        if (key.rfind("std/", 0) == 0) {
+            if (!chirp_root_.has_value()) {
+                fail(diag, "Cannot resolve std import without an active Chirp root");
+            }
+            std::filesystem::path relative(key.substr(4));
+            return normalized_absolute_path(with_chirp_extension(*chirp_root_ / "std" / relative));
+        }
+
+        fail(diag, "Logical module imports outside 'std/' are not supported yet: " + key);
+    }
+
+    static std::string read_source_file(const std::filesystem::path& path) {
+        std::ifstream file(path);
+        if (!file.is_open()) {
+            throw std::runtime_error("Could not open file: " + path.string());
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
+
+    Value evaluate_chirp_module(const std::filesystem::path& path, const token& diag) {
+        std::string identity = path.generic_string();
+        auto found = module_cache_.find(identity);
+        if (found != module_cache_.end()) {
+            if (found->second.state == ModuleCacheEntry::State::Loaded) {
+                return found->second.value;
+            }
+            if (found->second.state == ModuleCacheEntry::State::Failed) {
+                throw std::runtime_error(found->second.error);
+            }
+            fail(diag, "Import cycle detected for module '" + identity + "'");
+        }
+
+        auto [inserted_it, _] = module_cache_.emplace(identity, ModuleCacheEntry{});
+        ModuleCacheEntry& entry = inserted_it->second;
+        entry.state = ModuleCacheEntry::State::Loading;
+
+        try {
+            auto unit = std::make_unique<SourceUnit>();
+            unit->label = path.string();
+            unit->source = read_source_file(path);
+            auto tokens = frontend::tokenize(unit->source);
+            unit->stmts = frontend::parse(tokens);
+
+            SourceUnit* loaded = unit.get();
+            module_sources_.push_back(std::move(unit));
+
+            RuntimeScopeChain saved_scopes = std::move(scopes_);
+            auto module_scope = std::make_shared<Scope>();
+            scopes_ = {saved_scopes.front(), module_scope};
+
+            std::map<std::string, std::shared_ptr<Binding>> exports;
+            source_stack_.push_back(path.string());
+            module_export_stack_.push_back(&exports);
+            try {
+                execute_statements(loaded->stmts);
+                module_export_stack_.pop_back();
+                source_stack_.pop_back();
+                scopes_ = std::move(saved_scopes);
+            } catch (...) {
+                module_export_stack_.pop_back();
+                source_stack_.pop_back();
+                scopes_ = std::move(saved_scopes);
+                throw;
+            }
+
+            entry.value = Value::make_module(identity, std::move(exports));
+            entry.state = ModuleCacheEntry::State::Loaded;
+            return entry.value;
+        } catch (const ScriptExit&) {
+            module_cache_.erase(identity);
+            throw;
+        } catch (const std::exception& e) {
+            entry.error = path.string() + ": " + e.what();
+            entry.state = ModuleCacheEntry::State::Failed;
+            throw std::runtime_error(entry.error);
+        }
+    }
+
     Value call_import(const std::vector<Argument>& args, const token& diag) {
-        if (args.size() != 2) {
-            fail(diag, "`import expects two arguments: key and format");
+        if (args.empty() || args.size() > 2) {
+            fail(diag, "`import expects one or two positional arguments: key and optional format");
         }
         for (const auto& arg : args) {
             if (arg.name.has_value()) {
@@ -766,12 +937,23 @@ private:
         if (!name.isString()) {
             fail(diag, "`import expects first argument (key) to be a string");
         }
-        Value format = evaluate(*args[1].value);
-        if (!format.isString()) {
-            fail(diag, "`import expects second argument (format) to be a string");
+
+        std::string format_text = "chirp";
+        if (args.size() == 2) {
+            Value format = evaluate(*args[1].value);
+            if (!format.isString()) {
+                fail(diag, "`import expects second argument (format) to be a string");
+            }
+            format_text = format.asString();
         }
-        if (format.asString() != "__chirp_boot") {
-            fail(diag, "`import format must be \"__chirp_boot\"");
+
+        if (format_text == "chirp") {
+            std::filesystem::path path = resolve_chirp_module_key(name.asString(), diag);
+            return evaluate_chirp_module(path, diag);
+        }
+
+        if (format_text != "__chirp_boot") {
+            fail(diag, "Unsupported `import format \"" + format_text + "\"");
         }
         if (!boot_mode_) {
             fail(diag, "`import with format \"__chirp_boot\" is only available while evaluating boot files");
@@ -1041,13 +1223,20 @@ private:
         }
     }
 
-    Value call_lambda_with_values(const LambdaExpr& lambda, std::vector<Value> arg_values, const token& diag) {
+    Value call_lambda_with_values(const Value::LambdaTag& lambda_tag, std::vector<Value> arg_values, const token& diag) {
+        const LambdaExpr& lambda = *lambda_tag.lambda;
         if (arg_values.size() != lambda.parameters.size()) {
             fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
                 " arguments, got " + std::to_string(arg_values.size()));
         }
 
-        scopes_.emplace_back();
+        RuntimeScopeChain saved_scopes = std::move(scopes_);
+        if (lambda_tag.captured_scopes) {
+            scopes_ = *lambda_tag.captured_scopes;
+        } else {
+            scopes_ = saved_scopes;
+        }
+        scopes_.push_back(std::make_shared<Scope>());
         try {
             for (size_t i = 0; i < lambda.parameters.size(); ++i) {
                 const NamedBinding& param = lambda.parameters[i];
@@ -1062,10 +1251,10 @@ private:
             Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : VoidVal();
             enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
 
-            scopes_.pop_back();
+            scopes_ = std::move(saved_scopes);
             return return_value;
         } catch (...) {
-            scopes_.pop_back();
+            scopes_ = std::move(saved_scopes);
             throw;
         }
     }
@@ -1074,7 +1263,7 @@ private:
         if (!callee.isLambda()) {
             fail(diag, "Value is not callable: " + callee.toString());
         }
-        return call_lambda_with_values(callee.asLambda(), std::move(arg_values), diag);
+        return call_lambda_with_values(callee.asLambdaTag(), std::move(arg_values), diag);
     }
 
     Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const StructType* struct_t, const std::vector<Argument>& args, const token& diag) {
@@ -1141,7 +1330,8 @@ private:
     }
 
 
-    Value call_lambda(const LambdaExpr& lambda, const std::vector<Argument>& args, const token& diag) {
+    Value call_lambda(const Value::LambdaTag& lambda_tag, const std::vector<Argument>& args, const token& diag) {
+        const LambdaExpr& lambda = *lambda_tag.lambda;
         bool has_named = false;
         bool has_positional = false;
         for (const auto& arg : args) {
@@ -1193,7 +1383,7 @@ private:
             }
         }
 
-        return call_lambda_with_values(lambda, std::move(arg_values), diag);
+        return call_lambda_with_values(lambda_tag, std::move(arg_values), diag);
     }
 
     void bind_loop_iterator(const NamedBinding& binding, Value value, const token& diag) {
@@ -1211,12 +1401,22 @@ private:
     void visit(const BinaryExpr& expr) override {
         if (expr.op == BinaryOp::Dot) {
             Value left = evaluate(*expr.left);
-            if (!left.isStructInstance()) {
-                fail(expr.diagnostic_token, "Left side of '.' must be a struct instance");
-            }
             auto* right_ident = dynamic_cast<const IdentifierExpr*>(expr.right.get());
             if (!right_ident) {
                 fail(expr.diagnostic_token, "Right side of '.' must be an identifier");
+            }
+            if (left.isModule()) {
+                const auto& exports = *left.asModule().exports;
+                std::string export_name = std::string(right_ident->name);
+                auto it = exports.find(export_name);
+                if (it == exports.end()) {
+                    fail(expr.diagnostic_token, "Module has no export '" + export_name + "'");
+                }
+                result_ = it->second->getCV();
+                return;
+            }
+            if (!left.isStructInstance()) {
+                fail(expr.diagnostic_token, "Left side of '.' must be a struct instance or module");
             }
             const auto& fields = *left.asStructInstance().fields;
             std::string field_name = std::string(right_ident->name);
@@ -1429,7 +1629,7 @@ private:
                 fail(expr.diagnostic_token, "Loop iteration limit exceeded");
             }
 
-            scopes_.emplace_back();
+            scopes_.push_back(std::make_shared<Scope>());
             try {
                 bind_loop_iterator(expr.iterator_binding, Value::make_int(current), expr.diagnostic_token);
                 run_loop_body(*expr.body);
@@ -1453,11 +1653,11 @@ private:
     }
 
     void visit(const LambdaExpr& expr) override {
-        result_ = Value::make_lambda(expr);
+        result_ = Value::make_lambda(expr, capture_scopes());
     }
 
     void visit(const BlockExpr& expr) override {
-        scopes_.emplace_back();
+        scopes_.push_back(std::make_shared<Scope>());
         try {
             for (const auto& stmt : expr.statements) {
                 execute_stmt(*stmt);
@@ -1496,7 +1696,7 @@ private:
         }
 
         if (callee.isLambda()) {
-            result_ = call_lambda(callee.asLambda(), expr.args, expr.diagnostic_token);
+            result_ = call_lambda(callee.asLambdaTag(), expr.args, expr.diagnostic_token);
             return;
         }
         if (callee.isHostFunction()) {
@@ -1579,7 +1779,15 @@ private:
         auto binding = std::make_shared<Binding>(constraint, constraint, initializer, stmt.binding.is_final);
         define_binding(stmt.binding.name.lexeme, binding, stmt.binding.name);
         if (stmt.is_public && is_boot_top_level()) {
-            publish_global_binding(stmt.binding.name.lexeme, std::move(binding), stmt.binding.name);
+            publish_global_binding(stmt.binding.name.lexeme, binding, stmt.binding.name);
+        }
+        if (stmt.is_public && is_module_top_level()) {
+            auto& exports = *module_export_stack_.back();
+            std::string export_name = to_key(stmt.binding.name.lexeme);
+            auto [_, inserted] = exports.emplace(export_name, binding);
+            if (!inserted) {
+                fail(stmt.binding.name, "Module export '" + export_name + "' is already defined");
+            }
         }
     }
 
@@ -1668,6 +1876,10 @@ public:
         evaluator.execute(stmts);
     }
 
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) {
+        evaluator.execute(stmts, std::move(label));
+    }
+
     void execute_source(std::string source, std::string label, bool boot) {
         auto unit = std::make_unique<SourceUnit>();
         unit->source = std::move(source);
@@ -1682,9 +1894,9 @@ public:
             sources.push_back(std::move(unit));
 
             if (boot) {
-                evaluator.execute_boot(loaded->stmts);
+                evaluator.execute_boot(loaded->stmts, loaded->label);
             } else {
-                evaluator.execute(loaded->stmts);
+                evaluator.execute(loaded->stmts, loaded->label);
             }
         } catch (const ScriptExit&) {
             throw;
@@ -1694,6 +1906,10 @@ public:
             }
             throw std::runtime_error(error_label + ": " + e.what());
         }
+    }
+
+    void set_chirp_root(std::string path) {
+        evaluator.set_chirp_root(std::move(path));
     }
 
 private:
@@ -1710,12 +1926,20 @@ void Session::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts)
     impl_->execute(stmts);
 }
 
+void Session::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) {
+    impl_->execute(stmts, std::move(label));
+}
+
 void Session::execute_source(std::string source, std::string label) {
     impl_->execute_source(std::move(source), std::move(label), false);
 }
 
 void Session::execute_boot_source(std::string source, std::string label) {
     impl_->execute_source(std::move(source), std::move(label), true);
+}
+
+void Session::set_chirp_root(std::string path) {
+    impl_->set_chirp_root(std::move(path));
 }
 
 SessionExpectations Session::getExpectations() const {

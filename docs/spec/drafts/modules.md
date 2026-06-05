@@ -65,7 +65,7 @@ The interpreter resolves the first segment of a logical key against its configur
 
 To avoid the fragility of C-style implicit include shadowing, Chirp reserves some logical namespaces.
 
-The `std` namespace is reserved by the interpreter. Any logical import starting with `std/` is resolved against the active standard library root. It does not poll user search paths.
+The `std` namespace is reserved by the interpreter. The interpreter has an active Chirp root directory containing `boot/` and `std/`. Any logical import starting with `std/` is resolved as a filesystem path relative to the active root's `std/` directory. It does not poll user search paths.
 
 ```chirp
 let vector = `import("std/vector");
@@ -79,7 +79,7 @@ To import from such a directory, use an explicit relative path:
 let local_stuff = `import("./std/my_stuff.chirp");
 ```
 
-An implementation may provide an explicit `--std-override` mechanism to replace the active standard library root. This is intended for specialized environments, such as embedded targets.
+An implementation may provide an explicit root override, such as `--root-dir`, to replace the active Chirp root. This is intended for specialized environments, such as embedded targets.
 
 ### User Search Paths
 
@@ -91,18 +91,18 @@ The exact command-line mechanism is implementation-defined, but the resolution r
 
 For `import(key, "chirp")`, the interpreter behaves as follows:
 
-1. Resolve `key` to a canonical module identity.
-2. If that module has already completed evaluation in the current interpreter session, return the cached module value.
-3. If that module is currently being evaluated, report an import cycle.
-4. Otherwise, evaluate the target file in a fresh module scope.
+1. Resolve `key` to a canonical module identity. For filesystem imports, this is the normalized absolute path without following symlinks.
+2. If that module has already completed evaluation (or failed to evaluate) in the current interpreter session, return the cached module value or cached error.
+3. If that module is currently being evaluated (meaning it is actively on the dynamic import call stack), report an import cycle error.
+4. Otherwise, evaluate the target file in a fresh module scope. This scope automatically inherits the global namespace populated by the bootstrap.
 5. Collect the file's public exports.
-6. Package those exports into a finalized anonymous struct-like value.
-7. Cache that value under the module identity.
+6. Package those exports into a finalized anonymous struct-like value. The exported fields preserve the fundamental constraints (`fc`) of their original bindings.
+7. Cache that value (or evaluation error) under the module identity.
 8. Return the module value.
 
 Two imports of the same resolved module identity must return the same module value within a single interpreter session.
 
-This rule is important because modules may define nominal values such as minted types or traits. Re-evaluating the same module would create distinct identities and change program semantics.
+This rule is important because modules may define nominal values such as minted types or traits. Re-evaluating the same module would create distinct identities and change program semantics. If a module fails to evaluate, that failure is also cached, avoiding re-evaluation of broken modules (a future bootstrap may mint a specific value to represent this error state).
 
 ## Exporting: How a File Becomes a Module
 
@@ -115,10 +115,10 @@ Bindings marked `pub` are exported. Non-`pub` bindings remain private to the mod
 
 let internal_double = (x) => x * 2;
 
-let pub final pi = 3;
-let pub final tau = pi * 2;
+let pub pi = 3;
+let pub tau = pi * 2;
 
-let pub final scale = (x) => internal_double(x);
+let pub scale = (x) => internal_double(x);
 ```
 
 Importing this file returns a module value with fields corresponding to the public exports:
@@ -153,9 +153,7 @@ let math = `import("./math.chirp");
 math.pi = 4; // Error: module fields are not assignable
 ```
 
-This does not mean that all values reachable from a module are deeply immutable. It means that the exported field bindings of the module value itself are fixed.
-
-In practice, a module behaves like a finalized struct whose fields are constrained to the values produced during module evaluation.
+This does not mean that all values reachable from a module are deeply immutable. It means that the exported field bindings of the module value itself are fixed. The exported bindings themselves retain their original fundamental constraints (`fc`) from when they were declared within the module.
 
 This property gives Calcification a stable target. If the compiler sees:
 
@@ -167,7 +165,7 @@ and `math` is known to be a module value, it can resolve `scale` to the exact ex
 
 ## Cyclic Dependencies
 
-Because importing a Chirp module evaluates code, cyclic imports must be detected.
+Because importing a Chirp module evaluates code dynamically, cyclic imports must be detected at runtime.
 
 For example:
 
@@ -179,7 +177,7 @@ let b = `import("./b.chirp");
 let a = `import("./a.chirp");
 ```
 
-If a module attempts to import another module that is already in the current import stack, the interpreter must reject the program with a clear import-cycle error.
+Evaluation happens until a module that's in the process of being imported tries to be imported again. If a dynamic `import()` call attempts to evaluate a module that is currently on the dynamic import call stack, the interpreter must reject the program with a clear import-cycle error.
 
 Future versions of Chirp may introduce deferred or lazy mechanisms that allow some cyclic structures to be expressed safely. Until then, module dependencies are expected to form a directed acyclic graph.
 
@@ -191,7 +189,7 @@ A compliant interpreter must:
 * Implement the `"chirp"` import format.
 * Resolve explicit paths relative to the file currently being evaluated.
 * Resolve logical module keys according to the namespace rules.
-* Reserve the `std/` namespace for the active standard library root.
+* Reserve the `std/` namespace for the active Chirp root's `std/` directory.
 * Evaluate imported Chirp files in fresh module scopes.
 * Collect `pub` top-level bindings into a finalized anonymous struct-like module value.
 * Cache completed module values by canonical module identity.

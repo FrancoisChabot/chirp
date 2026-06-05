@@ -1,0 +1,5 @@
+let pub count = 0;
+let pub inc = () => do {
+    count += 1;
+    count
+};

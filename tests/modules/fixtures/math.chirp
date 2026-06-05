@@ -1,0 +1,5 @@
+let internal_double = (x) => x * 2;
+
+let pub pi = 3;
+let pub tau = pi * 2;
+let pub scale = (x) => internal_double(x);

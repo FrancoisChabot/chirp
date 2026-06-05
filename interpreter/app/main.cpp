@@ -14,16 +14,16 @@
 #include <string_view>
 #include <vector>
 
-#ifndef CHIRP_ENABLE_SOURCE_TREE_BOOT
-#define CHIRP_ENABLE_SOURCE_TREE_BOOT 0
+#ifndef CHIRP_ENABLE_SOURCE_TREE_ROOT
+#define CHIRP_ENABLE_SOURCE_TREE_ROOT 0
 #endif
 
-#ifndef CHIRP_SOURCE_BOOT_DIR
-#define CHIRP_SOURCE_BOOT_DIR ""
+#ifndef CHIRP_SOURCE_ROOT_DIR
+#define CHIRP_SOURCE_ROOT_DIR ""
 #endif
 
-#ifndef CHIRP_INSTALL_BOOT_DIR
-#define CHIRP_INSTALL_BOOT_DIR ""
+#ifndef CHIRP_INSTALL_ROOT_DIR
+#define CHIRP_INSTALL_ROOT_DIR ""
 #endif
 
 namespace {
@@ -34,19 +34,19 @@ struct Options {
     bool ast_dump = false;
     bool format = false;
     bool test = false;
-    std::optional<std::string> boot_dir;
+    std::optional<std::string> root_dir;
     std::optional<std::string> run_report;
     std::string script_path;
 };
 
 void printUsage(std::ostream& out) {
-    out << "Usage: chirp [--ast-dump] [--format] [--test] [--boot-dir DIR] [--run-report PATH] [script]\n"
+    out << "Usage: chirp [--ast-dump] [--format] [--test] [--root-dir DIR] [--run-report PATH] [script]\n"
         << "\n"
         << "Options:\n"
         << "  --ast-dump      Parse the input and print its AST.\n"
         << "  --format        Rewrite ASCII operator aliases to Unicode in-place.\n"
         << "  --test          Enable test harness and assertions (`expect` functions).\n"
-        << "  --boot-dir DIR  Load boot .chirp files from DIR before running scripts or the REPL.\n"
+        << "  --root-dir DIR  Load Chirp libraries from DIR, which must contain boot/ and std/.\n"
         << "  --run-report PATH\n"
         << "                  Write a structured JSON report for a script run.\n"
         << "  --help          Show this help message.\n";
@@ -84,18 +84,29 @@ bool formatFile(const fs::path& path) {
     }
 }
 
-fs::path requireBootDir(const fs::path& path, std::string_view source) {
+fs::path requireRootDir(const fs::path& path, std::string_view source) {
     std::error_code ec;
     if (!fs::exists(path, ec) || ec) {
-        throw std::runtime_error(std::string(source) + " boot directory not found: " + path.string());
+        throw std::runtime_error(std::string(source) + " Chirp root directory not found: " + path.string());
     }
     if (!fs::is_directory(path, ec) || ec) {
-        throw std::runtime_error(std::string(source) + " boot path is not a directory: " + path.string());
+        throw std::runtime_error(std::string(source) + " Chirp root path is not a directory: " + path.string());
     }
+
+    fs::path boot_dir = path / "boot";
+    if (!fs::exists(boot_dir, ec) || ec || !fs::is_directory(boot_dir, ec) || ec) {
+        throw std::runtime_error(std::string(source) + " Chirp root must contain a boot directory: " + boot_dir.string());
+    }
+
+    fs::path std_dir = path / "std";
+    if (!fs::exists(std_dir, ec) || ec || !fs::is_directory(std_dir, ec) || ec) {
+        throw std::runtime_error(std::string(source) + " Chirp root must contain a std directory: " + std_dir.string());
+    }
+
     return path;
 }
 
-std::optional<fs::path> existingAutoBootDir(const fs::path& path) {
+std::optional<fs::path> existingAutoRootDir(const fs::path& path) {
     if (path.empty()) {
         return std::nullopt;
     }
@@ -107,23 +118,23 @@ std::optional<fs::path> existingAutoBootDir(const fs::path& path) {
     return std::nullopt;
 }
 
-std::optional<fs::path> findBootDir(const Options& options) {
-    if (options.boot_dir.has_value()) {
-        return requireBootDir(*options.boot_dir, "CLI");
+std::optional<fs::path> findRootDir(const Options& options) {
+    if (options.root_dir.has_value()) {
+        return requireRootDir(*options.root_dir, "CLI");
     }
 
-    if (const char* env = std::getenv("CHIRP_BOOT_DIR"); env != nullptr && *env != '\0') {
-        return requireBootDir(env, "CHIRP_BOOT_DIR");
+    if (const char* env = std::getenv("CHIRP_ROOT_DIR"); env != nullptr && *env != '\0') {
+        return requireRootDir(env, "CHIRP_ROOT_DIR");
     }
 
-#if CHIRP_ENABLE_SOURCE_TREE_BOOT
-    if (auto boot_dir = existingAutoBootDir(CHIRP_SOURCE_BOOT_DIR)) {
-        return boot_dir;
+#if CHIRP_ENABLE_SOURCE_TREE_ROOT
+    if (auto root_dir = existingAutoRootDir(CHIRP_SOURCE_ROOT_DIR)) {
+        return requireRootDir(*root_dir, "source-tree");
     }
 #endif
 
-    if (auto boot_dir = existingAutoBootDir(CHIRP_INSTALL_BOOT_DIR)) {
-        return boot_dir;
+    if (auto root_dir = existingAutoRootDir(CHIRP_INSTALL_ROOT_DIR)) {
+        return requireRootDir(*root_dir, "install");
     }
 
     return std::nullopt;
@@ -161,8 +172,9 @@ void loadBoot(chirp::interpreter::Session& session, const fs::path& boot_dir) {
 }
 
 void loadConfiguredBoot(chirp::interpreter::Session& session, const Options& options) {
-    if (auto boot_dir = findBootDir(options)) {
-        loadBoot(session, *boot_dir);
+    if (auto root_dir = findRootDir(options)) {
+        session.set_chirp_root(root_dir->string());
+        loadBoot(session, *root_dir / "boot");
     }
 }
 
@@ -338,7 +350,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
         if (parsed && report.diagnostics.empty()) {
             try {
-                session.execute(stmts);
+                session.execute(stmts, path.string());
             } catch (const chirp::interpreter::ScriptExit& e) {
                 report.outcome = "script_exit";
                 report.script_exit = e.code();
@@ -424,13 +436,13 @@ std::optional<Options> parseArgs(int argc, char* argv[]) {
             options.test = true;
             continue;
         }
-        if (arg == "--boot-dir") {
+        if (arg == "--root-dir") {
             if (i + 1 >= args.size()) {
-                std::cerr << "Error: --boot-dir requires a directory path.\n";
+                std::cerr << "Error: --root-dir requires a directory path.\n";
                 printUsage(std::cerr);
                 return std::nullopt;
             }
-            options.boot_dir = args[++i];
+            options.root_dir = args[++i];
             continue;
         }
         if (arg == "--run-report") {

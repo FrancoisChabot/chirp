@@ -1,0 +1,7 @@
+`expect_exit(0);
+
+let counter = `import("./fixtures/counter");
+
+`expect(counter.count == 0);
+`expect(counter.inc() == 1);
+`expect(counter.count == 1);

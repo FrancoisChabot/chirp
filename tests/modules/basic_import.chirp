@@ -1,0 +1,7 @@
+`expect_exit(0);
+
+let math = `import("./fixtures/math");
+
+`expect(math.pi == 3);
+`expect(math.tau == 6);
+`expect(math.scale(10) == 20);

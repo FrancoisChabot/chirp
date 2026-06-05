@@ -1,0 +1,5 @@
+`expect_exit(0);
+
+let smoke = `import("std/module_smoke");
+
+`expect(smoke.answer == 42);

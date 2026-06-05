@@ -1,0 +1,6 @@
+`expect_exit(0);
+
+let first = `import("./fixtures/nominal");
+let second = `import("./fixtures/nominal.chirp");
+
+`expect(first.token == second.token);

@@ -140,6 +140,11 @@ public:
     Value br(const Value& S, const Value& lc) const override;
 };
 
+class ModuleType : public Type {
+public:
+    std::string_view name() const override { return "Module"; }
+};
+
 class MintedType : public Type {
 public:
     explicit MintedType(uint64_t id);

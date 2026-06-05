@@ -50,6 +50,7 @@ std::shared_ptr<const Type> getStringType();
 std::shared_ptr<const Type> getSymbolType();
 std::shared_ptr<const Type> getListType();
 std::shared_ptr<const Type> getTraitType();
+std::shared_ptr<const Type> getModuleType();
 
 
 // Core Values (as Value objects)
@@ -90,8 +91,10 @@ public:
     Session& operator=(Session&&) noexcept;
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts);
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label);
     void execute_source(std::string source, std::string label);
     void execute_boot_source(std::string source, std::string label);
+    void set_chirp_root(std::string path);
 
     SessionExpectations getExpectations() const;
 
