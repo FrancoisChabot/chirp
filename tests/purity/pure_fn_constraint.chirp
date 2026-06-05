@@ -1,0 +1,15 @@
+let pure_identity: `pure_fn = (x) => x;
+`expect(pure_identity(5) == 5);
+
+let call_pure = (f: `pure_fn, x) => f(x);
+
+`expect(call_pure(pure_identity, 10) == 10);
+`expect(call_pure((x) => x + 1, 10) == 11);
+
+// We can also have an inline constraint
+let result = call_pure((x) => do {
+    let mut y = x;
+    y = y * 2;
+    y
+}, 5);
+`expect(result == 10);

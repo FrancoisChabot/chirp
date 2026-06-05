@@ -61,6 +61,7 @@ enum class token_type {
     kw_break,
     kw_match,
     kw_do,
+    kw_debug,
 
     eof,
     error
@@ -142,6 +143,7 @@ class LetStmt;
 class BreakStmt;
 class AssignStmt;
 class IfStmt;
+class DebugStmt;
 
 class ASTVisitor {
 public:
@@ -180,7 +182,10 @@ public:
     virtual void visit(const BreakStmt& stmt) = 0;
     virtual void visit(const AssignStmt& stmt) = 0;
     virtual void visit(const IfStmt& stmt) = 0;
+    virtual void visit(const DebugStmt& stmt) = 0;
 };
+
+enum class PurityState { Unchecked, Checking, Pure, Unpure };
 
 class Expr {
 public:
@@ -391,6 +396,7 @@ public:
     std::unique_ptr<Expr> return_bound;
     std::unique_ptr<Expr> body;
     token diagnostic_token;
+    mutable PurityState purity_state = PurityState::Unchecked;
 
     LambdaExpr(std::vector<NamedBinding> parameters, std::unique_ptr<Expr> return_bound, std::unique_ptr<Expr> body, token diag)
         : parameters(std::move(parameters)), return_bound(std::move(return_bound)), body(std::move(body)), diagnostic_token(std::move(diag)) {}
@@ -535,6 +541,16 @@ public:
     void accept(StmtVisitor& visitor) const override { visitor.visit(*this); }
 };
 
+class DebugStmt : public Stmt {
+public:
+    std::vector<std::unique_ptr<Stmt>> statements;
+    token diagnostic_token;
+
+    DebugStmt(std::vector<std::unique_ptr<Stmt>> statements, token diag)
+        : statements(std::move(statements)), diagnostic_token(std::move(diag)) {}
+
+    void accept(StmtVisitor& visitor) const override { visitor.visit(*this); }
+};
 
 std::string print_ast(const Expr& expr);
 std::string print_ast(const Stmt& stmt);

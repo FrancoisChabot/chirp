@@ -247,8 +247,24 @@ private:
         }
         if (match(token_type::kw_let)) return let_declaration();
         if (match(token_type::kw_break)) return break_statement();
+        if (match(token_type::kw_debug)) return debug_statement();
         if (check(token_type::kw_if)) return if_leading_statement();
         return expression_statement();
+    }
+
+    std::unique_ptr<Stmt> debug_statement() {
+        token debug_tok = previous();
+        consume(token_type::left_brace, "Expect '{' after 'debug'.");
+        std::vector<std::unique_ptr<Stmt>> statements;
+        while (!check(token_type::right_brace) && !is_at_end()) {
+            auto stmt = statement();
+            if (dynamic_cast<LetStmt*>(stmt.get()) != nullptr) {
+                throw std::runtime_error("Cannot use 'let' inside a 'debug' block.");
+            }
+            statements.push_back(std::move(stmt));
+        }
+        consume(token_type::right_brace, "Expect '}' after debug block.");
+        return std::make_unique<DebugStmt>(std::move(statements), debug_tok);
     }
 
     std::unique_ptr<Stmt> let_declaration(bool is_public = false, std::optional<token> pub_tok = std::nullopt) {

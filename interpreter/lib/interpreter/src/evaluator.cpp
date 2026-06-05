@@ -8,6 +8,7 @@
 #include <iterator>
 #include <limits>
 #include <ostream>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -212,6 +213,179 @@ private:
 
     bool is_boot_top_level() const {
         return boot_mode_ && boot_private_scope_active_ && scopes_.size() == 2;
+    }
+
+    class PurityVisitor : public frontend::ASTVisitor, public frontend::StmtVisitor {
+    public:
+        Evaluator& evaluator;
+        bool is_pure = true;
+        const std::vector<frontend::NamedBinding>& params;
+        std::set<std::string> local_vars;
+
+        PurityVisitor(Evaluator& eval, const std::vector<frontend::NamedBinding>& p)
+            : evaluator(eval), params(p) {}
+
+        void visit(const frontend::CallExpr& expr) override {
+            if (!is_pure) return;
+            if (auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(expr.callee.get())) {
+                std::string name = std::string(ident->name);
+                bool is_param = false;
+                for (const auto& p : params) {
+                    if (std::string(p.name.lexeme) == name) {
+                        is_param = true; break;
+                    }
+                }
+                if (is_param) {
+                    is_pure = false; return;
+                }
+                if (local_vars.count(name)) {
+                    is_pure = false; return;
+                }
+                auto binding = evaluator.lookup_binding_optional(name);
+                if (binding) {
+                    Value val = binding->getCV();
+                    if (val.isLambda()) {
+                        if (!evaluator.check_purity(&val.asLambda())) {
+                            is_pure = false; return;
+                        }
+                    } else if (val.isHostFunction()) {
+                        if (val.asHostFunction() == Value::HostFunction::Print) {
+                            is_pure = false; return;
+                        }
+                    } else if (!val.isType()) {
+                        is_pure = false; return;
+                    }
+                } else {
+                    is_pure = false; return;
+                }
+            } else {
+                is_pure = false; return;
+            }
+            for (const auto& arg : expr.args) {
+                if (arg.value) arg.value->accept(*this);
+            }
+        }
+
+        void visit(const frontend::AssignStmt& stmt) override {
+            if (!is_pure) return;
+            auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.target.get());
+            if (!ident) {
+                is_pure = false; return;
+            }
+            std::string name = std::string(ident->name);
+            bool is_local = local_vars.count(name) > 0;
+            if (!is_local) {
+                for (const auto& p : params) {
+                    if (std::string(p.name.lexeme) == name) {
+                        is_local = true; break;
+                    }
+                }
+            }
+            if (!is_local) {
+                is_pure = false; return;
+            }
+            if (stmt.value) stmt.value->accept(*this);
+        }
+
+        void visit(const frontend::LetStmt& stmt) override {
+            if (!is_pure) return;
+            local_vars.insert(std::string(stmt.binding.name.lexeme));
+            if (stmt.binding.initializer) stmt.binding.initializer->accept(*this);
+        }
+
+        void visit(const frontend::ForExpr& expr) override {
+            if (!is_pure) return;
+            local_vars.insert(std::string(expr.iterator_binding.name.lexeme));
+            if (expr.iterable) expr.iterable->accept(*this);
+            if (expr.body) expr.body->accept(*this);
+        }
+
+
+        void visit(const frontend::IdentifierExpr&) override {}
+        void visit(const frontend::BinaryExpr& expr) override {
+            expr.left->accept(*this);
+            expr.right->accept(*this);
+        }
+        void visit(const frontend::ListExpr& expr) override {
+            for (const auto& e : expr.elements) e->accept(*this);
+        }
+        void visit(const frontend::LambdaExpr& expr) override {
+            // defining a lambda is pure
+        }
+        void visit(const frontend::StructExpr& expr) override {
+            for (const auto& f : expr.fields) {
+                if (f.initializer) f.initializer->accept(*this);
+            }
+        }
+        void visit(const frontend::ConstructedSetExpr& expr) override {
+            local_vars.insert(std::string(expr.binding.name.lexeme));
+            if (expr.binding.initializer) expr.binding.initializer->accept(*this);
+            if (expr.binding.type_bound) expr.binding.type_bound->accept(*this);
+            if (expr.condition) expr.condition->accept(*this);
+        }
+        void visit(const frontend::BlockExpr& expr) override {
+            for (const auto& s : expr.statements) s->accept(*this);
+        }
+        void visit(const frontend::IfStmt& stmt) override {
+            stmt.condition->accept(*this);
+            stmt.then_branch->accept(*this);
+            if (stmt.else_branch) stmt.else_branch->accept(*this);
+        }
+        void visit(const frontend::ExprStmt& stmt) override {
+            stmt.expression->accept(*this);
+        }
+        void visit(const frontend::BreakStmt&) override {}
+        void visit(const frontend::DebugStmt&) override {}
+        void visit(const frontend::IntrinsicExpr&) override {}
+
+        void visit(const frontend::UnaryExpr& expr) override {
+            expr.right->accept(*this);
+        }
+        void visit(const frontend::GroupingExpr& expr) override {
+            expr.expression->accept(*this);
+        }
+        void visit(const frontend::NumberExpr&) override {}
+        void visit(const frontend::StringExpr&) override {}
+        void visit(const frontend::BoolExpr&) override {}
+        void visit(const frontend::UndecidedExpr&) override {}
+        void visit(const frontend::SymbolicConstantExpr&) override {}
+        void visit(const frontend::EnumeratedSetExpr& expr) override {
+            for (const auto& e : expr.elements) e->accept(*this);
+        }
+        void visit(const frontend::IfExpr& expr) override {
+            expr.condition->accept(*this);
+            expr.then_branch->accept(*this);
+            if (expr.else_branch) expr.else_branch->accept(*this);
+        }
+        void visit(const frontend::WhileExpr& expr) override {
+            expr.condition->accept(*this);
+            expr.body->accept(*this);
+        }
+        void visit(const frontend::IndexExpr& expr) override {
+            expr.target->accept(*this);
+            for (const auto& a : expr.args) {
+                if (a.value) a.value->accept(*this);
+            }
+        }
+        void visit(const frontend::MatchExpr& expr) override {
+            expr.subject->accept(*this);
+            for (const auto& arm : expr.arms) {
+                arm.body->accept(*this);
+            }
+        }
+    };
+
+    bool check_purity(const frontend::LambdaExpr* lambda) {
+        if (lambda->purity_state == frontend::PurityState::Pure) return true;
+        if (lambda->purity_state == frontend::PurityState::Unpure) return false;
+        if (lambda->purity_state == frontend::PurityState::Checking) return true;
+
+        lambda->purity_state = frontend::PurityState::Checking;
+        PurityVisitor visitor(*this, lambda->parameters);
+        if (lambda->body) lambda->body->accept(visitor);
+        
+        lambda->purity_state = visitor.is_pure ? frontend::PurityState::Pure : frontend::PurityState::Unpure;
+        return visitor.is_pure;
     }
 
     Value evaluate(const Expr& expr) {
@@ -829,7 +1003,14 @@ private:
                 if (args.size() != 1 || args.front().name.has_value()) {
                     fail(diag, "`is_pure expects one positional argument");
                 }
-                return True();
+                Value arg_val = evaluate(*args.front().value);
+                if (arg_val.isHostFunction()) {
+                    return Value::make_bool(arg_val.asHostFunction() != Value::HostFunction::Print);
+                }
+                if (!arg_val.isLambda()) {
+                    return Value::make_bool(false);
+                }
+                return Value::make_bool(check_purity(&arg_val.asLambda()));
             }
         }
         fail(diag, "Unknown host function");
@@ -1457,6 +1638,12 @@ private:
             execute_stmt(*stmt.then_branch);
         } else if (stmt.else_branch) {
             execute_stmt(*stmt.else_branch);
+        }
+    }
+
+    void visit(const DebugStmt& stmt) override {
+        for (const auto& s : stmt.statements) {
+            execute_stmt(*s);
         }
     }
 };

@@ -1,0 +1,3 @@
+debug {
+    let invalid = 5;
+}

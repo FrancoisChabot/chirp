@@ -2,6 +2,10 @@
 
 Each chirp file in here is a conformance test in the form of a chirp script. 
 
+## Scope of the suite
+
+This test suite tests assumes a compliant interpreter that's using the standard `lib/chirp/boot` bootstrap. We may carve out a bootstrap-agnostic subset eventually, but we won't until the need arises, so speak up if you need it.
+
 ## Running the suite
 
 This test suite is meant to be *large*. We treat volume as a purely organizational/human sanity concern, not an engineering one. We strongly discourage using custom runners. Instead, we recommend using the officially supported [script](../scripts/test_conformance.py). The script will be always kept "sane" relative to the current size of the test suite.

@@ -1,0 +1,37 @@
+`expect(`is_pure((x) => x));
+`expect(`is_pure((x) => x + 1));
+
+let pure_helper = (x) => x * 2;
+`expect(`is_pure((x) => pure_helper(x)));
+
+`expect(!`is_pure((x) => `print("hello")));
+
+let unpure_helper = (x) => `print(x);
+`expect(!`is_pure((x) => unpure_helper(x)));
+
+`expect(`is_pure((x) => do {
+    let mut y = x;
+    y = y + 1;
+    y;
+}));
+
+let mut global_var = 0;
+`expect(!`is_pure((x) => do {
+    global_var = x;
+    0;
+}));
+
+let pure_rec = (n) => do {
+    if (n == 0) 0 else pure_rec(n - 1);
+};
+`expect(`is_pure(pure_rec));
+
+let unpure_rec = (n) => do {
+    if (n == 0) `print(0) else unpure_rec(n - 1);
+};
+`expect(!`is_pure(unpure_rec));
+
+`expect(!`is_pure((f, x) => f(x)));
+
+let Point = struct { x: int, y: int };
+`expect(`is_pure((x, y) => Point(x, y)));

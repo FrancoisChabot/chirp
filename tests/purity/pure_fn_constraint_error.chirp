@@ -1,0 +1,4 @@
+`expect_exit(1);
+
+let unpure_func = (x) => `print(x);
+let f: `pure_fn = unpure_func; // Should fail here

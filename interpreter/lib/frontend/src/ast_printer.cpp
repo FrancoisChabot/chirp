@@ -233,6 +233,15 @@ public:
         result += ")";
     }
 
+    void visit(const DebugStmt& stmt) override {
+        result += "(debug_stmt";
+        for (const auto& s : stmt.statements) {
+            result += " ";
+            s->accept(*this);
+        }
+        result += ")";
+    }
+
     void visit(const LetStmt& stmt) override {
         result += stmt.is_public ? "(pub let " : "(let ";
         if (stmt.binding.is_final) result += "final ";

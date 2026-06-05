@@ -1,0 +1,19 @@
+let mut state = 0;
+
+let test_debug = (x) => do {
+    let y = x * 2;
+    debug {
+        `print("Inside debug block with value ");
+        `print(y);
+        state = state + 1;
+        // let z = 1; // This should be a syntax error if uncommented
+    }
+    y
+};
+
+// Should be treated as a pure function
+`expect(`is_pure(test_debug));
+
+// Side effects should actually run
+`expect(test_debug(5) == 10);
+`expect(state == 1);
