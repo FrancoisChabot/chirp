@@ -56,10 +56,6 @@ In Chirp code, (almost) all language intrinsics are prefixed with a backtick (e.
 
 However, since \nested backticks (`` ``` `any` ``` ``) is visually noisy and cumbersome in Markdown text, this specification adopts a standard convention: the backtick prefix is ommited when discussing these intrinsics in standard text paragraphs (e.g., writing "the type of `any` is `Type`"). The backtick prefix is only strictly included inside full code blocks or when disambiguation is absolutely necessary.
 
-### Mathematical Notation: The Type-Of Operator (`τ`)
-
-Throughout this specification's formal equations, we use the Greek letter **`τ` (tau)** as a compact, single-character mathematical substitute for the language's `typeof(x)` operator.
-
 ---
 
 ## Specification Roadmap
