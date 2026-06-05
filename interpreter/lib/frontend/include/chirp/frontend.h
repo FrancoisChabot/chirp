@@ -489,10 +489,11 @@ public:
 class LetStmt : public Stmt {
 public:
     NamedBinding binding;
+    bool is_public;
     token diagnostic_token;
 
-    LetStmt(NamedBinding binding, token diag)
-        : binding(std::move(binding)), diagnostic_token(std::move(diag)) {}
+    LetStmt(NamedBinding binding, token diag, bool is_public = false)
+        : binding(std::move(binding)), is_public(is_public), diagnostic_token(std::move(diag)) {}
 
     void accept(StmtVisitor& visitor) const override { visitor.visit(*this); }
 };

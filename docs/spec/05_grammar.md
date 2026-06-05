@@ -44,7 +44,7 @@ The range operator family is tokenized by longest match:
 Program      = { Statement } EOF ;
 Statement    = LetStmt | BreakStmt | IfStmt | AssignmentStmt | ExprStmt ;
 
-LetStmt      = "let" BindingWithInitializer ";" ;
+LetStmt      = [ "pub" ] "let" BindingWithInitializer ";" ;
 BreakStmt    = "break" [ Expr ] ";" ;
 IfStmt       = "if" "(" Expr ")" IfBranch [ "else" IfBranch ] [ ";" ] ;
 ExprStmt     = Expr ";" ;
@@ -87,9 +87,9 @@ ParamList = "(" [ BindingNoInitializer { "," BindingNoInitializer } ] ")" ;
 
 `let name(params): bound = body;` is function sugar. The parser lowers it to a let binding whose initializer is a lambda with the parsed parameters, optional return bound, and body expression.
 
-`mut` and `final` are contextual modifiers in binding position. Outside that position they are ordinary identifiers. `final` marks a binding as unshadowable by descendant scopes; it does not imply assignment immutability.
+`pub` is a contextual let-declaration modifier. Outside `pub let`, it remains an ordinary identifier. `mut` and `final` are contextual modifiers in binding position. Outside that position they are ordinary identifiers. `final` marks a binding as unshadowable by descendant scopes; it does not imply assignment immutability.
 
-Backtick-prefixed binding names are accepted by the parser so boot sources can define public intrinsics, but ordinary user code is not allowed to define them.
+Backtick-prefixed binding names are accepted by the parser so boot sources can define public or private intrinsics, but ordinary user code is not allowed to define them.
 
 ## Expressions
 

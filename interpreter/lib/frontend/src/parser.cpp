@@ -1,5 +1,6 @@
 #include "chirp/frontend.h"
 
+#include <optional>
 #include <stdexcept>
 
 namespace chirp::frontend {
@@ -161,6 +162,12 @@ private:
             (tok.lexeme == "mut" || tok.lexeme == "final");
     }
 
+    bool is_pub_let_ahead() const {
+        return peek().type == token_type::identifier &&
+            peek().lexeme == "pub" &&
+            peek_next().type == token_type::kw_let;
+    }
+
     bool modifier_has_binding_name_after() const {
         if (!is_contextual_binding_modifier(peek())) return false;
         return is_binding_name_token(peek_next().type);
@@ -233,17 +240,22 @@ private:
     }
 
     std::unique_ptr<Stmt> statement() {
+        if (is_pub_let_ahead()) {
+            token pub_tok = advance();
+            consume(token_type::kw_let, "Expect 'let' after 'pub'.");
+            return let_declaration(true, pub_tok);
+        }
         if (match(token_type::kw_let)) return let_declaration();
         if (match(token_type::kw_break)) return break_statement();
         if (check(token_type::kw_if)) return if_leading_statement();
         return expression_statement();
     }
 
-    std::unique_ptr<Stmt> let_declaration() {
-        token let_tok = previous();
+    std::unique_ptr<Stmt> let_declaration(bool is_public = false, std::optional<token> pub_tok = std::nullopt) {
+        token let_tok = pub_tok.value_or(previous());
         NamedBinding binding = parse_binding(true, true, true);
         consume(token_type::semicolon, "Expect ';' after let declaration.");
-        return std::make_unique<LetStmt>(std::move(binding), let_tok);
+        return std::make_unique<LetStmt>(std::move(binding), let_tok, is_public);
     }
 
     std::unique_ptr<Stmt> break_statement() {

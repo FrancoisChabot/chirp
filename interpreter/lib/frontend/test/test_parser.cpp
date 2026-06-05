@@ -90,6 +90,23 @@ TEST(ParserTest, ContextualBindingModifiers) {
     EXPECT_EQ(print_ast(*combined[0]), "(let final mut x:int = 3)");
 }
 
+TEST(ParserTest, PublicLetIsContextual) {
+    auto public_let = parse(tokenize("pub let x = 1;"));
+    auto public_final = parse(tokenize("pub let final `thing = 2;"));
+    auto pub_identifier = parse(tokenize("let pub = 3;"));
+    auto pub_expr = parse(tokenize("pub;"));
+
+    ASSERT_EQ(public_let.size(), 1);
+    ASSERT_EQ(public_final.size(), 1);
+    ASSERT_EQ(pub_identifier.size(), 1);
+    ASSERT_EQ(pub_expr.size(), 1);
+
+    EXPECT_EQ(print_ast(*public_let[0]), "(pub let x = 1)");
+    EXPECT_EQ(print_ast(*public_final[0]), "(pub let final `thing = 2)");
+    EXPECT_EQ(print_ast(*pub_identifier[0]), "(let pub = 3)");
+    EXPECT_EQ(print_ast(*pub_expr[0]), "(expr_stmt pub)");
+}
+
 TEST(ParserTest, IndirectedMutationStatement) {
     auto tokens = tokenize("let p: ->mut int = &mut x; *p = 1;");
     auto stmts = parse(tokens);

@@ -43,7 +43,7 @@ The core keywords are:
 let    struct    if    for    else    while    match    break    do
 ```
 
-`mut` and `final` are contextual binding modifiers, not reserved keywords. They
+`pub`, `mut`, and `final` are contextual declaration/binding modifiers, not reserved keywords. They
 remain ordinary identifiers outside binding-modifier position. `true` and
 `false` are ordinary identifiers bound by the boot prelude as final core values.
 `undecided` is also a final boot binding.

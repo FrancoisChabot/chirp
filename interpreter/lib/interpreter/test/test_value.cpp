@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "chirp/interpreter.h"
 
+#include <sstream>
+
 using namespace chirp::interpreter;
 
 // 1. Basic type tag identity (typeof(v))
@@ -127,4 +129,23 @@ TEST(InterpreterTest, Bindings) {
     Value val = Value::make_binding(binding);
     EXPECT_TRUE(val.isBinding());
     EXPECT_EQ(val.asBinding(), binding);
+}
+
+TEST(InterpreterTest, BootPublicBindingsArePublishedAndPrivateBindingsAreHidden) {
+    std::ostringstream out;
+    Session session(out);
+
+    session.execute_boot_source(
+        "pub let final exposed = 41;\n"
+        "let final hidden = 1;\n",
+        "boot-one");
+    session.execute_boot_source(
+        "pub let final from_hidden = hidden + 1;\n",
+        "boot-two");
+
+    EXPECT_NO_THROW(session.execute_source(
+        "let x : {41} = exposed;\n"
+        "let y : {2} = from_hidden;\n",
+        "script"));
+    EXPECT_THROW(session.execute_source("hidden;\n", "script-hidden"), std::runtime_error);
 }

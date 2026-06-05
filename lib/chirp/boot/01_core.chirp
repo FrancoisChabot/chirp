@@ -1,28 +1,28 @@
 // N.B. This file, as well has others in the `boot` directory operate under special rules:
 // - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
 // - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
-// - Identifiers defined here appear in the global namespace. This is the only place where that happens.
+// - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 // --------- Derived bindings ---------
 // We like those. We like them a lot.
 
 // Core type keywords. Extracted from their literals
-let final bool = `typeof(true);
-let final int = `typeof(1);
-let final string = `typeof("");
-let final `symbol = `typeof(#foo);
+pub let final bool = `typeof(true);
+pub let final int = `typeof(1);
+pub let final string = `typeof("");
+pub let final `symbol = `typeof(#foo);
 
 // we can lookup our void constant by simply executing an empty block.
-let final `void = do {};
+pub let final `void = do {};
 
 // `set is the setness trait: it serves as the set of all of its implementors,
 // and its interface defines the bp/br handlers for that trait.
-let final `set = `import("set_val", "__chirp_boot");
-let final `Setness = `interface(`set);
+pub let final `set = `import("set_val", "__chirp_boot");
+pub let final `Setness = `interface(`set);
 
 // --------- Lattice edges ---------
-let final `any = `mint();
-let final `empty = `mint();
+pub let final `any = `mint();
+pub let final `empty = `mint();
 
 `implement(
     trait=`set,
@@ -45,4 +45,4 @@ let final `empty = `mint();
 
 // --------- The fixed point ---------
 // It's weird enough to deserve its own section.
-let final `type = `typeof(bool);
+pub let final `type = `typeof(bool);

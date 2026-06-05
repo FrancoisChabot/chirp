@@ -96,22 +96,23 @@ TEST(LexerTest, CharacterLiteralsRejectMalformedBodies) {
 }
 
 TEST(LexerTest, KeywordsAndContextualIdentifiers) {
-    auto tokens = tokenize("do let mut struct if else while for true false undecided break match");
-    ASSERT_EQ(tokens.size(), 14);
+    auto tokens = tokenize("do let mut pub struct if else while for true false undecided break match");
+    ASSERT_EQ(tokens.size(), 15);
     EXPECT_EQ(tokens[0].type, token_type::kw_do);
     EXPECT_EQ(tokens[1].type, token_type::kw_let);
     EXPECT_EQ(tokens[2].type, token_type::identifier);
-    EXPECT_EQ(tokens[3].type, token_type::kw_struct);
-    EXPECT_EQ(tokens[4].type, token_type::kw_if);
-    EXPECT_EQ(tokens[5].type, token_type::kw_else);
-    EXPECT_EQ(tokens[6].type, token_type::kw_while);
-    EXPECT_EQ(tokens[7].type, token_type::kw_for);
-    EXPECT_EQ(tokens[8].type, token_type::identifier);
+    EXPECT_EQ(tokens[3].type, token_type::identifier);
+    EXPECT_EQ(tokens[4].type, token_type::kw_struct);
+    EXPECT_EQ(tokens[5].type, token_type::kw_if);
+    EXPECT_EQ(tokens[6].type, token_type::kw_else);
+    EXPECT_EQ(tokens[7].type, token_type::kw_while);
+    EXPECT_EQ(tokens[8].type, token_type::kw_for);
     EXPECT_EQ(tokens[9].type, token_type::identifier);
     EXPECT_EQ(tokens[10].type, token_type::identifier);
-    EXPECT_EQ(tokens[11].type, token_type::kw_break);
-    EXPECT_EQ(tokens[12].type, token_type::kw_match);
-    EXPECT_EQ(tokens[13].type, token_type::eof);
+    EXPECT_EQ(tokens[11].type, token_type::identifier);
+    EXPECT_EQ(tokens[12].type, token_type::kw_break);
+    EXPECT_EQ(tokens[13].type, token_type::kw_match);
+    EXPECT_EQ(tokens[14].type, token_type::eof);
 }
 
 TEST(LexerTest, MutablePointerOperatorsAreFused) {

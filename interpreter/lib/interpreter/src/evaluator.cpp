@@ -147,16 +147,16 @@ public:
     }
 
     void execute(const std::vector<std::unique_ptr<Stmt>>& stmts) {
-        for (const auto& stmt : stmts) {
-            execute_stmt(*stmt);
-        }
+        close_boot_private_scope();
+        execute_statements(stmts);
     }
 
     void execute_boot(const std::vector<std::unique_ptr<Stmt>>& stmts) {
+        ensure_boot_private_scope();
         bool was_boot_mode = boot_mode_;
         boot_mode_ = true;
         try {
-            execute(stmts);
+            execute_statements(stmts);
             boot_mode_ = was_boot_mode;
         } catch (...) {
             boot_mode_ = was_boot_mode;
@@ -171,6 +171,7 @@ private:
     std::vector<Scope> scopes_;
     Value result_;
     bool boot_mode_ = false;
+    bool boot_private_scope_active_ = false;
     uint64_t next_mint_id_ = 1;
     uint64_t next_trait_id_ = 1;
 
@@ -180,6 +181,35 @@ private:
         Value impl;
     };
     std::vector<Implementation> implementations_;
+
+    void execute_statements(const std::vector<std::unique_ptr<Stmt>>& stmts) {
+        for (const auto& stmt : stmts) {
+            execute_stmt(*stmt);
+        }
+    }
+
+    void ensure_boot_private_scope() {
+        if (boot_private_scope_active_) {
+            return;
+        }
+        scopes_.emplace_back();
+        boot_private_scope_active_ = true;
+    }
+
+    void close_boot_private_scope() {
+        if (!boot_private_scope_active_) {
+            return;
+        }
+        if (scopes_.size() != 2) {
+            throw std::runtime_error("Cannot close boot private scope while nested scopes are active");
+        }
+        scopes_.pop_back();
+        boot_private_scope_active_ = false;
+    }
+
+    bool is_boot_top_level() const {
+        return boot_mode_ && boot_private_scope_active_ && scopes_.size() == 2;
+    }
 
     Value evaluate(const Expr& expr) {
         expr.accept(*this);
@@ -213,7 +243,7 @@ private:
     }
 
     void define_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
-        if (diag.type == token_type::intrinsic && !(boot_mode_ && scopes_.size() == 1)) {
+        if (diag.type == token_type::intrinsic && !is_boot_top_level()) {
             fail(diag, "Backtick-prefixed bindings may only be defined by top-level boot files");
         }
 
@@ -230,6 +260,14 @@ private:
         auto [_, inserted] = scopes_.back().emplace(key, std::move(binding));
         if (!inserted) {
             fail(diag, "Identifier '" + key + "' is already defined in this scope");
+        }
+    }
+
+    void publish_global_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
+        std::string key = to_key(name);
+        auto [_, inserted] = scopes_.front().emplace(key, std::move(binding));
+        if (!inserted) {
+            fail(diag, "Public boot identifier '" + key + "' is already defined globally");
         }
     }
 
@@ -1251,7 +1289,10 @@ private:
         enforce_constraint(constraint, initializer, stmt.diagnostic_token);
 
         auto binding = std::make_shared<Binding>(constraint, constraint, initializer, stmt.binding.is_final);
-        define_binding(stmt.binding.name.lexeme, std::move(binding), stmt.binding.name);
+        define_binding(stmt.binding.name.lexeme, binding, stmt.binding.name);
+        if (stmt.is_public && is_boot_top_level()) {
+            publish_global_binding(stmt.binding.name.lexeme, std::move(binding), stmt.binding.name);
+        }
     }
 
     void visit(const BreakStmt& stmt) override {

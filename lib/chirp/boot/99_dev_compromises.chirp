@@ -1,9 +1,9 @@
 // N.B. This file, as well has others in the `boot` directory operate under special rules:
 // - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
 // - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
-// - Identifiers defined here appear in the global namespace. This is the only place where that happens.
+// - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 
 // Once we get to implementing the standard library, these will likely be deprecated and replaced with lower-level primitives, or FFI-driven lookups.
 
-let final `print = `import("print_func", "__chirp_boot");
+pub let final `print = `import("print_func", "__chirp_boot");
