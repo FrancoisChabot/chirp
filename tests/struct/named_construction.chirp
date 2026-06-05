@@ -1,0 +1,8 @@
+
+
+let Point = struct { x: int, y: int };
+
+// Test named construction in different order
+let p = Point(y=2, x=1);
+`expect(p.x == 1);
+`expect(p.y == 2);

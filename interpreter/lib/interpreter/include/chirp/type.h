@@ -6,6 +6,10 @@
 #include <memory>
 #include "value.h"
 
+namespace chirp::frontend {
+class StructExpr;
+}
+
 namespace chirp::interpreter {
 
 class Type {
@@ -146,6 +150,19 @@ public:
 private:
     uint64_t id_;
     std::string name_;
+};
+
+class StructType : public Type {
+public:
+    explicit StructType(const frontend::StructExpr* expr) : expr_(expr) {}
+    std::string_view name() const override { return "Struct"; }
+    bool hasSetness() const override { return true; }
+    Value bp(const Value& S, const Value& v) const override;
+    Value br(const Value& S, const Value& lc) const override;
+
+    const frontend::StructExpr* expr() const { return expr_; }
+private:
+    const frontend::StructExpr* expr_;
 };
 
 

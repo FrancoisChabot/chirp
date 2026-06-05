@@ -1,0 +1,7 @@
+
+
+let Point = struct { x: int, y: int };
+
+let p = Point(1, 2);
+`expect(p.x == 1);
+`expect(p.y == 2);

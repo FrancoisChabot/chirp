@@ -1,0 +1,14 @@
+
+
+let Point = struct { x: int, y: int };
+let Rect = struct { top_left: Point, bottom_right: Point };
+
+let r = Rect(
+    top_left=Point(0, 10),
+    bottom_right=Point(10, 0)
+);
+
+`expect(r.top_left.x == 0);
+`expect(r.top_left.y == 10);
+`expect(r.bottom_right.x == 10);
+`expect(r.bottom_right.y == 0);

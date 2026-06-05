@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 #include "chirp/bigint.h"
+#include <map>
 
 namespace chirp::frontend {
 class ConstructedSetExpr;
@@ -102,6 +103,10 @@ public:
         std::shared_ptr<Value> br;
         bool operator==(const SetnessImplTag& other) const;
     };
+    struct StructInstanceTag {
+        std::shared_ptr<std::map<std::string, Value>> fields;
+        bool operator==(const StructInstanceTag& other) const;
+    };
 
 
     // Constructs a Chirp `void` value.
@@ -124,6 +129,7 @@ public:
     static Value make_minted(std::shared_ptr<const Type> type, uint64_t id);
     static Value make_trait(uint64_t id, Value interface);
     static Value make_setness_impl(Value bp, Value br);
+    static Value make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields);
 
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
@@ -182,13 +188,16 @@ public:
     bool isSetnessImpl() const;
     const SetnessImplTag& asSetnessImpl() const;
 
+    bool isStructInstance() const;
+    const StructInstanceTag& asStructInstance() const;
+
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
 
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

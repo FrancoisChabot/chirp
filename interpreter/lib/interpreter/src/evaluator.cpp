@@ -896,6 +896,70 @@ private:
         return call_lambda_with_values(callee.asLambda(), std::move(arg_values), diag);
     }
 
+    Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const StructType* struct_t, const std::vector<Argument>& args, const token& diag) {
+        const auto* struct_expr = struct_t->expr();
+        std::map<std::string, Value> fields;
+
+        bool has_named = false;
+        bool has_positional = false;
+        for (const auto& arg : args) {
+            has_named = has_named || arg.name.has_value();
+            has_positional = has_positional || !arg.name.has_value();
+        }
+
+        if (has_named && has_positional) {
+            fail(diag, "Cannot mix named and positional arguments");
+        }
+        if (has_positional && args.size() > struct_expr->fields.size()) {
+            fail(diag, "Too many positional arguments for struct constructor");
+        }
+
+        std::map<std::string, const Argument*> provided_args;
+        if (has_named) {
+            for (const auto& arg : args) {
+                std::string arg_name = std::string(arg.name->lexeme);
+                if (provided_args.count(arg_name)) {
+                    fail(diag, "Duplicate named argument: " + arg_name);
+                }
+                provided_args[arg_name] = &arg;
+            }
+        } else {
+            for (size_t i = 0; i < args.size(); ++i) {
+                provided_args[std::string(struct_expr->fields[i].name.lexeme)] = &args[i];
+            }
+        }
+
+        for (const auto& pair : provided_args) {
+            bool found = false;
+            for (const auto& field : struct_expr->fields) {
+                if (std::string(field.name.lexeme) == pair.first) { found = true; break; }
+            }
+            if (!found) {
+                fail(diag, "Unknown field in struct constructor: " + pair.first);
+            }
+        }
+
+        for (const auto& field : struct_expr->fields) {
+            std::string field_name = std::string(field.name.lexeme);
+            Value field_val;
+            if (provided_args.count(field_name)) {
+                field_val = evaluate(*provided_args[field_name]->value);
+            } else if (field.initializer) {
+                field_val = evaluate(*field.initializer);
+            } else {
+                fail(diag, "Missing required field: " + field_name);
+            }
+
+            Value constraint = field.type_bound ? evaluate(*field.type_bound) : VoidVal();
+            enforce_constraint(constraint, field_val, field.name);
+
+            fields[field_name] = std::move(field_val);
+        }
+
+        return Value::make_struct_instance(std::move(type_ptr), std::move(fields));
+    }
+
+
     Value call_lambda(const LambdaExpr& lambda, const std::vector<Argument>& args, const token& diag) {
         bool has_named = false;
         bool has_positional = false;
@@ -964,6 +1028,25 @@ private:
     }
 
     void visit(const BinaryExpr& expr) override {
+        if (expr.op == BinaryOp::Dot) {
+            Value left = evaluate(*expr.left);
+            if (!left.isStructInstance()) {
+                fail(expr.diagnostic_token, "Left side of '.' must be a struct instance");
+            }
+            auto* right_ident = dynamic_cast<const IdentifierExpr*>(expr.right.get());
+            if (!right_ident) {
+                fail(expr.diagnostic_token, "Right side of '.' must be an identifier");
+            }
+            const auto& fields = *left.asStructInstance().fields;
+            std::string field_name = std::string(right_ident->name);
+            auto it = fields.find(field_name);
+            if (it == fields.end()) {
+                fail(expr.diagnostic_token, "Struct has no field '" + field_name + "'");
+            }
+            result_ = it->second;
+            return;
+        }
+
         if (expr.op == BinaryOp::And) {
             bool left = as_bool(evaluate(*expr.left), expr.diagnostic_token);
             result_ = Value::make_bool(left && as_bool(evaluate(*expr.right), expr.diagnostic_token));
@@ -1210,7 +1293,8 @@ private:
     }
 
     void visit(const StructExpr& expr) override {
-        fail(expr.diagnostic_token, "struct expressions are not supported yet");
+        auto type = std::make_shared<StructType>(&expr);
+        result_ = Value::make_type(std::move(type));
     }
 
     void visit(const CallExpr& expr) override {
@@ -1222,6 +1306,14 @@ private:
         }
 
         Value callee = evaluate(*expr.callee);
+        if (callee.isType()) {
+            std::shared_ptr<const Type> t = callee.asType();
+            if (const auto* struct_t = dynamic_cast<const StructType*>(t.get())) {
+                result_ = call_struct_constructor(t, struct_t, expr.args, expr.diagnostic_token);
+                return;
+            }
+        }
+
         if (callee.isLambda()) {
             result_ = call_lambda(callee.asLambda(), expr.args, expr.diagnostic_token);
             return;

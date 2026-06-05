@@ -1,0 +1,23 @@
+
+
+let Point3D = struct { x: int, y: int, z: int = 0 };
+
+let p1 = Point3D(1, 2);
+`expect(p1.x == 1);
+`expect(p1.y == 2);
+`expect(p1.z == 0);
+
+let p2 = Point3D(1, 2, 3);
+`expect(p2.x == 1);
+`expect(p2.y == 2);
+`expect(p2.z == 3);
+
+let p3 = Point3D(x=10, y=20);
+`expect(p3.x == 10);
+`expect(p3.y == 20);
+`expect(p3.z == 0);
+
+let p4 = Point3D(y=20, z=30, x=10);
+`expect(p4.x == 10);
+`expect(p4.y == 20);
+`expect(p4.z == 30);

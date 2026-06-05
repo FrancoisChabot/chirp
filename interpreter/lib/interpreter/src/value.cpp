@@ -216,6 +216,10 @@ Value Value::make_setness_impl(Value bp, Value br) {
     });
 }
 
+Value Value::make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields) {
+    return Value(std::move(type), StructInstanceTag{std::make_shared<std::map<std::string, Value>>(std::move(fields))});
+}
+
 
 std::shared_ptr<const Type> Value::getType() const {
     return type_;
@@ -413,6 +417,17 @@ const Value::SetnessImplTag& Value::asSetnessImpl() const {
     return std::get<SetnessImplTag>(payload_);
 }
 
+bool Value::isStructInstance() const {
+    return std::holds_alternative<StructInstanceTag>(payload_);
+}
+
+const Value::StructInstanceTag& Value::asStructInstance() const {
+    if (!isStructInstance()) {
+        throw std::runtime_error("Value is not a struct instance");
+    }
+    return std::get<StructInstanceTag>(payload_);
+}
+
 bool Value::operator==(const Value& other) const {
     if (isVoid() && other.isVoid()) {
         return true;
@@ -451,6 +466,13 @@ bool Value::SetnessImplTag::operator==(const SetnessImplTag& other) const {
         return br == other.br;
     }
     return *br == *other.br;
+}
+
+bool Value::StructInstanceTag::operator==(const StructInstanceTag& other) const {
+    if (!fields || !other.fields) {
+        return fields == other.fields;
+    }
+    return *fields == *other.fields;
 }
 
 
@@ -521,6 +543,9 @@ std::string Value::toString() const {
     }
     if (isSetnessImpl()) {
         return "<setness-impl>";
+    }
+    if (isStructInstance()) {
+        return "<struct-instance>";
     }
     if (type_ == getUndecidedType()) {
         return "undecided";
@@ -664,7 +689,16 @@ Value TraitType::bp(const Value& S, const Value& v) const {
 }
 
 Value TraitType::br(const Value& S, const Value& lc) const {
-    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+    return Value::make_bool(false);
+}
+
+Value StructType::bp(const Value& S, const Value& v) const {
+    if (!v.isStructInstance()) return Value::make_bool(false);
+    return Value::make_bool(v.getType() == S.asType());
+}
+
+Value StructType::br(const Value& S, const Value& lc) const {
+    throw std::runtime_error("Range operations on struct types are not supported");
 }
 
 } // namespace chirp::interpreter
