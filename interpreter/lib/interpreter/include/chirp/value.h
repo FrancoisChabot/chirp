@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "chirp/bigint.h"
 
 namespace chirp::frontend {
 class ConstructedSetExpr;
@@ -32,8 +33,8 @@ public:
         bool operator==(const EnumeratedSetTag& other) const;
     };
     struct RangeTag {
-        int64_t start;
-        int64_t end;
+        BigInt start;
+        BigInt end;
         bool inclusive_end;
         bool operator==(const RangeTag& other) const {
             return start == other.start &&
@@ -107,12 +108,12 @@ public:
     
     // Factory/Constructors for different kinds of Chirp values
     static Value make_bool(bool val);
-    static Value make_int(int64_t val);
+    static Value make_int(BigInt val);
     static Value make_string(std::string val);
     static Value make_type(std::shared_ptr<const Type> type_val);
     static Value make_binding(std::shared_ptr<Binding> binding_val);
     static Value make_enumerated_set(std::vector<Value> elements);
-    static Value make_range(int64_t start, int64_t end, bool inclusive_end);
+    static Value make_range(BigInt start, BigInt end, bool inclusive_end);
     static Value make_constructed_set(const frontend::ConstructedSetExpr& set);
     static Value make_lambda(const frontend::LambdaExpr& lambda);
     static Value make_host_function(HostFunction fn);
@@ -134,7 +135,7 @@ public:
     bool asBool() const;
 
     bool isInt() const;
-    int64_t asInt() const;
+    const BigInt& asInt() const;
 
     bool isString() const;
     const std::string& asString() const;
@@ -186,7 +187,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

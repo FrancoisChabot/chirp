@@ -1,5 +1,5 @@
 #include "chirp/interpreter.h"
-
+#include "chirp/bigint.h"
 #include "chirp/frontend.h"
 
 #include <algorithm>
@@ -115,38 +115,27 @@ constexpr int64_t MAX_LOOP_ITERATIONS = 1'000'000;
 constexpr uint64_t INT64_MAX_MAGNITUDE = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
 constexpr uint64_t INT64_MIN_MAGNITUDE = INT64_MAX_MAGNITUDE + 1;
 
-uint64_t parse_integer_magnitude(std::string_view text, const token& diag) {
+BigInt parse_positive_integer_literal(std::string_view text, const token& diag) {
     if (text.find('.') != std::string_view::npos) {
         fail(diag, "Floating point literals are not supported yet");
     }
-
-    uint64_t parsed = 0;
-    const char* begin = text.data();
-    const char* end = begin + text.size();
-    auto [ptr, error] = std::from_chars(begin, end, parsed, 10);
-    if (error != std::errc{} || ptr != end) {
+    try {
+        return BigInt(text);
+    } catch (const std::exception& e) {
         fail(diag, "Invalid integer literal '" + std::string(text) + "'");
     }
-    return parsed;
 }
 
-int64_t parse_positive_integer_literal(std::string_view text, const token& diag) {
-    uint64_t magnitude = parse_integer_magnitude(text, diag);
-    if (magnitude > INT64_MAX_MAGNITUDE) {
-        fail(diag, "Invalid integer literal '" + std::string(text) + "'");
+BigInt parse_negated_integer_literal(std::string_view text, const token& diag) {
+    if (text.find('.') != std::string_view::npos) {
+        fail(diag, "Floating point literals are not supported yet");
     }
-    return static_cast<int64_t>(magnitude);
-}
-
-int64_t parse_negated_integer_literal(std::string_view text, const token& diag) {
-    uint64_t magnitude = parse_integer_magnitude(text, diag);
-    if (magnitude > INT64_MIN_MAGNITUDE) {
+    try {
+        std::string neg_text = "-" + std::string(text);
+        return BigInt(neg_text);
+    } catch (const std::exception& e) {
         fail(diag, "Invalid integer literal '-" + std::string(text) + "'");
     }
-    if (magnitude == INT64_MIN_MAGNITUDE) {
-        return std::numeric_limits<int64_t>::min();
-    }
-    return -static_cast<int64_t>(magnitude);
 }
 
 class Evaluator : public ASTVisitor, public StmtVisitor {
@@ -251,7 +240,7 @@ private:
         return value.asBool();
     }
 
-    static int64_t as_int(const Value& value, const token& diag) {
+    static BigInt as_int(const Value& value, const token& diag) {
         if (!value.isInt()) {
             fail(diag, "Expected int, got " + value.toString());
         }
@@ -399,7 +388,7 @@ private:
         if (set.isRange()) {
             std::vector<Value> elements;
             auto range = set.asRange();
-            int64_t current = range.start;
+            BigInt current = range.start;
             int64_t iterations = 0;
             auto in_range = [&]() {
                 return range.inclusive_end ? current <= range.end : current < range.end;
@@ -411,10 +400,14 @@ private:
                 }
                 append_unique(elements, Value::make_int(current));
 
-                if (current == std::numeric_limits<int64_t>::max()) {
+                if (current == BigInt("170141183460469231731687303715884105727")) {
                     break;
                 }
-                current += 1;
+                try {
+                    current += BigInt(1);
+                } catch (const std::out_of_range&) {
+                    break;
+                }
             }
             return elements;
         }
@@ -587,11 +580,11 @@ private:
                     fail(diag, "`exit expects one positional argument");
                 }
                 Value value = evaluate(*args.front().value);
-                int64_t code = as_int(value, diag);
-                if (code < 0 || code > 255) {
+                BigInt code_big = as_int(value, diag);
+                if (code_big < BigInt(0) || code_big > BigInt(255)) {
                     fail(diag, "`exit expects an integer exit code between 0 and 255");
                 }
-                throw ScriptExit(static_cast<int>(code));
+                throw ScriptExit(static_cast<int>(code_big.to_int64()));
             }
             case Value::HostFunction::Mint: {
                 if (!args.empty()) {
@@ -769,12 +762,12 @@ private:
                     fail(diag, "`expect_exit expects one positional argument");
                 }
                 Value value = evaluate(*args.front().value);
-                int64_t code = as_int(value, diag);
-                if (code < 0 || code > 255) {
+                BigInt code_big = as_int(value, diag);
+                if (code_big < BigInt(0) || code_big > BigInt(255)) {
                     fail(diag, "`expect_exit expects an integer exit code between 0 and 255");
                 }
                 expectations.has_expectations = true;
-                expectations.expected_exit = static_cast<int>(code);
+                expectations.expected_exit = static_cast<int>(code_big.to_int64());
                 return VoidVal();
             }
             case Value::HostFunction::ExpectTestFailure: {
@@ -789,21 +782,28 @@ private:
         fail(diag, "Unknown host function");
     }
 
-    int64_t binary_int(const Value& left, const Value& right, BinaryOp op, const token& diag) {
-        int64_t a = as_int(left, diag);
-        int64_t b = as_int(right, diag);
-        switch (op) {
-            case BinaryOp::Add: return a + b;
-            case BinaryOp::Sub: return a - b;
-            case BinaryOp::Mul: return a * b;
-            case BinaryOp::Div:
-                if (b == 0) fail(diag, "Division by zero");
-                return a / b;
-            case BinaryOp::Mod:
-                if (b == 0) fail(diag, "Modulo by zero");
-                return a % b;
-            default:
-                fail(diag, "Unsupported integer operator");
+    BigInt binary_int(const Value& left, const Value& right, BinaryOp op, const token& diag) {
+        BigInt a = as_int(left, diag);
+        BigInt b = as_int(right, diag);
+        if ((op == BinaryOp::Div || op == BinaryOp::Mod) && b == BigInt(0)) {
+            if (op == BinaryOp::Div) {
+                fail(diag, "Division by zero");
+            } else {
+                fail(diag, "Modulo by zero");
+            }
+        }
+        try {
+            switch (op) {
+                case BinaryOp::Add: return a + b;
+                case BinaryOp::Sub: return a - b;
+                case BinaryOp::Mul: return a * b;
+                case BinaryOp::Div: return a / b;
+                case BinaryOp::Mod: return a % b;
+                default:
+                    fail(diag, "Unsupported integer operator");
+            }
+        } catch (const std::out_of_range& e) {
+            fail(diag, e.what());
         }
     }
 
@@ -1017,11 +1017,12 @@ private:
                 }
 
                 Value right = evaluate(*expr.right);
-                int64_t value = as_int(right, expr.diagnostic_token);
-                if (value == std::numeric_limits<int64_t>::min()) {
+                BigInt value = as_int(right, expr.diagnostic_token);
+                try {
+                    result_ = Value::make_int(-value);
+                } catch (const std::out_of_range& e) {
                     fail(expr.diagnostic_token, "Integer negation overflow");
                 }
-                result_ = Value::make_int(-value);
                 return;
             }
             default:
@@ -1100,7 +1101,7 @@ private:
         }
 
         auto range = iterable.asRange();
-        int64_t current = range.start;
+        BigInt current = range.start;
         int64_t iterations = 0;
         auto in_range = [&]() {
             return range.inclusive_end ? current <= range.end : current < range.end;
@@ -1121,10 +1122,14 @@ private:
                 throw;
             }
 
-            if (current == std::numeric_limits<int64_t>::max()) {
+            if (current == BigInt("170141183460469231731687303715884105727")) {
                 break;
             }
-            current += 1;
+            try {
+                current += BigInt(1);
+            } catch (const std::out_of_range&) {
+                break;
+            }
         }
 
         result_ = VoidVal();
@@ -1188,7 +1193,11 @@ private:
         if (!index_val.isInt()) {
             fail(expr.diagnostic_token, "List index must be an integer");
         }
-        int64_t index = index_val.asInt();
+        BigInt index_big = index_val.asInt();
+        if (!index_big.fits_int64()) {
+            fail(expr.diagnostic_token, "List index is out of range for standard indexing");
+        }
+        int64_t index = index_big.to_int64();
         const auto& list_elems = target.asList();
         if (index < 0 || index >= static_cast<int64_t>(list_elems.size())) {
             fail(expr.diagnostic_token, "List index out of bounds: " + std::to_string(index));
@@ -1259,32 +1268,36 @@ private:
         auto binding = lookup_binding(target->name, target->diagnostic_token);
         Value value = evaluate(*stmt.value);
 
-        switch (stmt.op.type) {
-            case token_type::equal:
-                break;
-            case token_type::plus_equal:
-                value = Value::make_int(as_int(binding->getCV(), stmt.op) + as_int(value, stmt.op));
-                break;
-            case token_type::minus_equal:
-                value = Value::make_int(as_int(binding->getCV(), stmt.op) - as_int(value, stmt.op));
-                break;
-            case token_type::star_equal:
-                value = Value::make_int(as_int(binding->getCV(), stmt.op) * as_int(value, stmt.op));
-                break;
-            case token_type::slash_equal: {
-                int64_t rhs = as_int(value, stmt.op);
-                if (rhs == 0) fail(stmt.op, "Division by zero");
-                value = Value::make_int(as_int(binding->getCV(), stmt.op) / rhs);
-                break;
+        try {
+            switch (stmt.op.type) {
+                case token_type::equal:
+                    break;
+                case token_type::plus_equal:
+                    value = Value::make_int(as_int(binding->getCV(), stmt.op) + as_int(value, stmt.op));
+                    break;
+                case token_type::minus_equal:
+                    value = Value::make_int(as_int(binding->getCV(), stmt.op) - as_int(value, stmt.op));
+                    break;
+                case token_type::star_equal:
+                    value = Value::make_int(as_int(binding->getCV(), stmt.op) * as_int(value, stmt.op));
+                    break;
+                case token_type::slash_equal: {
+                    BigInt rhs = as_int(value, stmt.op);
+                    if (rhs == BigInt(0)) fail(stmt.op, "Division by zero");
+                    value = Value::make_int(as_int(binding->getCV(), stmt.op) / rhs);
+                    break;
+                }
+                case token_type::percent_equal: {
+                    BigInt rhs = as_int(value, stmt.op);
+                    if (rhs == BigInt(0)) fail(stmt.op, "Modulo by zero");
+                    value = Value::make_int(as_int(binding->getCV(), stmt.op) % rhs);
+                    break;
+                }
+                default:
+                    fail(stmt.op, "Unsupported assignment operator");
             }
-            case token_type::percent_equal: {
-                int64_t rhs = as_int(value, stmt.op);
-                if (rhs == 0) fail(stmt.op, "Modulo by zero");
-                value = Value::make_int(as_int(binding->getCV(), stmt.op) % rhs);
-                break;
-            }
-            default:
-                fail(stmt.op, "Unsupported assignment operator");
+        } catch (const std::out_of_range& e) {
+            fail(stmt.op, e.what());
         }
 
         enforce_constraint(binding->getFC(), value, stmt.diagnostic_token);

@@ -153,8 +153,8 @@ Value Value::make_bool(bool val) {
     return Value(getBoolType(), val);
 }
 
-Value Value::make_int(int64_t val) {
-    return Value(getIntType(), val);
+Value Value::make_int(BigInt val) {
+    return Value(getIntType(), std::move(val));
 }
 
 Value Value::make_string(std::string val) {
@@ -173,8 +173,8 @@ Value Value::make_enumerated_set(std::vector<Value> elements) {
     return Value(getEnumeratedSetType(), EnumeratedSetTag{std::make_shared<std::vector<Value>>(std::move(elements))});
 }
 
-Value Value::make_range(int64_t start, int64_t end, bool inclusive_end) {
-    return Value(getRangeType(), RangeTag{start, end, inclusive_end});
+Value Value::make_range(BigInt start, BigInt end, bool inclusive_end) {
+    return Value(getRangeType(), RangeTag{std::move(start), std::move(end), inclusive_end});
 }
 
 Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set) {
@@ -237,14 +237,14 @@ bool Value::asBool() const {
 }
 
 bool Value::isInt() const {
-    return std::holds_alternative<int64_t>(payload_);
+    return std::holds_alternative<BigInt>(payload_);
 }
 
-int64_t Value::asInt() const {
+const BigInt& Value::asInt() const {
     if (!isInt()) {
         throw std::runtime_error("Value is not an int");
     }
-    return std::get<int64_t>(payload_);
+    return std::get<BigInt>(payload_);
 }
 
 bool Value::isString() const {
@@ -462,7 +462,7 @@ std::string Value::toString() const {
         return asBool() ? "true" : "false";
     }
     if (isInt()) {
-        return std::to_string(asInt());
+        return asInt().to_string();
     }
     if (isString()) {
         return "\"" + asString() + "\"";
@@ -611,7 +611,7 @@ Value RangeType::bp(const Value& S, const Value& v) const {
     }
 
     auto range = S.asRange();
-    int64_t value = v.asInt();
+    BigInt value = v.asInt();
     bool in_range = value >= range.start &&
         (range.inclusive_end ? value <= range.end : value < range.end);
     return Value::make_bool(in_range);
