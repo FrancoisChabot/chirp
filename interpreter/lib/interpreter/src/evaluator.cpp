@@ -315,6 +315,9 @@ private:
         }
 
         if (set.isTrait()) {
+            if (set == yielder_trait_ && (value.isLambda() || value.isHostFunction())) {
+                return Value::make_bool(true);
+            }
             return Value::make_bool(registered_impl_for(set, value.getType()) != nullptr);
         }
 
@@ -569,7 +572,7 @@ private:
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
-        if (is_name(name, "set_val")) return Set();
+        if (is_name(name, "set_trait")) return Set();
         if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
         if (is_name(name, "yielder_trait")) return yielder_trait_;
         if (is_name(name, "is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);

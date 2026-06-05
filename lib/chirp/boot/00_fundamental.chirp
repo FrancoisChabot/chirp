@@ -1,34 +1,76 @@
 // N.B. This file, as well has others in the `boot` directory operate under special rules:
 // - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
-// - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
+// - backtick-prefixed identifiers can be defined here. Normal scripts can only use them, not define them. This guarantees backwards-compatibility when we introduce new stuff.
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 // Conformance note:
 // This file by itself leaves a few questions unresolved (e.g. do true and false have the same type?). The official
-// conformance suite takes care of validating those assumptions, so that we aren't running validating the model
+// conformance suite takes care of validating those assumptions, so that we aren't validating the model
 // every single time we load a script.
 
 // Implementation note:
 // Nothing stops an interpreter from caching or even hard-coding all of this. However, a true conforming
 // interpreter needs an escape hatch to allow for alternate boostrap preludes. 
 
+// If you are not familiar with chirp: `final` means `unshadowable`, it's what makes `true` effectively a keyword for 
+// all intents and purposes without having to special-case it in the interpreter.
+
 // --------- The Implicit ---------
 // Boy I wish we could get around that one...
 
 // N.B.`import is the ONLY identifier provided directly by the interpreter, everything else is derived from it.
+// It's the exact same `import() user-side code uses for modules or FFI, just with a special format here.
+
 // let final `import : (key: string, format: string = "chirp") = HARDCODED;
 
 // --------- True Core ---------
 // Non-negotiable bindings that we need to get off the ground.
 
-// Can't get around these.
+// Get the type of a value
 pub let final `typeof = `import("typeof_func", "__chirp_boot");
+
+// Mint a new nominal type and returns its value. Use typeof() to reclaim the type.
 pub let final `mint = `import("mint_func", "__chirp_boot");
-pub let final `trait = `import("trait_func", "__chirp_boot");
+
+// General purpose "get the interface of this thing". Right now, this applies to: 
+// - traits
+// - modules
 pub let final `interface = `import("interface_func", "__chirp_boot");
+
+// ---------- Traits ----------
+// Creates a trait (takes the trait interface in the form of a struct value as parameter)
+pub let final `trait = `import("trait_func", "__chirp_boot");
+
+// Implements a trait for a type.
 pub let final `implement = `import("implement_func", "__chirp_boot");
 
-// Values we have no choice but get from the interpreter. We want to keep this to a minimum.
+// ---------- Predicate resolution results  ----------
 pub let final true = `import("true_val", "__chirp_boot");
 pub let final false = `import("false_val", "__chirp_boot");   // Technically derivable from `!true`, but the `!` prefix operator will de defined in userland.
 pub let final undecided = `import("undecided_val", "__chirp_boot");
+
+// ---------- Sets  ----------
+// Remember: Every trait implements Setness as "the set of types that implement me", and that includes the set trait itself.
+pub let final `set = `import("set_trait", "__chirp_boot");
+
+// Roughly:
+// struct {
+//   br : (this, v: `set) => ⊆ {true, false, undecided}, // belonging range
+//   bp : (this, v: `any) => ⊆ br(set_of_candidates),        // belonging predicate
+//};
+//
+// IMPORTANT: The relationship between br and bp is unenforceable. 
+//     - bp returning a value not in br is UNDEFINED BEHAVIOR. 
+//     - If `undecided` is not in br, the interpreter will NOT bail on resource exhaustion and may loop forever.
+//     - If you DO put `undecided` in br, the interpreter could end up bailing on a expensive-but-theoretically computable bp.
+pub let final `Setness = `interface(`set);
+
+// ---------- Computation  ----------
+pub let `yielder = `import("yielder_trait", "__chirp_boot");
+// TODO: maybe inline the interface's struct definition for reference here...
+// N.B. All lambdas implicitly implement yieldness, we aren't going to bother defining that here (yet...)
+pub let final `Yieldness = `interface(`yielder);
+
+// Determining if a yielder is pure or not is internal interpreter machinery
+pub let `is_pure = `import("is_pure_func", "__chirp_boot");
+pub let `pure_fn = { v: `yielder | `is_pure(v) };

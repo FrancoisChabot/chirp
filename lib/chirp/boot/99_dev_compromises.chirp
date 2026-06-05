@@ -1,6 +1,6 @@
 // N.B. This file, as well has others in the `boot` directory operate under special rules:
 // - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
-// - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
+// - backtick-prefixed identifiers can be defined here. Normal scripts can only use them, not define them. This guarantees backwards-compatibility when we introduce new stuff.
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 

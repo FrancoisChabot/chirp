@@ -1,6 +1,6 @@
 // N.B. This file, as well has others in the `boot` directory operate under special rules:
 // - `import` with format "__chirp_boot" is available. Normal scripts are forbidden from using this format.
-// - backtick-prefixed identifiers can be defined here. Normal scripts can only read them, not define them.
+// - backtick-prefixed identifiers can be defined here. Normal scripts can only use them, not define them. This guarantees backwards-compatibility when we introduce new stuff.
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 // --------- Derived bindings ---------
@@ -10,15 +10,10 @@
 pub let final bool = `typeof(true);
 pub let final int = `typeof(1);
 pub let final string = `typeof("");
-pub let final `symbol = `typeof(#foo);
+pub let final symbol = `typeof(#foo);
 
 // we can lookup our void constant by simply executing an empty block.
-pub let final `void = do {};
-
-// `set is the setness trait: it serves as the set of all of its implementors,
-// and its interface defines the bp/br handlers for that trait.
-pub let final `set = `import("set_val", "__chirp_boot");
-pub let final `Setness = `interface(`set);
+pub let final void = do {};
 
 // --------- Lattice edges ---------
 pub let final `any = `mint();
