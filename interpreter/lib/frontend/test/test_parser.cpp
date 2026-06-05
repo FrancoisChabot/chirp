@@ -91,8 +91,8 @@ TEST(ParserTest, ContextualBindingModifiers) {
 }
 
 TEST(ParserTest, PublicLetIsContextual) {
-    auto public_let = parse(tokenize("pub let x = 1;"));
-    auto public_final = parse(tokenize("pub let final `thing = 2;"));
+    auto public_let = parse(tokenize("let pub x = 1;"));
+    auto public_final = parse(tokenize("let pub final `thing = 2;"));
     auto pub_identifier = parse(tokenize("let pub = 3;"));
     auto pub_expr = parse(tokenize("pub;"));
 
@@ -101,8 +101,8 @@ TEST(ParserTest, PublicLetIsContextual) {
     ASSERT_EQ(pub_identifier.size(), 1);
     ASSERT_EQ(pub_expr.size(), 1);
 
-    EXPECT_EQ(print_ast(*public_let[0]), "(pub let x = 1)");
-    EXPECT_EQ(print_ast(*public_final[0]), "(pub let final `thing = 2)");
+    EXPECT_EQ(print_ast(*public_let[0]), "(let pub x = 1)");
+    EXPECT_EQ(print_ast(*public_final[0]), "(let pub final `thing = 2)");
     EXPECT_EQ(print_ast(*pub_identifier[0]), "(let pub = 3)");
     EXPECT_EQ(print_ast(*pub_expr[0]), "(expr_stmt pub)");
 }

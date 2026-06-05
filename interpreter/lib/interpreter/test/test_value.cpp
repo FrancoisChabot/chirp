@@ -136,11 +136,11 @@ TEST(InterpreterTest, BootPublicBindingsArePublishedAndPrivateBindingsAreHidden)
     Session session(out);
 
     session.execute_boot_source(
-        "pub let final exposed = 41;\n"
+        "let pub final exposed = 41;\n"
         "let final hidden = 1;\n",
         "boot-one");
     session.execute_boot_source(
-        "pub let final from_hidden = hidden + 1;\n",
+        "let pub final from_hidden = hidden + 1;\n",
         "boot-two");
 
     EXPECT_NO_THROW(session.execute_source(

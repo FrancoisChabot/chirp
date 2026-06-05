@@ -4,15 +4,15 @@
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 // pre-defined ranges that match the usual suspects. Very important for forcing code into a machine-emmitable shape.
-pub let final int8 = -128..=127;
-pub let final int16 = -32768..=32767;
-pub let final int32 = -2147483648..=2147483647;
-pub let final int64 = -9223372036854775808..=9223372036854775807;
+let pub final int8 = -128..=127;
+let pub final int16 = -32768..=32767;
+let pub final int32 = -2147483648..=2147483647;
+let pub final int64 = -9223372036854775808..=9223372036854775807;
 
-pub let final uint8 = 0..=255;
-pub let final uint16 = 0..=65535;
-pub let final uint32 = 0..=4294967295;
-pub let final uint64 = 0..=18446744073709551615;
+let pub final uint8 = 0..=255;
+let pub final uint16 = 0..=65535;
+let pub final uint32 = 0..=4294967295;
+let pub final uint64 = 0..=18446744073709551615;
 
 
 // ---------- literals as singleton sets ----------
@@ -50,4 +50,4 @@ make_type_a_self_set(`typeof(undecided));
 
 // We could just force returning from main. But being able to bail out is nice and easy to implement, 
 // and it's not like it adds much complexity.
-pub let final `exit = `import("exit_func", "__chirp_boot");
+let pub final `exit = `import("exit_func", "__chirp_boot");

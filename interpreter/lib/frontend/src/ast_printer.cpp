@@ -243,7 +243,7 @@ public:
     }
 
     void visit(const LetStmt& stmt) override {
-        result += stmt.is_public ? "(pub let " : "(let ";
+        result += stmt.is_public ? "(let pub " : "(let ";
         if (stmt.binding.is_final) result += "final ";
         if (stmt.binding.is_mut) result += "mut ";
         result += stmt.binding.name.lexeme;

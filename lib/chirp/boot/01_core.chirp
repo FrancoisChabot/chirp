@@ -7,17 +7,17 @@
 // We like those. We like them a lot.
 
 // Core type keywords. Extracted from their literals
-pub let final bool = `typeof(true);
-pub let final int = `typeof(1);
-pub let final string = `typeof("");
-pub let final symbol = `typeof(#foo);
+let pub final bool = `typeof(true);
+let pub final int = `typeof(1);
+let pub final string = `typeof("");
+let pub final symbol = `typeof(#foo);
 
 // we can lookup our void constant by simply executing an empty block.
-pub let final void = do {};
+let pub final void = do {};
 
 // --------- Lattice edges ---------
-pub let final `any = `mint();
-pub let final `empty = `mint();
+let pub final `any = `mint();
+let pub final `empty = `mint();
 
 `implement(
     trait=`set,
@@ -40,4 +40,4 @@ pub let final `empty = `mint();
 
 // --------- The fixed point ---------
 // It's weird enough to deserve its own section.
-pub let final `type = `typeof(bool);
+let pub final `type = `typeof(bool);

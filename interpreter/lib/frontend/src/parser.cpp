@@ -159,14 +159,10 @@ public:
 private:
     bool is_contextual_binding_modifier(const token& tok) const {
         return tok.type == token_type::identifier &&
-            (tok.lexeme == "mut" || tok.lexeme == "final");
+            (tok.lexeme == "mut" || tok.lexeme == "final" || tok.lexeme == "pub");
     }
 
-    bool is_pub_let_ahead() const {
-        return peek().type == token_type::identifier &&
-            peek().lexeme == "pub" &&
-            peek_next().type == token_type::kw_let;
-    }
+
 
     bool modifier_has_binding_name_after() const {
         if (!is_contextual_binding_modifier(peek())) return false;
@@ -180,7 +176,7 @@ private:
         throw std::runtime_error("Expect identifier for binding. at line " + std::to_string(peek().line) + ":" + std::to_string(peek().column) + " (found: '" + std::string(peek().lexeme) + "')");
     }
 
-    NamedBinding parse_binding(bool require_initializer, bool allow_initializer, bool allow_function_sugar = false) {
+    NamedBinding parse_binding(bool require_initializer, bool allow_initializer, bool allow_function_sugar = false, bool* out_is_public = nullptr) {
         bool is_mut = false;
         bool is_final = false;
         while (modifier_has_binding_name_after()) {
@@ -190,11 +186,20 @@ private:
                     throw std::runtime_error("Duplicate 'mut' binding modifier at line " + std::to_string(modifier.line) + ":" + std::to_string(modifier.column));
                 }
                 is_mut = true;
-            } else {
+            } else if (modifier.lexeme == "final") {
                 if (is_final) {
                     throw std::runtime_error("Duplicate 'final' binding modifier at line " + std::to_string(modifier.line) + ":" + std::to_string(modifier.column));
                 }
                 is_final = true;
+            } else if (modifier.lexeme == "pub") {
+                if (out_is_public) {
+                    if (*out_is_public) {
+                        throw std::runtime_error("Duplicate 'pub' binding modifier at line " + std::to_string(modifier.line) + ":" + std::to_string(modifier.column));
+                    }
+                    *out_is_public = true;
+                } else {
+                    throw std::runtime_error("Modifier 'pub' is not allowed in this context at line " + std::to_string(modifier.line) + ":" + std::to_string(modifier.column));
+                }
             }
         }
         token name = consume_binding_name();
@@ -240,11 +245,6 @@ private:
     }
 
     std::unique_ptr<Stmt> statement() {
-        if (is_pub_let_ahead()) {
-            token pub_tok = advance();
-            consume(token_type::kw_let, "Expect 'let' after 'pub'.");
-            return let_declaration(true, pub_tok);
-        }
         if (match(token_type::kw_let)) return let_declaration();
         if (match(token_type::kw_break)) return break_statement();
         if (match(token_type::kw_debug)) return debug_statement();
@@ -267,9 +267,10 @@ private:
         return std::make_unique<DebugStmt>(std::move(statements), debug_tok);
     }
 
-    std::unique_ptr<Stmt> let_declaration(bool is_public = false, std::optional<token> pub_tok = std::nullopt) {
-        token let_tok = pub_tok.value_or(previous());
-        NamedBinding binding = parse_binding(true, true, true);
+    std::unique_ptr<Stmt> let_declaration() {
+        token let_tok = previous();
+        bool is_public = false;
+        NamedBinding binding = parse_binding(true, true, true, &is_public);
         consume(token_type::semicolon, "Expect ';' after let declaration.");
         return std::make_unique<LetStmt>(std::move(binding), let_tok, is_public);
     }

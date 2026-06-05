@@ -27,31 +27,31 @@
 // Non-negotiable bindings that we need to get off the ground.
 
 // Get the type of a value
-pub let final `typeof = `import("typeof_func", "__chirp_boot");
+let pub final `typeof = `import("typeof_func", "__chirp_boot");
 
 // Mint a new nominal type and returns its value. Use typeof() to reclaim the type.
-pub let final `mint = `import("mint_func", "__chirp_boot");
+let pub final `mint = `import("mint_func", "__chirp_boot");
 
 // General purpose "get the interface of this thing". Right now, this applies to: 
 // - traits
 // - modules
-pub let final `interface = `import("interface_func", "__chirp_boot");
+let pub final `interface = `import("interface_func", "__chirp_boot");
 
 // ---------- Traits ----------
 // Creates a trait (takes the trait interface in the form of a struct value as parameter)
-pub let final `trait = `import("trait_func", "__chirp_boot");
+let pub final `trait = `import("trait_func", "__chirp_boot");
 
 // Implements a trait for a type.
-pub let final `implement = `import("implement_func", "__chirp_boot");
+let pub final `implement = `import("implement_func", "__chirp_boot");
 
 // ---------- Predicate resolution results  ----------
-pub let final true = `import("true_val", "__chirp_boot");
-pub let final false = `import("false_val", "__chirp_boot");   // Technically derivable from `!true`, but the `!` prefix operator will de defined in userland.
-pub let final undecided = `import("undecided_val", "__chirp_boot");
+let pub final true = `import("true_val", "__chirp_boot");
+let pub final false = `import("false_val", "__chirp_boot");   // Technically derivable from `!true`, but the `!` prefix operator will de defined in userland.
+let pub final undecided = `import("undecided_val", "__chirp_boot");
 
 // ---------- Sets  ----------
 // Remember: Every trait implements Setness as "the set of types that implement me", and that includes the set trait itself.
-pub let final `set = `import("set_trait", "__chirp_boot");
+let pub final `set = `import("set_trait", "__chirp_boot");
 
 // Roughly:
 // struct {
@@ -63,14 +63,14 @@ pub let final `set = `import("set_trait", "__chirp_boot");
 //     - bp returning a value not in br is UNDEFINED BEHAVIOR. 
 //     - If `undecided` is not in br, the interpreter will NOT bail on resource exhaustion and may loop forever.
 //     - If you DO put `undecided` in br, the interpreter could end up bailing on a expensive-but-theoretically computable bp.
-pub let final `Setness = `interface(`set);
+let pub final `Setness = `interface(`set);
 
 // ---------- Computation  ----------
-pub let `yielder = `import("yielder_trait", "__chirp_boot");
+let pub `yielder = `import("yielder_trait", "__chirp_boot");
 // TODO: maybe inline the interface's struct definition for reference here...
 // N.B. All lambdas implicitly implement yieldness, we aren't going to bother defining that here (yet...)
-pub let final `Yieldness = `interface(`yielder);
+let pub final `Yieldness = `interface(`yielder);
 
 // Determining if a yielder is pure or not is internal interpreter machinery
-pub let `is_pure = `import("is_pure_func", "__chirp_boot");
-pub let `pure_fn = { v: `yielder | `is_pure(v) };
+let pub `is_pure = `import("is_pure_func", "__chirp_boot");
+let pub `pure_fn = { v: `yielder | `is_pure(v) };
