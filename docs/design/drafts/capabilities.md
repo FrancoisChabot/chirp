@@ -1,98 +1,394 @@
-# 03: Capabilities and Reification
+# Traits, Interfaces, and Implementations
 
-*(Preamble for the author: This chapter fits immediately after `02_core.md`. The reader now understands the 4 core primitives (Values, Types, Bindings, Sets), the `lc ⊆ fc` funnel, and how `bp`/`br` evaluate constraints. The goal of this chapter is to explain *how* those `bp`/`br` functions are attached to types, transitioning the reader from structural sets into nominal capability dispatch (Traits). After this chapter, the reader will be fully prepared for `04_machine.md`, as they will understand exactly how dynamic capability registries calcify into static dispatch tables.)*
+This draft replaces the older "capabilities" framing. The mechanism is still
+about attaching behavior to values through their dispatch targets, but the public
+ontology is now expressed in Chirp terms:
+
+- an **interface** is a set of valid implementation values;
+- a **trait** is a first-class value created from an interface;
+- an **implementation** attaches one interface-conforming value to one dispatch
+  target for one trait.
+
+The word "capability" should be treated as deprecated terminology in this area.
+The mechanism is traits all the way down.
 
 ---
 
-At this point, we have a pristine, closed loop. Values have Types, Bindings hold Values, and Sets are values whose Types can answer belonging queries via `bp` and `br`. 
+## The Core Idea
 
-But this begs the question: **Where do `bp` and `br` actually come from?** 
+Chirp already describes semantic validity through belonging. Trait
+implementations should follow the same rule.
 
-When we evaluate `v ∈ S`, we know it conceptually desugars to `typeof(S).bp(S, v)`. But `typeof(S)` is just a Type value. Where does it store this `bp` function? 
+Given a trait `T`, its interface is the set of values that are valid
+implementations for `T`:
 
-We could simply just declare "every type has two optional properties", and that'd probably be fine. However, "attaching functionality to a type" is *such* a common and useful pattern that it'd be silly not to just make use of it here. Pointer-ness, yield-ness, operator overloads, etc... all operate around the same principle.
-
-## Reifying Capabilities
-
-To make the framework sing, we need the interpreter to manage this registry for us, in a way that guarantees it can be statically calcified by the compiler. 
-
-To do this, we introduce the concept of **Capabilities**. 
-
-A Capability is a named semantic contract that a type can implement. To bring Capabilities to life, the interpreter provides two core primitives: `` `mint() `` and `` `implement() ``.
-
-### 1. `mint()`: Nominal Identity
-In a structural language, it is hard to create distinct identities. If all symbols belong to the `Symbol` type, they aren't fully distinct at the type level.
-
-`` `mint() `` is a parameter-less primitive that returns a fresh value, and simultaneously creates a **fresh, globally unique intrinsic type** for that value. 
 ```chirp
-let final std.setness = `mint();
-let final std.display_name = `mint();
-
-`typeof(std.setness) == `typeof(std.display_name); // FALSE
+impl_value ∈ `interface(T)
 ```
 
-A Capability is simply a minted identity used as a unique key for behavior.
+Registering an implementation is therefore not a separate kind of type-system
+judgment. It is a normal set-membership check followed by a registry update:
 
-### 2. `implement()`: Attaching Behavior
-The `` `implement(Type, Capability, Contract) `` intrinsic attaches a capability to a type. 
-
-Because the interpreter manages this attachment natively, it guarantees that when the `compile()` function takes a snapshot of the execution environment, the capability mapping is frozen and calcified.
-
-When you write `v ∈ S` in Chirp, the compiler explicitly lowers it to:
 ```chirp
-let impl = `capability_impl(`typeof(S), std.setness);
-impl.bp(S, v);
+`implement(
+    trait=T,
+    on=dispatch_target,
+    impl=impl_value
+);
 ```
-If `typeof(S)` has not implemented `std.setness`, this is an error.
 
-## Bootstrapping the Universe
-
-By formalizing Capabilities via `mint` and `implement`, something incredible happens: the C++ interpreter's core footprint shrinks dramatically. 
-
-Because we can attach core language behaviors to types in user-space, the C++ interpreter doesn't even need to know what `any` or `empty` are. We can bootstrap the fundamental axioms of the language inside the standard library!
+The implementation is accepted only if:
 
 ```chirp
-// lib/chirp/boot/01_core.chirp
+impl_value ∈ `interface(T)
+```
 
-// 1. Mint the unique identities for `any` and `empty`
+Once accepted, the implementation is registered under the pair
+`(T, dispatch_target)`.
+
+---
+
+## The Primitives
+
+This model needs three primitive operations.
+
+```chirp
+`trait(interface)
+```
+
+Creates a fresh trait value whose implementation interface is `interface`.
+The interface is itself a set. A struct type can be used as an interface because
+types are sets of their instances, but the mechanism is intentionally more
+general than "schema object".
+
+```chirp
+`interface(trait)
+```
+
+Returns the implementation interface carried by `trait`.
+
+This is needed for compiler-seeded traits. User code must be able to recover the
+interface for a trait such as `` `set `` even though that trait is created by the
+interpreter to close the bootstrap loop.
+
+```chirp
+`implement(trait=T, on=O, impl=I)
+```
+
+Checks `` I ∈ `interface(T) ``, then attaches `I` to dispatch target `O` for trait
+`T`.
+
+The spelling `on` is intentional. It avoids implying that implementations always
+attach directly to values or always attach directly to types. For ordinary value
+dispatch, `on` will usually be `typeof(value)`, but making the target explicit
+keeps the API honest.
+
+---
+
+## Traits as Sets
+
+A trait serves as the set of values whose dispatch target implements that trait.
+Conceptually:
+
+```chirp
+x ∈ SomeTrait
+```
+
+means:
+
+```chirp
+`has_implementation(trait=SomeTrait, on=`typeof(x))
+```
+
+The helper above is conceptual, not necessarily a public intrinsic. The important
+point is that trait belonging is still ordinary set belonging. Trait values have
+set-ness, and their belonging predicate consults the implementation registry.
+
+This keeps user traits and compiler-recognized traits in the same ontology.
+The difference is only that the compiler assigns special lowering behavior to
+some trait values.
+
+---
+
+## Dispatch Targets
+
+The default dispatch target for a value is its intrinsic type:
+
+```chirp
+default_dispatch_target(x) = `typeof(x)
+```
+
+That is why ordinary implementations normally look like this:
+
+```chirp
+`implement(
+    trait=Display,
+    on=Point,
+    impl=DisplayImpl(
+        display = (this) => "..."
+    )
+);
+```
+
+If `point ∈ Display` is evaluated, the trait's belonging predicate checks
+whether `` (Display, `typeof(point)) `` has an implementation. For a `Point`
+value, that target is `Point`.
+
+The explicit `on` parameter also handles singleton-like boot values cleanly:
+
+```chirp
+let final `any = `mint();
+
+`implement(
+    trait=`set,
+    on=`typeof(`any),
+    impl=`interface(`set)(
+        bp = (this, v) => true,
+        br = (this, lc) => {true}
+    )
+);
+```
+
+Because `mint()` creates a fresh value with a fresh singleton type, implementing
+set-ness on `` `typeof(`any) `` gives set behavior to exactly that minted value.
+
+---
+
+## The `set` Trait
+
+`` `set `` is the canonical compiler-seeded trait. It is the trait whose
+implementors can be used as sets in constraints, belonging tests, pattern arms,
+and related set operators.
+
+It must be seeded by the interpreter because the language needs set-ness before
+guest code can fully define set-ness. However, it should be exposed as if it had
+been created with `` `trait ``:
+
+```chirp
+// Conceptual shape, not final surface syntax.
+let final SetnessInterface = struct {
+    bp: (this, value) => {true, false, undecided},
+    br: (this, lc) => `set
+};
+
+let final `set = `trait(SetnessInterface);
+```
+
+In actual boot code, user-space recovers the interface from the seeded trait:
+
+```chirp
+let final Setness = `interface(`set);
+```
+
+Then it can implement the lattice edges without importing hardcoded `any` or
+`empty` values:
+
+```chirp
 let final `any = `mint();
 let final `empty = `mint();
 
-// 2. Imbue `any` with the Setness capability
-`implement(`typeof(`any), std.setness, SetnessContract(
-    bp = (this, value) => true,
-    br = (this, lc) => {true},
-));
+`implement(
+    trait=`set,
+    on=`typeof(`any),
+    impl=Setness(
+        bp = (this, v) => true,
+        br = (this, lc) => {true}
+    )
+);
 
-// 3. Imbue `empty` with the Setness capability
-`implement(`typeof(`empty), std.setness, SetnessContract(
-    bp = (this, value) => false,
-    br = (this, lc) => {false},
-));
+`implement(
+    trait=`set,
+    on=`typeof(`empty),
+    impl=Setness(
+        bp = (this, v) => false,
+        br = (this, lc) => {false}
+    )
+);
 ```
 
-The C++ interpreter only needs to know how to execute basic AST nodes, `mint` unique identities, and dispatch `implement` lookups. The language defines its own bounds.
+This is the main bootstrap win. The interpreter no longer needs special
+`AnyType` and `EmptyType` behavior forever. It needs `mint`, the seeded `` `set ``
+trait, and the generic implementation registry.
 
-## Core Capabilities vs. User Traits
+---
 
-Capabilities and Traits are the exact same mechanism. The only difference is whether the compiler knows about them.
+## How Belonging Lowers
 
-A **Core Capability** is an implementation hook recognized by the evaluator or compiler to desugar syntax. Examples include:
-- `std.setness` (used for `∈`, constraints, and pattern matching)
-- `std.yieldness` (used for `f(args)` callability on non-function values)
-- `std.layout` (used during Calcification to determine machine memory representation)
+Set belonging remains the central equation:
 
-A **User Trait** is built using the exact same `mint()` and `implement()` functions, but it does not invoke compiler magic. It is just a capability whose consumers are ordinary libraries. 
+```chirp
+v ∈ S
+```
 
-This keeps the ontology small while giving the language a uniform, safe extension mechanism that natively calcifies into zero-cost dispatch tables.
+For a set value `S`, the compiler/evaluator resolves the setness implementation
+for `typeof(S)`:
 
-## Stability And Calcification
+```chirp
+let impl = implementation_for(trait=`set, on=`typeof(S));
+impl.bp(S, v)
+```
 
-Capability implementations are part of a type's semantic behavior. During the dynamic interpretation phase, you can attach capabilities freely. 
+The result is constrained by the implementation's `br` method:
 
-However, Calcification enforces a strict boundary:
-- Interpreted code can attach and replace capabilities dynamically.
-- Calcified code sees a closed-world snapshot.
-- Mutations to capabilities after Calcification do not retroactively change already-emitted machine code. 
+```chirp
+impl.bp(S, v) ∈ impl.br(S, lc_of_v)
+```
 
-When generating C or LLVM IR, if the compiler knows the exact `Type` entering a function, the dynamic capability dispatch (`capability_impl(T, ...).bp()`) is entirely devirtualized and inlined as a direct function call. This is how the boundless flexibility of the Interpreter maps cleanly to blistering-fast Runtime execution.
+The exact lookup helper does not have to be public API. The semantic requirement
+is that `v ∈ S` dispatches through the implementation of the `` `set `` trait on
+`typeof(S)`.
+
+Types-as-sets are the same mechanism. If `bool` is used as a set, then `bool` is
+a value whose dispatch target is `` `type ``. The setness implementation on
+`` `type `` can define:
+
+```chirp
+bp = (this, v) => `typeof(v) == this
+```
+
+No separate "types are sets" rule is needed.
+
+---
+
+## User Traits
+
+User traits are created with the same primitive.
+
+```chirp
+let final DisplayInterface = struct {
+    display: (this) => string
+};
+
+let final Display = `trait(DisplayInterface);
+```
+
+An implementation is an ordinary value that belongs to the interface:
+
+```chirp
+`implement(
+    trait=Display,
+    on=Point,
+    impl=DisplayInterface(
+        display = (this) => "(" + this.x + ", " + this.y + ")"
+    )
+);
+```
+
+Consumers can use the trait as a constraint:
+
+```chirp
+let print_displayable(x: Display) = do {
+    let impl = implementation_for(trait=Display, on=`typeof(x));
+    `print(impl.display(x));
+};
+```
+
+Again, `implementation_for` is conceptual. The public design question is whether
+ordinary user code should have a reflection API for retrieving implementations,
+or whether traits are primarily consumed through higher-level library functions.
+
+---
+
+## Compiler-Known Traits
+
+Compiler-known traits are ordinary traits with special consumers.
+
+Examples:
+
+- `` `set `` powers `∈`, constraints, pattern matching, set operators, and
+  `fc`/`lc` reasoning.
+- A future yield trait can power call syntax on non-function values.
+- A future layout trait can participate in calcification and machine
+  representation.
+
+The distinction is not ontological. It is just whether the evaluator/compiler has
+hardcoded syntax or lowering rules that consult a particular trait value.
+
+This matters for extensibility. User traits and compiler-known traits share:
+
+- the same interface rule;
+- the same implementation registry;
+- the same calcification behavior;
+- the same dispatch-target model.
+
+---
+
+## Coherence and Replacement
+
+The default coherence rule should be strict:
+
+```text
+At most one implementation may exist for a given (trait, on) pair.
+```
+
+Calling `` `implement `` twice for the same pair should be an error unless the
+language later grows an explicit override or scoped replacement operation.
+
+This keeps trait behavior stable and makes calcification easier to reason about.
+Implementations are semantic facts about dispatch targets, not casual mutable
+fields.
+
+---
+
+## Calcification
+
+During interpretation, the implementation registry can be built by ordinary code.
+During calcification, the compiler snapshots that registry along with the rest of
+the closed-world environment.
+
+If a dispatch target is statically known, trait dispatch can lower to a direct
+call to the registered implementation:
+
+```chirp
+v ∈ S
+```
+
+can lower through:
+
+```chirp
+implementation_for(trait=`set, on=`typeof(S)).bp(S, v)
+```
+
+and then to a statically selected function or inlined body when the implementation
+value is known.
+
+If a dispatch target is not statically known but is still representable, the
+compiler may lower through a finite dispatch table produced from the calcified
+registry.
+
+Mutations to the interpreted registry after calcification do not change already
+emitted machine code.
+
+---
+
+## Minimal Bootstrap Surface
+
+This design keeps the interpreter's permanent core small:
+
+- `` `import `` or another boot escape hatch;
+- `` `typeof ``;
+- `` `mint ``;
+- `` `trait ``;
+- `` `interface ``;
+- `` `implement ``;
+- compiler-seeded `` `set ``;
+- the primitive values needed before they can be derived, such as `true`,
+  `false`, and `undecided`.
+
+With those pieces, `any`, `empty`, display metadata, singleton sentinels, and
+most semantic hooks can move into boot code.
+
+---
+
+## Open Questions
+
+- Should ordinary user code be able to retrieve implementation values directly,
+  or should implementation lookup remain an evaluator/compiler operation exposed
+  through libraries?
+- Should `on` always be a type value, or should advanced traits be able to define
+  different dispatch-target strategies?
+- Should duplicate implementations be permanently forbidden, or should scoped
+  override/replacement exist for metaprogramming?
+- How should trait and implementation visibility interact with modules?
+- Should `` `trait(interface) `` require `` interface ∈ `set ``, or should invalid
+  interfaces fail later when `` `implement `` is called?

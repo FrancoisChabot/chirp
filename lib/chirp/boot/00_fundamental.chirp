@@ -21,9 +21,11 @@
 // --------- True Core ---------
 // Non-negotiable bindings that we need to get off the ground.
 
-// Can't get around that one.
+// Can't get around these.
 let final `typeof = `import("typeof_func", "__chirp_boot");
 let final `mint = `import("mint_func", "__chirp_boot");
+let final `interface = `import("interface_func", "__chirp_boot");
+let final `implement = `import("implement_func", "__chirp_boot");
 
 // Values we have no choice but get from the interpreter. We want to keep this to a minimum.
 let final true = `import("true_val", "__chirp_boot");

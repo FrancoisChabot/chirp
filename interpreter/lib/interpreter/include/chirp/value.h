@@ -50,7 +50,7 @@ public:
         bool operator==(const LambdaTag& other) const { return lambda == other.lambda; }
     };
 
-    enum class HostFunction { Print, TypeOf, Exit, Mint };
+    enum class HostFunction { Print, TypeOf, Exit, Mint, Interface, Implement, SetnessConstructor };
     struct HostFunctionTag {
         HostFunction fn;
         bool operator==(const HostFunctionTag& other) const { return fn == other.fn; }
@@ -77,6 +77,11 @@ public:
         uint64_t id;
         bool operator==(const MintedTag& other) const { return id == other.id; }
     };
+    struct SetnessImplTag {
+        std::shared_ptr<Value> bp;
+        std::shared_ptr<Value> br;
+        bool operator==(const SetnessImplTag& other) const;
+    };
 
 
     // Constructs a Chirp `void` value.
@@ -97,6 +102,7 @@ public:
     static Value make_symbol(std::string name);
     static Value make_list(std::vector<Value> elements);
     static Value make_minted(std::shared_ptr<const Type> type, uint64_t id);
+    static Value make_setness_impl(Value bp, Value br);
 
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
@@ -148,13 +154,16 @@ public:
     bool isMinted() const;
     uint64_t asMintedId() const;
 
+    bool isSetnessImpl() const;
+    const SetnessImplTag& asSetnessImpl() const;
+
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
 
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag>;
+    using Payload = std::variant<std::monostate, bool, int64_t, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, SetnessImplTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

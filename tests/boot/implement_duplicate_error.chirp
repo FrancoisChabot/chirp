@@ -1,0 +1,10 @@
+`expect_exit(1);
+
+`implement(
+    trait=`set,
+    on=`typeof(`any),
+    impl=`Setness(
+        bp = (this, v) => true,
+        br = (this, lc) => {true}
+    )
+);

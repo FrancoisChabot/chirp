@@ -189,6 +189,7 @@ private:
     Value result_;
     bool boot_mode_ = false;
     uint64_t next_mint_id_ = 1;
+    std::unordered_map<std::shared_ptr<const Type>, Value> setness_registry_;
 
     Value evaluate(const Expr& expr) {
         expr.accept(*this);
@@ -245,6 +246,51 @@ private:
         return value.asInt();
     }
 
+    const Value* registered_setness_impl_for(std::shared_ptr<const Type> dispatch_target) const {
+        auto found = setness_registry_.find(std::move(dispatch_target));
+        if (found == setness_registry_.end()) {
+            return nullptr;
+        }
+        return &found->second;
+    }
+
+    bool has_setness(const Value& value) const {
+        return registered_setness_impl_for(value.getType()) != nullptr ||
+            value.getType()->hasSetness();
+    }
+
+    Value call_setness_bp(const Value& set, const Value& value, const token& diag) {
+        if (set == Set()) {
+            return Value::make_bool(has_setness(value));
+        }
+
+        if (const Value* impl = registered_setness_impl_for(set.getType())) {
+            const auto& setness = impl->asSetnessImpl();
+            return call_callable_with_values(*setness.bp, {set, value}, diag);
+        }
+
+        if (!set.getType()->hasSetness()) {
+            fail(diag, "Type '" + std::string(set.getType()->name()) + "' of value does not support set-ness");
+        }
+        return belongsTo(set, value);
+    }
+
+    Value call_setness_br(const Value& set, const Value& lc, const token& diag) {
+        if (set == Set()) {
+            return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+        }
+
+        if (const Value* impl = registered_setness_impl_for(set.getType())) {
+            const auto& setness = impl->asSetnessImpl();
+            return call_callable_with_values(*setness.br, {set, lc}, diag);
+        }
+
+        if (!set.getType()->hasSetness()) {
+            fail(diag, "Type '" + std::string(set.getType()->name()) + "' of value does not support set-ness");
+        }
+        return belongsRange(set, lc);
+    }
+
     Value belongs_to(const Value& set, const Value& value, const token& diag) {
         if (set.isCompositeSet()) {
             const auto& comp = set.asCompositeSet();
@@ -262,7 +308,7 @@ private:
         }
 
         if (!set.isConstructedSet()) {
-            return belongsTo(set, value);
+            return call_setness_bp(set, value, diag);
         }
 
         const ConstructedSetExpr& expr = set.asConstructedSet();
@@ -293,8 +339,8 @@ private:
         }
     }
 
-    static void require_set_operand(const Value& value, const token& diag) {
-        if (!value.getType()->hasSetness()) {
+    void require_set_operand(const Value& value, const token& diag) const {
+        if (!has_setness(value)) {
             fail(diag, "Expected set operand, got " + value.toString());
         }
     }
@@ -441,6 +487,8 @@ private:
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
         if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
+        if (is_name(name, "interface_func")) return Value::make_host_function(Value::HostFunction::Interface);
+        if (is_name(name, "implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
@@ -512,6 +560,116 @@ private:
                 auto type = std::make_shared<MintedType>(id);
                 return Value::make_minted(std::move(type), id);
             }
+            case Value::HostFunction::Interface: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`interface expects one positional argument");
+                }
+                Value trait = evaluate(*args.front().value);
+                if (trait != Set()) {
+                    fail(diag, "`interface currently only supports `set");
+                }
+                return Value::make_host_function(Value::HostFunction::SetnessConstructor);
+            }
+            case Value::HostFunction::SetnessConstructor: {
+                const Argument* bp_arg = nullptr;
+                const Argument* br_arg = nullptr;
+                for (const auto& arg : args) {
+                    if (!arg.name.has_value()) {
+                        fail(diag, "Setness expects named arguments");
+                    }
+
+                    std::string name = to_key(arg.name->lexeme);
+                    if (name == "bp") {
+                        if (bp_arg != nullptr) {
+                            fail(*arg.name, "Duplicate argument for parameter 'bp'");
+                        }
+                        bp_arg = &arg;
+                    } else if (name == "br") {
+                        if (br_arg != nullptr) {
+                            fail(*arg.name, "Duplicate argument for parameter 'br'");
+                        }
+                        br_arg = &arg;
+                    } else {
+                        fail(*arg.name, "Unknown Setness parameter '" + name + "'");
+                    }
+                }
+
+                if (bp_arg == nullptr) {
+                    fail(diag, "Missing argument for parameter 'bp'");
+                }
+                if (br_arg == nullptr) {
+                    fail(diag, "Missing argument for parameter 'br'");
+                }
+
+                Value bp = evaluate(*bp_arg->value);
+                Value br = evaluate(*br_arg->value);
+                if (!bp.isLambda()) {
+                    fail(*bp_arg->name, "Setness bp must be a function");
+                }
+                if (!br.isLambda()) {
+                    fail(*br_arg->name, "Setness br must be a function");
+                }
+                return Value::make_setness_impl(std::move(bp), std::move(br));
+            }
+            case Value::HostFunction::Implement: {
+                const Argument* trait_arg = nullptr;
+                const Argument* on_arg = nullptr;
+                const Argument* impl_arg = nullptr;
+                for (const auto& arg : args) {
+                    if (!arg.name.has_value()) {
+                        fail(diag, "`implement expects named arguments");
+                    }
+
+                    std::string name = to_key(arg.name->lexeme);
+                    if (name == "trait") {
+                        if (trait_arg != nullptr) {
+                            fail(*arg.name, "Duplicate argument for parameter 'trait'");
+                        }
+                        trait_arg = &arg;
+                    } else if (name == "on") {
+                        if (on_arg != nullptr) {
+                            fail(*arg.name, "Duplicate argument for parameter 'on'");
+                        }
+                        on_arg = &arg;
+                    } else if (name == "impl") {
+                        if (impl_arg != nullptr) {
+                            fail(*arg.name, "Duplicate argument for parameter 'impl'");
+                        }
+                        impl_arg = &arg;
+                    } else {
+                        fail(*arg.name, "Unknown `implement parameter '" + name + "'");
+                    }
+                }
+
+                if (trait_arg == nullptr) {
+                    fail(diag, "Missing argument for parameter 'trait'");
+                }
+                if (on_arg == nullptr) {
+                    fail(diag, "Missing argument for parameter 'on'");
+                }
+                if (impl_arg == nullptr) {
+                    fail(diag, "Missing argument for parameter 'impl'");
+                }
+
+                Value trait = evaluate(*trait_arg->value);
+                Value on = evaluate(*on_arg->value);
+                Value impl = evaluate(*impl_arg->value);
+                if (trait != Set()) {
+                    fail(*trait_arg->name, "`implement currently only supports trait=`set");
+                }
+                if (!on.isType()) {
+                    fail(*on_arg->name, "`implement on must be a type value");
+                }
+                if (!impl.isSetnessImpl()) {
+                    fail(*impl_arg->name, "`implement impl must be a Setness implementation");
+                }
+
+                auto [_, inserted] = setness_registry_.emplace(on.asType(), std::move(impl));
+                if (!inserted) {
+                    fail(*on_arg->name, "Duplicate implementation for trait/on pair");
+                }
+                return VoidVal();
+            }
         }
         fail(diag, "Unknown host function");
     }
@@ -532,6 +690,42 @@ private:
             default:
                 fail(diag, "Unsupported integer operator");
         }
+    }
+
+    Value call_lambda_with_values(const LambdaExpr& lambda, std::vector<Value> arg_values, const token& diag) {
+        if (arg_values.size() != lambda.parameters.size()) {
+            fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
+                " arguments, got " + std::to_string(arg_values.size()));
+        }
+
+        scopes_.emplace_back();
+        try {
+            for (size_t i = 0; i < lambda.parameters.size(); ++i) {
+                const NamedBinding& param = lambda.parameters[i];
+                Value constraint = param.type_bound ? evaluate(*param.type_bound) : Any();
+                enforce_constraint(constraint, arg_values[i], param.name);
+
+                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final);
+                define_binding(param.name.lexeme, std::move(binding), param.name);
+            }
+
+            Value return_value = evaluate(*lambda.body);
+            Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : Any();
+            enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
+
+            scopes_.pop_back();
+            return return_value;
+        } catch (...) {
+            scopes_.pop_back();
+            throw;
+        }
+    }
+
+    Value call_callable_with_values(const Value& callee, std::vector<Value> arg_values, const token& diag) {
+        if (!callee.isLambda()) {
+            fail(diag, "Value is not callable: " + callee.toString());
+        }
+        return call_lambda_with_values(callee.asLambda(), std::move(arg_values), diag);
     }
 
     Value call_lambda(const LambdaExpr& lambda, const std::vector<Argument>& args, const token& diag) {
@@ -586,27 +780,7 @@ private:
             }
         }
 
-        scopes_.emplace_back();
-        try {
-            for (size_t i = 0; i < lambda.parameters.size(); ++i) {
-                const NamedBinding& param = lambda.parameters[i];
-                Value constraint = param.type_bound ? evaluate(*param.type_bound) : Any();
-                enforce_constraint(constraint, arg_values[i], param.name);
-
-                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final);
-                define_binding(param.name.lexeme, std::move(binding), param.name);
-            }
-
-            Value return_value = evaluate(*lambda.body);
-            Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : Any();
-            enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
-
-            scopes_.pop_back();
-            return return_value;
-        } catch (...) {
-            scopes_.pop_back();
-            throw;
-        }
+        return call_lambda_with_values(lambda, std::move(arg_values), diag);
     }
 
     void bind_loop_iterator(const NamedBinding& binding, Value value, const token& diag) {
@@ -956,7 +1130,7 @@ private:
             Value pattern = evaluate(*arm.pattern);
 
             bool matched = false;
-            if (pattern.getType()->hasSetness()) {
+            if (has_setness(pattern)) {
                 // Pattern is a set: test subject ∈ pattern
                 Value result = belongs_to(pattern, subject, expr.diagnostic_token);
                 matched = as_bool(result, expr.diagnostic_token);

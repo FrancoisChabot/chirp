@@ -15,17 +15,34 @@ let final `symbol = `typeof(#foo);
 // we can lookup our void constant by simply executing an empty block.
 let final `void = do {};
 
-// --------- Lattice edges ---------
-// These, we will likely be able to fully define those right here eventually.
-let final `any = `import("any_val", "__chirp_boot");      // the set of all values
-let final `empty = `import("empty_val", "__chirp_boot");  // the set of no values
+// `set is the setness trait: it serves as the set of all of its implementors,
+// and its interface defines the bp/br handlers for that trait.
+let final `set = `import("set_val", "__chirp_boot");
+let final `Setness = `interface(`set);
 
-// --------- Set of all sets ---------
-// N.B. I'm not *quite* sure how core the set-of-all-sets should be...
-// It'll stick around regardless, the only question is in which stage it belongs.
-let final `set = `import("set_val", "__chirp_boot");      // the set of all sets
+// --------- Lattice edges ---------
+let final `any = `mint();
+let final `empty = `mint();
+
+`implement(
+    trait=`set,
+    on=`typeof(`any),
+    impl=`Setness(
+        bp = (this, v) => true,
+        br = (this, lc) => {true}
+    )
+);
+
+`implement(
+    trait=`set,
+    on=`typeof(`empty),
+    impl=`Setness(
+        bp = (this, v) => false,
+        br = (this, lc) => {false}
+    )
+);
+
 
 // --------- The fixed point ---------
 // It's weird enough to deserve its own section.
 let final `type = `typeof(bool);
-

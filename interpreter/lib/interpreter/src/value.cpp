@@ -226,6 +226,13 @@ Value Value::make_minted(std::shared_ptr<const Type> type, uint64_t id) {
     return Value(std::move(type), MintedTag{id});
 }
 
+Value Value::make_setness_impl(Value bp, Value br) {
+    return Value(getFunctionType(), SetnessImplTag{
+        std::make_shared<Value>(std::move(bp)),
+        std::make_shared<Value>(std::move(br))
+    });
+}
+
 
 std::shared_ptr<const Type> Value::getType() const {
     return type_;
@@ -390,6 +397,17 @@ uint64_t Value::asMintedId() const {
     return std::get<MintedTag>(payload_).id;
 }
 
+bool Value::isSetnessImpl() const {
+    return std::holds_alternative<SetnessImplTag>(payload_);
+}
+
+const Value::SetnessImplTag& Value::asSetnessImpl() const {
+    if (!isSetnessImpl()) {
+        throw std::runtime_error("Value is not a setness implementation");
+    }
+    return std::get<SetnessImplTag>(payload_);
+}
+
 bool Value::operator==(const Value& other) const {
     if (isVoid() && other.isVoid()) {
         return true;
@@ -415,6 +433,19 @@ bool Value::ListTag::operator==(const ListTag& other) const {
         return elements == other.elements;
     }
     return *elements == *other.elements;
+}
+
+bool Value::SetnessImplTag::operator==(const SetnessImplTag& other) const {
+    if (!bp || !other.bp) {
+        if (bp != other.bp) return false;
+    } else if (*bp != *other.bp) {
+        return false;
+    }
+
+    if (!br || !other.br) {
+        return br == other.br;
+    }
+    return *br == *other.br;
 }
 
 
@@ -479,6 +510,9 @@ std::string Value::toString() const {
     }
     if (isHostFunction()) {
         return "<host-function>";
+    }
+    if (isSetnessImpl()) {
+        return "<setness-impl>";
     }
     if (type_ == getUndecidedType()) {
         return "undecided";
