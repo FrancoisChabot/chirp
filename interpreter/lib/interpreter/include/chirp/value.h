@@ -63,7 +63,8 @@ public:
         Expect,
         ExpectStdout,
         ExpectExit,
-        ExpectTestFailure
+        ExpectTestFailure,
+        IsPure
     };
     struct HostFunctionTag {
         HostFunction fn;

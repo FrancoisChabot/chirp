@@ -59,7 +59,7 @@ def run_test(chirp_bin, file_path):
 
     try:
         result = subprocess.run(
-            [chirp_bin, "--run-report", report_path, file_path],
+            [chirp_bin, "--test", "--run-report", report_path, file_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

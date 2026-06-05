@@ -4,7 +4,23 @@
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 // Test harness bindings. These are part of the reference test environment, not Chirp's core model.
-pub let final `expect = `import("expect_func", "__chirp_boot");
-pub let final `expect_stdout = `import("expect_stdout_func", "__chirp_boot");
-pub let final `expect_exit = `import("expect_exit_func", "__chirp_boot");
-pub let final `expect_test_failure = `import("expect_test_failure_func", "__chirp_boot");
+
+pub let `yielder = `import("yielder_trait", "__chirp_boot");
+pub let `is_pure = `import("is_pure_func", "__chirp_boot");
+pub let `pure_fn = { v: `yielder | `is_pure(v) };
+
+`implement(
+    trait=`yielder,
+    on=`typeof((_:`any) => `void),
+    impl=bool
+);
+
+let testing_enabled = `import("testing_enabled", "__chirp_boot");
+
+// NOTE: Tagging `expect()` (and other expectation functions) as `pure_fn` is a stop-gap.
+// What we really want is to constrain the expression passed to `expect` as pure.
+// We need to formalize "expressions are yielders" properly before we can achieve that.
+pub let final `expect : `pure_fn = if (testing_enabled) `import("expect_func", "__chirp_boot") else (_:`any) => `void;
+pub let final `expect_stdout : `pure_fn = if (testing_enabled) `import("expect_stdout_func", "__chirp_boot") else (_:`any) => `void;
+pub let final `expect_exit : `pure_fn = if (testing_enabled) `import("expect_exit_func", "__chirp_boot") else (_:`any) => `void;
+pub let final `expect_test_failure : `pure_fn = if (testing_enabled) `import("expect_test_failure_func", "__chirp_boot") else () => `void;

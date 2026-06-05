@@ -1,0 +1,6 @@
+`expect_exit(0);
+
+`expect(`expect ∈ `pure_fn);
+`expect(`expect_stdout ∈ `pure_fn);
+`expect(`expect_exit ∈ `pure_fn);
+`expect(`expect_test_failure ∈ `pure_fn);

@@ -81,7 +81,7 @@ struct SessionExpectations {
 
 class Session {
 public:
-    explicit Session(std::ostream& out);
+    explicit Session(std::ostream& out, bool testing_enabled = false);
     ~Session();
 
     Session(const Session&) = delete;

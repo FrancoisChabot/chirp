@@ -33,17 +33,19 @@ namespace fs = std::filesystem;
 struct Options {
     bool ast_dump = false;
     bool format = false;
+    bool test = false;
     std::optional<std::string> boot_dir;
     std::optional<std::string> run_report;
     std::string script_path;
 };
 
 void printUsage(std::ostream& out) {
-    out << "Usage: chirp [--ast-dump] [--format] [--boot-dir DIR] [--run-report PATH] [script]\n"
+    out << "Usage: chirp [--ast-dump] [--format] [--test] [--boot-dir DIR] [--run-report PATH] [script]\n"
         << "\n"
         << "Options:\n"
         << "  --ast-dump      Parse the input and print its AST.\n"
         << "  --format        Rewrite ASCII operator aliases to Unicode in-place.\n"
+        << "  --test          Enable test harness and assertions (`expect` functions).\n"
         << "  --boot-dir DIR  Load boot .chirp files from DIR before running scripts or the REPL.\n"
         << "  --run-report PATH\n"
         << "                  Write a structured JSON report for a script run.\n"
@@ -179,7 +181,7 @@ bool runAstDump(const fs::path& path) {
 
 int runFile(const fs::path& path, const Options& options) {
     try {
-        chirp::interpreter::Session session(std::cout);
+        chirp::interpreter::Session session(std::cout, options.test);
         loadConfiguredBoot(session, options);
         session.execute_source(readFile(path), path.string());
         return 0;
@@ -295,7 +297,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
     }
 
     try {
-        chirp::interpreter::Session session(std::cout);
+        chirp::interpreter::Session session(std::cout, options.test);
 
         try {
             loadConfiguredBoot(session, options);
@@ -371,7 +373,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
 bool runPrompt(const Options& options) {
     try {
-        chirp::interpreter::Session session(std::cout);
+        chirp::interpreter::Session session(std::cout, options.test);
         loadConfiguredBoot(session, options);
 
         std::string line;
@@ -416,6 +418,10 @@ std::optional<Options> parseArgs(int argc, char* argv[]) {
         }
         if (arg == "--format") {
             options.format = true;
+            continue;
+        }
+        if (arg == "--test") {
+            options.test = true;
             continue;
         }
         if (arg == "--boot-dir") {

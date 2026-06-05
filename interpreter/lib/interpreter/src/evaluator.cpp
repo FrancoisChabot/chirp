@@ -142,7 +142,8 @@ class Evaluator : public ASTVisitor, public StmtVisitor {
 public:
     SessionExpectations expectations;
 
-    explicit Evaluator(std::ostream& out) : out_(out) {
+    explicit Evaluator(std::ostream& out, bool testing_enabled = false) 
+        : out_(out), testing_enabled_(testing_enabled), yielder_trait_(Value::make_trait(next_trait_id_++, Set())) {
         scopes_.emplace_back();
     }
 
@@ -174,6 +175,8 @@ private:
     bool boot_private_scope_active_ = false;
     uint64_t next_mint_id_ = 1;
     uint64_t next_trait_id_ = 1;
+    bool testing_enabled_ = false;
+    Value yielder_trait_;
 
     struct Implementation {
         Value trait;
@@ -567,6 +570,9 @@ private:
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
         if (is_name(name, "set_val")) return Set();
+        if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
+        if (is_name(name, "yielder_trait")) return yielder_trait_;
+        if (is_name(name, "is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
 
@@ -815,6 +821,12 @@ private:
                 expectations.has_expectations = true;
                 expectations.expect_test_failure = true;
                 return VoidVal();
+            }
+            case Value::HostFunction::IsPure: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`is_pure expects one positional argument");
+                }
+                return True();
             }
         }
         fail(diag, "Unknown host function");
@@ -1364,7 +1376,7 @@ class Session::Impl {
     };
 
 public:
-    explicit Impl(std::ostream& out) : evaluator(out) {}
+    explicit Impl(std::ostream& out, bool testing_enabled = false) : evaluator(out, testing_enabled) {}
 
     SessionExpectations getExpectations() const {
         return evaluator.expectations;
@@ -1407,7 +1419,7 @@ private:
     std::vector<std::unique_ptr<SourceUnit>> sources;
 };
 
-Session::Session(std::ostream& out) : impl_(std::make_unique<Impl>(out)) {}
+Session::Session(std::ostream& out, bool testing_enabled) : impl_(std::make_unique<Impl>(out, testing_enabled)) {}
 Session::~Session() = default;
 Session::Session(Session&&) noexcept = default;
 Session& Session::operator=(Session&&) noexcept = default;
