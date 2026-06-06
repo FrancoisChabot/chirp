@@ -51,6 +51,7 @@ std::shared_ptr<const Type> getSymbolType();
 std::shared_ptr<const Type> getListType();
 std::shared_ptr<const Type> getTraitType();
 std::shared_ptr<const Type> getModuleType();
+std::shared_ptr<const Type> getHeapAllocationType();
 
 
 // Core Values (as Value objects)

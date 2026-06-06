@@ -95,6 +95,11 @@ std::shared_ptr<const Type> getModuleType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getHeapAllocationType() {
+    static auto instance = std::make_shared<HeapAllocationType>();
+    return instance;
+}
+
 
 // --- Core Value Accessors ---
 
@@ -182,8 +187,8 @@ Value Value::make_range(BigInt start, BigInt end, bool inclusive_end) {
     return Value(getRangeType(), RangeTag{std::move(start), std::move(end), inclusive_end});
 }
 
-Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set) {
-    return Value(getConstructedSetType(), ConstructedSetTag{&set});
+Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
+    return Value(getConstructedSetType(), ConstructedSetTag{&set, std::move(captured_scopes)});
 }
 
 Value Value::make_composite_set(Value left, Value right, CompositeSetOp op) {
@@ -229,6 +234,12 @@ Value Value::make_module(std::string identity, std::map<std::string, std::shared
     return Value(getModuleType(), ModuleTag{
         std::move(identity),
         std::make_shared<std::map<std::string, std::shared_ptr<Binding>>>(std::move(exports))
+    });
+}
+
+Value Value::make_heap_allocation(uint64_t id, Value stored) {
+    return Value(getHeapAllocationType(), HeapAllocationTag{
+        std::make_shared<HeapAllocationState>(id, std::move(stored))
     });
 }
 
@@ -338,6 +349,13 @@ const frontend::ConstructedSetExpr& Value::asConstructedSet() const {
         throw std::runtime_error("Value is not a ConstructedSet");
     }
     return *std::get<ConstructedSetTag>(payload_).set;
+}
+
+const Value::ConstructedSetTag& Value::asConstructedSetTag() const {
+    if (!isConstructedSet()) {
+        throw std::runtime_error("Value is not a ConstructedSet");
+    }
+    return std::get<ConstructedSetTag>(payload_);
 }
 
 bool Value::isList() const {
@@ -456,6 +474,17 @@ const Value::ModuleTag& Value::asModule() const {
         throw std::runtime_error("Value is not a module");
     }
     return std::get<ModuleTag>(payload_);
+}
+
+bool Value::isHeapAllocation() const {
+    return std::holds_alternative<HeapAllocationTag>(payload_);
+}
+
+const Value::HeapAllocationTag& Value::asHeapAllocation() const {
+    if (!isHeapAllocation()) {
+        throw std::runtime_error("Value is not a heap allocation");
+    }
+    return std::get<HeapAllocationTag>(payload_);
 }
 
 bool Value::operator==(const Value& other) const {
@@ -580,6 +609,13 @@ std::string Value::toString() const {
     if (isModule()) {
         return "<module>";
     }
+    if (isHeapAllocation()) {
+        const auto& state = asHeapAllocation().state;
+        if (!state) {
+            return "<heap allocation>";
+        }
+        return "<heap allocation " + std::to_string(state->id) + ">";
+    }
     if (type_ == getUndecidedType()) {
         return "undecided";
     }
@@ -592,6 +628,9 @@ std::string Value::toString() const {
 
 MintedType::MintedType(uint64_t id)
     : id_(id), name_("MintType(" + std::to_string(id) + ")") {}
+
+Value::HeapAllocationState::HeapAllocationState(uint64_t id, Value stored)
+    : id(id), stored(std::make_shared<Value>(std::move(stored))) {}
 
 // --- Set belonging/range helper implementations ---
 

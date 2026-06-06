@@ -87,3 +87,8 @@ let pub final `drop = `trait(`Dropness);
 // A marker trait indicating that a type opts out of default copyability.
 // Assignments of unique types are restricted to Terminal Move Semantics.
 let pub final `unique = `trait(do {});
+
+// ---------- Dynamic allocation ----------
+let pub final `heap_allocation = `import("heap_allocation_type", "__chirp_boot");
+let pub final `heap_create = `import("heap_create_func", "__chirp_boot");
+let pub final `heap_destroy = `import("heap_destroy_func", "__chirp_boot");

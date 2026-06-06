@@ -145,6 +145,11 @@ public:
     std::string_view name() const override { return "Module"; }
 };
 
+class HeapAllocationType : public Type {
+public:
+    std::string_view name() const override { return "HeapAllocation"; }
+};
+
 class MintedType : public Type {
 public:
     explicit MintedType(uint64_t id);

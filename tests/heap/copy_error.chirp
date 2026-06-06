@@ -1,0 +1,8 @@
+`expect_exit(1);
+
+let heap = `import("std/heap");
+
+do {
+    let p = heap.create(1);
+    let q = p;
+};

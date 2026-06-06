@@ -1,0 +1,11 @@
+let pub Unique(T) = { p: `heap_allocation | *p ∈ T };
+
+`implement(trait=`unique, on=`heap_allocation, impl=void);
+
+`implement(
+    trait=`drop,
+    on=`heap_allocation,
+    impl=`Dropness(drop=(this) => `heap_destroy(this))
+);
+
+let pub create = `heap_create;

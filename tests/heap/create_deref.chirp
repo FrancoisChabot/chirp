@@ -1,0 +1,8 @@
+`expect_exit(0);
+
+let heap = `import("std/heap");
+
+do {
+    let p: heap.Unique(int) = heap.create(42);
+    `expect(*p == 42);
+};

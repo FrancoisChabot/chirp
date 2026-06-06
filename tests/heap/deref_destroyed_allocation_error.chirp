@@ -1,0 +1,6 @@
+`expect_exit(1);
+
+let p = `heap_create(1);
+`heap_destroy(p);
+
+*p;

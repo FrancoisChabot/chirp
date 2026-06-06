@@ -1,0 +1,12 @@
+`expect_exit(0);
+
+let heap = `import("std/heap");
+
+do {
+    let moved: heap.Unique(int) = do {
+        let p = heap.create(9);
+        break p;
+    };
+
+    `expect(*moved == 9);
+};

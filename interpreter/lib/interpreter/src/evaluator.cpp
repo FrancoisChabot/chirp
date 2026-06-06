@@ -216,6 +216,7 @@ private:
     bool boot_private_scope_active_ = false;
     uint64_t next_mint_id_ = 1;
     uint64_t next_trait_id_ = 1;
+    uint64_t next_heap_allocation_id_ = 1;
     bool testing_enabled_ = false;
     struct TerminalHandoff {
         size_t depth;
@@ -618,6 +619,25 @@ private:
         }
     }
 
+    void destroy_heap_allocation(const Value& value, const token& diag) {
+        if (!value.isHeapAllocation()) {
+            fail(diag, "`heap_destroy expects a heap allocation");
+        }
+
+        const auto& state = value.asHeapAllocation().state;
+        if (!state) {
+            fail(diag, "Invalid heap allocation");
+        }
+        if (state->destroyed) {
+            return;
+        }
+
+        Value stored = state->stored ? *state->stored : VoidVal();
+        state->destroyed = true;
+        state->stored.reset();
+        drop_value(stored, diag);
+    }
+
     void leave_scope(std::shared_ptr<Binding> handoff_binding, const token& diag) {
         auto scope = scopes_.back();
         std::vector<Value> values_to_drop;
@@ -712,20 +732,31 @@ private:
             return call_setness_bp(set, value, diag);
         }
 
-        const ConstructedSetExpr& expr = set.asConstructedSet();
-        Value bound = expr.binding.type_bound ? evaluate(*expr.binding.type_bound) : VoidVal();
-        if (expr.binding.type_bound) {
-            Value in_bound = belongs_to(bound, value, expr.diagnostic_token);
-            if (!in_bound.isBool()) {
-                fail(expr.diagnostic_token, "Set bound belonging predicate did not return Bool");
-            }
-            if (!in_bound.asBool()) {
-                return Value::make_bool(false);
-            }
+        const auto& tag = set.asConstructedSetTag();
+        const ConstructedSetExpr& expr = *tag.set;
+        RuntimeScopeChain saved_scopes = std::move(scopes_);
+        if (tag.captured_scopes) {
+            scopes_ = *tag.captured_scopes;
+        } else {
+            scopes_ = saved_scopes;
         }
 
-        scopes_.push_back(std::make_shared<Scope>());
+        bool predicate_scope_active = false;
         try {
+            Value bound = expr.binding.type_bound ? evaluate(*expr.binding.type_bound) : VoidVal();
+            if (expr.binding.type_bound) {
+                Value in_bound = belongs_to(bound, value, expr.diagnostic_token);
+                if (!in_bound.isBool()) {
+                    fail(expr.diagnostic_token, "Set bound belonging predicate did not return Bool");
+                }
+                if (!in_bound.asBool()) {
+                    scopes_ = std::move(saved_scopes);
+                    return Value::make_bool(false);
+                }
+            }
+
+            scopes_.push_back(std::make_shared<Scope>());
+            predicate_scope_active = true;
             auto binding = std::make_shared<Binding>(bound, bound, value, expr.binding.is_final);
             define_binding(expr.binding.name.lexeme, std::move(binding), expr.binding.name);
 
@@ -735,9 +766,14 @@ private:
             }
 
             scopes_.pop_back();
+            predicate_scope_active = false;
+            scopes_ = std::move(saved_scopes);
             return predicate_result;
         } catch (...) {
-            scopes_.pop_back();
+            if (predicate_scope_active) {
+                scopes_.pop_back();
+            }
+            scopes_ = std::move(saved_scopes);
             throw;
         }
     }
@@ -797,13 +833,29 @@ private:
         }
 
         if (set.isConstructedSet()) {
-            const ConstructedSetExpr& expr = set.asConstructedSet();
-            if (!expr.binding.type_bound) {
-                fail(diag, "Cannot materialize unbounded constructed set");
+            const auto& tag = set.asConstructedSetTag();
+            const ConstructedSetExpr& expr = *tag.set;
+            RuntimeScopeChain saved_scopes = std::move(scopes_);
+            if (tag.captured_scopes) {
+                scopes_ = *tag.captured_scopes;
+            } else {
+                scopes_ = saved_scopes;
             }
 
-            Value bound = evaluate(*expr.binding.type_bound);
-            std::vector<Value> candidates = finite_elements(bound, expr.diagnostic_token);
+            std::vector<Value> candidates;
+            try {
+                if (!expr.binding.type_bound) {
+                    fail(diag, "Cannot materialize unbounded constructed set");
+                }
+
+                Value bound = evaluate(*expr.binding.type_bound);
+                candidates = finite_elements(bound, expr.diagnostic_token);
+                scopes_ = std::move(saved_scopes);
+            } catch (...) {
+                scopes_ = std::move(saved_scopes);
+                throw;
+            }
+
             std::vector<Value> elements;
             for (const auto& candidate : candidates) {
                 if (as_bool(belongs_to(set, candidate, expr.diagnostic_token), expr.diagnostic_token)) {
@@ -899,6 +951,29 @@ private:
         return cv;
     }
 
+    Value borrow_identifier(std::string_view name, const token& diag) const {
+        return lookup_binding(name, diag)->getCV();
+    }
+
+    Value evaluate_deref_target(const Expr& expr) {
+        if (const auto* identifier = dynamic_cast<const IdentifierExpr*>(&expr)) {
+            return borrow_identifier(identifier->name, identifier->diagnostic_token);
+        }
+        return evaluate(expr);
+    }
+
+    Value dereference_heap_allocation(const Value& value, const token& diag) const {
+        if (!value.isHeapAllocation()) {
+            fail(diag, "Cannot dereference non-heap allocation value");
+        }
+
+        const auto& state = value.asHeapAllocation().state;
+        if (!state || state->destroyed || !state->stored) {
+            fail(diag, "Cannot dereference destroyed heap allocation");
+        }
+        return *state->stored;
+    }
+
     Value builtin_intrinsic(std::string_view name, const token& diag) const {
         if (is_name(name, "`import")) {
             fail(diag, "`import is only available as a call");
@@ -922,6 +997,9 @@ private:
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
         if (is_name(name, "set_trait")) return Set();
+        if (is_name(name, "heap_allocation_type")) return Value::make_type(getHeapAllocationType());
+        if (is_name(name, "heap_create_func")) return Value::make_host_function(Value::HostFunction::HeapCreate);
+        if (is_name(name, "heap_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
         if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
         if (is_name(name, "is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
@@ -1281,6 +1359,21 @@ private:
                     return Value::make_bool(false);
                 }
                 return Value::make_bool(check_purity(&arg_val.asLambda()));
+            }
+            case Value::HostFunction::HeapCreate: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`heap_create expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                return Value::make_heap_allocation(next_heap_allocation_id_++, std::move(value));
+            }
+            case Value::HostFunction::HeapDestroy: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`heap_destroy expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                destroy_heap_allocation(value, diag);
+                return VoidVal();
             }
         }
         fail(diag, "Unknown host function");
@@ -1743,6 +1836,11 @@ private:
                 }
                 return;
             }
+            case UnaryOp::Deref: {
+                Value right = evaluate_deref_target(*expr.right);
+                result_ = dereference_heap_allocation(right, expr.diagnostic_token);
+                return;
+            }
             default:
                 fail(expr.diagnostic_token, "Unsupported unary operator");
         }
@@ -1790,7 +1888,7 @@ private:
     }
 
     void visit(const ConstructedSetExpr& expr) override {
-        result_ = Value::make_constructed_set(expr);
+        result_ = Value::make_constructed_set(expr, capture_scopes());
     }
 
     void visit(const AnonymousStructLiteralExpr& expr) override {
