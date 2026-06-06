@@ -50,7 +50,7 @@ let pub final false = `import("false_val", "__chirp_boot");   // Technically der
 let pub final undecided = `import("undecided_val", "__chirp_boot");
 
 // ---------- Sets  ----------
-// Remember: Every trait implements Setness as "the set of types that implement me", and that includes the set trait itself.
+// Remember: Every trait implements Setness as "the set of values whose type implement me", and that includes the set trait itself.
 let pub final `set = `import("set_trait", "__chirp_boot");
 
 // Roughly:
@@ -66,10 +66,15 @@ let pub final `set = `import("set_trait", "__chirp_boot");
 let pub final `Setness = `interface(`set);
 
 // ---------- Computation  ----------
-let pub `yielder = `import("yielder_trait", "__chirp_boot");
-// TODO: maybe inline the interface's struct definition for reference here...
-// N.B. All lambdas implicitly implement yieldness, we aren't going to bother defining that here (yet...)
-let pub final `Yieldness = `interface(`yielder);
+let final Fn = `typeof(() => true);
+
+let pub final `Yieldness = struct {
+    invoke: Fn,
+    param_space: Fn,
+    result_space: Fn
+};
+
+let pub final `yielder = `trait(`Yieldness);
 
 // Determining if a yielder is pure or not is internal interpreter machinery
 let pub `is_pure = `import("is_pure_func", "__chirp_boot");

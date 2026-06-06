@@ -150,7 +150,7 @@ public:
     SessionExpectations expectations;
 
     explicit Evaluator(std::ostream& out, bool testing_enabled = false)
-        : out_(out), testing_enabled_(testing_enabled), yielder_trait_(Value::make_trait(next_trait_id_++, Set())) {
+        : out_(out), testing_enabled_(testing_enabled) {
         scopes_.push_back(std::make_shared<RuntimeScope>());
     }
 
@@ -217,7 +217,6 @@ private:
     uint64_t next_mint_id_ = 1;
     uint64_t next_trait_id_ = 1;
     bool testing_enabled_ = false;
-    Value yielder_trait_;
     struct TerminalHandoff {
         size_t depth;
         std::shared_ptr<Binding> binding;
@@ -659,9 +658,6 @@ private:
         }
 
         if (set.isTrait()) {
-            if (set == yielder_trait_ && (value.isLambda() || value.isHostFunction())) {
-                return Value::make_bool(true);
-            }
             return Value::make_bool(registered_impl_for(set, value.getType()) != nullptr);
         }
 
@@ -927,7 +923,6 @@ private:
         if (is_name(name, "undecided_val")) return UndecidedVal();
         if (is_name(name, "set_trait")) return Set();
         if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
-        if (is_name(name, "yielder_trait")) return yielder_trait_;
         if (is_name(name, "is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }

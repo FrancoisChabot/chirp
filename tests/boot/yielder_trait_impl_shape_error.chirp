@@ -1,0 +1,11 @@
+`expect_exit(1);
+
+let Token = `mint();
+
+`implement(
+    trait=`yielder,
+    on=`typeof(Token),
+    impl={
+        invoke = (this, arg) => arg
+    }
+);

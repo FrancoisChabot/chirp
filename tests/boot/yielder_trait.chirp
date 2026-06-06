@@ -1,0 +1,7 @@
+`expect(`interface(`yielder) == `Yieldness);
+
+`expect(((x) => x) ∈ `yielder);
+`expect(`typeof ∈ `yielder);
+
+let f: `yielder = (x) => x;
+let h: `yielder = `typeof;

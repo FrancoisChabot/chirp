@@ -20,6 +20,16 @@ let pub final `any = `mint();
 let pub final `empty = `mint();
 
 `implement(
+    trait=`yielder,
+    on=Fn,
+    impl={
+        invoke = (this, arg) => this(arg),
+        param_space = (this) => `any,
+        result_space = (this, arg) => `any
+    }
+);
+
+`implement(
     trait=`set,
     on=`typeof(`any),
     impl={
