@@ -286,6 +286,13 @@ TEST(ParserTest, BraceDisambiguationPrefersSets) {
     EXPECT_EQ(print_ast(*singleton), "(set x)");
 }
 
+TEST(ParserTest, AnonymousStructLiteral) {
+    auto expr = parse_expression(tokenize("{x=1, y=2, }"));
+
+    ASSERT_NE(expr, nullptr);
+    EXPECT_EQ(print_ast(*expr), "(anon_struct x=1 y=2)");
+}
+
 TEST(ParserTest, BlockExpressionWithDo) {
     auto expr_stmt_block = parse_expression(tokenize("do { x; }"));
     auto break_block = parse_expression(tokenize("do { break; }"));

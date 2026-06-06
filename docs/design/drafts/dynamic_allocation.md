@@ -47,6 +47,13 @@ This makes automatic cleanup extremely deterministic:
 3. If a binding's type implements `` `drop `` AND it was not the specific value yielded by the block, the compiler unconditionally inserts `typeof(cv).drop(cv)`.
 4. No dynamic "drop flags" or runtime state-tracking are required.
 
+Ergonomic implementations of single-method capabilities like `` `drop `` may use
+anonymous struct literal sugar once available, for example
+``impl={drop=(this) => void}``. The current direct-struct contextual rule for
+that sugar is a temporary interpreter compromise; the intended final rule should
+be expressed through the compiler's future `possible_types` operation. See
+[`temporary_compromises.md`](temporary_compromises.md#anonymous-struct-literals).
+
 ## Ergonomics of Ownership Transfer
 
 This system forces a strict, tree-like ownership model. You cannot transfer ownership of a local variable halfway through its scope.

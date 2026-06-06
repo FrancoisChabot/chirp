@@ -1,0 +1,6 @@
+`expect_exit(0);
+
+let empty = {};
+
+`expect(1 ∉ empty);
+`expect(empty == {});

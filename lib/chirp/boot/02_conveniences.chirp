@@ -31,13 +31,13 @@ let final make_type_a_self_set(t) = do {
     `implement(
         trait=`set,
         on=t,
-        impl=`Setness(
+        impl={
             bp = (this, v) => v == this,
             br = (this, lc) =>
                 if (this ∉ lc) {false}
                 else if ({this} == lc) {true}
                 else {true, false}
-        )
+        }
     );
 };
 

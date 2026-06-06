@@ -1,0 +1,9 @@
+`expect_exit(0);
+
+let Point = struct { x: int, y: int };
+
+let get_x(p: Point) = p.x;
+let get_y(p: Point) = p.y;
+
+`expect(get_x({x=1, y=2}) == 1);
+`expect(get_y(p={x=3, y=4}) == 4);

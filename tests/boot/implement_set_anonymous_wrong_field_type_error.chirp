@@ -1,0 +1,12 @@
+`expect_exit(1);
+
+let Token = `mint();
+
+`implement(
+    trait=`set,
+    on=`typeof(Token),
+    impl={
+        bp = true,
+        br = (this, lc) => {false}
+    }
+);

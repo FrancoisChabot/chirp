@@ -674,6 +674,18 @@ private:
                 return std::make_unique<ConstructedSetExpr>(std::move(binding), std::move(condition), brace_tok);
             }
 
+            if (check(token_type::identifier) && peek_next().type == token_type::equal) {
+                std::vector<Argument> fields;
+                do {
+                    token name = consume(token_type::identifier, "Expect field name in anonymous struct literal.");
+                    consume(token_type::equal, "Expect '=' after anonymous struct field name.");
+                    auto value = expression();
+                    fields.push_back(Argument(name, std::move(value)));
+                } while (match(token_type::comma) && !check(token_type::right_brace));
+                consume(token_type::right_brace, "Expect '}' after anonymous struct literal.");
+                return std::make_unique<AnonymousStructLiteralExpr>(std::move(fields), brace_tok);
+            }
+
             std::vector<std::unique_ptr<Expr>> elements;
             elements.push_back(expression());
             while (match(token_type::comma)) {

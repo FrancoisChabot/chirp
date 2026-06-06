@@ -381,6 +381,11 @@ private:
             if (expr.binding.type_bound) expr.binding.type_bound->accept(*this);
             if (expr.condition) expr.condition->accept(*this);
         }
+        void visit(const frontend::AnonymousStructLiteralExpr& expr) override {
+            for (const auto& field : expr.fields) {
+                field.value->accept(*this);
+            }
+        }
         void visit(const frontend::BlockExpr& expr) override {
             for (const auto& s : expr.statements) s->accept(*this);
         }
@@ -1143,45 +1148,7 @@ private:
                 fail(diag, "`interface expects a trait");
             }
             case Value::HostFunction::SetnessConstructor: {
-                const Argument* bp_arg = nullptr;
-                const Argument* br_arg = nullptr;
-                for (const auto& arg : args) {
-                    if (!arg.name.has_value()) {
-                        fail(diag, "Setness expects named arguments");
-                    }
-
-                    std::string name = to_key(arg.name->lexeme);
-                    if (name == "bp") {
-                        if (bp_arg != nullptr) {
-                            fail(*arg.name, "Duplicate argument for parameter 'bp'");
-                        }
-                        bp_arg = &arg;
-                    } else if (name == "br") {
-                        if (br_arg != nullptr) {
-                            fail(*arg.name, "Duplicate argument for parameter 'br'");
-                        }
-                        br_arg = &arg;
-                    } else {
-                        fail(*arg.name, "Unknown Setness parameter '" + name + "'");
-                    }
-                }
-
-                if (bp_arg == nullptr) {
-                    fail(diag, "Missing argument for parameter 'bp'");
-                }
-                if (br_arg == nullptr) {
-                    fail(diag, "Missing argument for parameter 'br'");
-                }
-
-                Value bp = evaluate(*bp_arg->value);
-                Value br = evaluate(*br_arg->value);
-                if (!bp.isLambda()) {
-                    fail(*bp_arg->name, "Setness bp must be a function");
-                }
-                if (!br.isLambda()) {
-                    fail(*br_arg->name, "Setness br must be a function");
-                }
-                return Value::make_setness_impl(std::move(bp), std::move(br));
+                return call_setness_constructor(args, diag);
             }
             case Value::HostFunction::Implement: {
                 const Argument* trait_arg = nullptr;
@@ -1225,7 +1192,6 @@ private:
 
                 Value trait = evaluate(*trait_arg->value);
                 Value on = evaluate(*on_arg->value);
-                Value impl = evaluate(*impl_arg->value);
                 if (trait != Set() && !trait.isTrait()) {
                     fail(*trait_arg->name, "`implement trait must be a trait");
                 }
@@ -1233,12 +1199,17 @@ private:
                     fail(*on_arg->name, "`implement on must be a type value");
                 }
 
+                Value impl;
                 if (trait == Set()) {
+                    Value interface = Value::make_host_function(Value::HostFunction::SetnessConstructor);
+                    impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
                     if (!impl.isSetnessImpl()) {
                         fail(*impl_arg->name, "`implement impl must be a Setness implementation");
                     }
                 } else {
-                    enforce_constraint(trait.asTraitInterface(), impl, *impl_arg->name);
+                    Value interface = trait.asTraitInterface();
+                    impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
+                    enforce_constraint(interface, impl, *impl_arg->name);
                 }
 
                 if (registered_impl_for(trait, on.asType()) != nullptr) {
@@ -1377,8 +1348,8 @@ private:
                 define_binding(param.name.lexeme, std::move(binding), param.name);
             }
 
-            Value return_value = evaluate(*lambda.body);
             Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : VoidVal();
+            Value return_value = evaluate_with_expected_type(*lambda.body, return_constraint, lambda.diagnostic_token);
             enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
 
             leave_scope(nullptr, lambda.diagnostic_token);
@@ -1399,6 +1370,79 @@ private:
             fail(diag, "Value is not callable: " + callee.toString());
         }
         return call_lambda_with_values(callee.asLambdaTag(), std::move(arg_values), diag, std::move(arg_ownership));
+    }
+
+    std::shared_ptr<const Type> direct_struct_type_from_constraint(const Value& constraint) const {
+        if (!constraint.isType()) {
+            return nullptr;
+        }
+        std::shared_ptr<const Type> type_ptr = constraint.asType();
+        if (dynamic_cast<const StructType*>(type_ptr.get()) == nullptr) {
+            return nullptr;
+        }
+        return type_ptr;
+    }
+
+    bool is_setness_constructor(const Value& expected) const {
+        return expected.isHostFunction() && expected.asHostFunction() == Value::HostFunction::SetnessConstructor;
+    }
+
+    Value evaluate_with_expected_type(const Expr& expr, const Value& expected, const token& diag) {
+        if (const auto* literal = dynamic_cast<const AnonymousStructLiteralExpr*>(&expr)) {
+            if (is_setness_constructor(expected)) {
+                return call_setness_constructor(literal->fields, literal->diagnostic_token);
+            }
+
+            std::shared_ptr<const Type> type_ptr = direct_struct_type_from_constraint(expected);
+            if (type_ptr == nullptr) {
+                fail(literal->diagnostic_token, "Anonymous struct literal requires a concrete struct context");
+            }
+            const auto* struct_t = dynamic_cast<const StructType*>(type_ptr.get());
+            return call_struct_constructor(type_ptr, struct_t, literal->fields, literal->diagnostic_token);
+        }
+        return evaluate(expr);
+    }
+
+    Value call_setness_constructor(const std::vector<Argument>& args, const token& diag) {
+        const Argument* bp_arg = nullptr;
+        const Argument* br_arg = nullptr;
+        for (const auto& arg : args) {
+            if (!arg.name.has_value()) {
+                fail(diag, "Setness expects named arguments");
+            }
+
+            std::string name = to_key(arg.name->lexeme);
+            if (name == "bp") {
+                if (bp_arg != nullptr) {
+                    fail(*arg.name, "Duplicate argument for parameter 'bp'");
+                }
+                bp_arg = &arg;
+            } else if (name == "br") {
+                if (br_arg != nullptr) {
+                    fail(*arg.name, "Duplicate argument for parameter 'br'");
+                }
+                br_arg = &arg;
+            } else {
+                fail(*arg.name, "Unknown Setness parameter '" + name + "'");
+            }
+        }
+
+        if (bp_arg == nullptr) {
+            fail(diag, "Missing argument for parameter 'bp'");
+        }
+        if (br_arg == nullptr) {
+            fail(diag, "Missing argument for parameter 'br'");
+        }
+
+        Value bp = evaluate(*bp_arg->value);
+        Value br = evaluate(*br_arg->value);
+        if (!bp.isLambda()) {
+            fail(*bp_arg->name, "Setness bp must be a function");
+        }
+        if (!br.isLambda()) {
+            fail(*br_arg->name, "Setness br must be a function");
+        }
+        return Value::make_setness_impl(std::move(bp), std::move(br));
     }
 
     Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const StructType* struct_t, const std::vector<Argument>& args, const token& diag) {
@@ -1446,16 +1490,16 @@ private:
 
         for (const auto& field : struct_expr->fields) {
             std::string field_name = std::string(field.name.lexeme);
+            Value constraint = field.type_bound ? evaluate(*field.type_bound) : VoidVal();
             Value field_val;
             if (provided_args.count(field_name)) {
-                field_val = evaluate(*provided_args[field_name]->value);
+                field_val = evaluate_with_expected_type(*provided_args[field_name]->value, constraint, *provided_args[field_name]->name);
             } else if (field.initializer) {
-                field_val = evaluate(*field.initializer);
+                field_val = evaluate_with_expected_type(*field.initializer, constraint, field.name);
             } else {
                 fail(diag, "Missing required field: " + field_name);
             }
 
-            Value constraint = field.type_bound ? evaluate(*field.type_bound) : VoidVal();
             enforce_constraint(constraint, field_val, field.name);
 
             fields[field_name] = std::move(field_val);
@@ -1464,6 +1508,27 @@ private:
         return Value::make_struct_instance(std::move(type_ptr), std::move(fields));
     }
 
+    Value evaluate_lambda_parameter_bound(const Value::LambdaTag& lambda_tag, const NamedBinding& param) {
+        if (!param.type_bound) {
+            return VoidVal();
+        }
+
+        RuntimeScopeChain saved_scopes = std::move(scopes_);
+        if (lambda_tag.captured_scopes) {
+            scopes_ = *lambda_tag.captured_scopes;
+        } else {
+            scopes_ = saved_scopes;
+        }
+
+        try {
+            Value constraint = evaluate(*param.type_bound);
+            scopes_ = std::move(saved_scopes);
+            return constraint;
+        } catch (...) {
+            scopes_ = std::move(saved_scopes);
+            throw;
+        }
+    }
 
     Value call_lambda(const Value::LambdaTag& lambda_tag, const std::vector<Argument>& args, const token& diag) {
         const LambdaExpr& lambda = *lambda_tag.lambda;
@@ -1498,7 +1563,10 @@ private:
                     fail(*arg.name, "Duplicate argument for parameter '" + name + "'");
                 }
 
-                arg_values[index] = evaluate(*arg.value);
+                Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(arg.value.get()) != nullptr
+                    ? evaluate_lambda_parameter_bound(lambda_tag, lambda.parameters[index])
+                    : VoidVal();
+                arg_values[index] = evaluate_with_expected_type(*arg.value, expected, *arg.name);
                 provided[index] = true;
             }
 
@@ -1514,7 +1582,10 @@ private:
             }
 
             for (size_t i = 0; i < args.size(); ++i) {
-                arg_values[i] = evaluate(*args[i].value);
+                Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(args[i].value.get()) != nullptr
+                    ? evaluate_lambda_parameter_bound(lambda_tag, lambda.parameters[i])
+                    : VoidVal();
+                arg_values[i] = evaluate_with_expected_type(*args[i].value, expected, diag);
             }
         }
 
@@ -1727,6 +1798,10 @@ private:
         result_ = Value::make_constructed_set(expr);
     }
 
+    void visit(const AnonymousStructLiteralExpr& expr) override {
+        fail(expr.diagnostic_token, "Anonymous struct literal requires a concrete struct context");
+    }
+
     void visit(const IfExpr& expr) override {
         if (as_bool(evaluate(*expr.condition), expr.diagnostic_token)) {
             result_ = evaluate(*expr.then_branch);
@@ -1917,8 +1992,8 @@ private:
     }
 
     void visit(const LetStmt& stmt) override {
-        Value initializer = evaluate(*stmt.binding.initializer);
         Value constraint = stmt.binding.type_bound ? evaluate(*stmt.binding.type_bound) : VoidVal();
+        Value initializer = evaluate_with_expected_type(*stmt.binding.initializer, constraint, stmt.diagnostic_token);
         enforce_constraint(constraint, initializer, stmt.diagnostic_token);
 
         auto binding = std::make_shared<Binding>(constraint, constraint, initializer, stmt.binding.is_final);
@@ -1973,7 +2048,7 @@ private:
         }
 
         auto binding = lookup_binding(target->name, target->diagnostic_token);
-        Value value = evaluate(*stmt.value);
+        Value value = evaluate_with_expected_type(*stmt.value, binding->getFC(), stmt.diagnostic_token);
 
         try {
             switch (stmt.op.type) {

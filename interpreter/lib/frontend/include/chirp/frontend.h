@@ -127,6 +127,7 @@ class UndecidedExpr;
 class SymbolicConstantExpr;
 class EnumeratedSetExpr;
 class ConstructedSetExpr;
+class AnonymousStructLiteralExpr;
 class IfExpr;
 class WhileExpr;
 class ForExpr;
@@ -161,6 +162,7 @@ public:
     virtual void visit(const SymbolicConstantExpr& expr) = 0;
     virtual void visit(const EnumeratedSetExpr& expr) = 0;
     virtual void visit(const ConstructedSetExpr& expr) = 0;
+    virtual void visit(const AnonymousStructLiteralExpr& expr) = 0;
     virtual void visit(const IfExpr& expr) = 0;
     virtual void visit(const WhileExpr& expr) = 0;
     virtual void visit(const ForExpr& expr) = 0;
@@ -348,6 +350,17 @@ public:
 
     ConstructedSetExpr(NamedBinding binding, std::unique_ptr<Expr> condition, token diag)
         : binding(std::move(binding)), condition(std::move(condition)), diagnostic_token(std::move(diag)) {}
+
+    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
+};
+
+class AnonymousStructLiteralExpr : public Expr {
+public:
+    std::vector<Argument> fields;
+    token diagnostic_token;
+
+    AnonymousStructLiteralExpr(std::vector<Argument> fields, token diag)
+        : fields(std::move(fields)), diagnostic_token(std::move(diag)) {}
 
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };

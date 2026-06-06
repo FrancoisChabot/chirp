@@ -22,19 +22,19 @@ let pub final `empty = `mint();
 `implement(
     trait=`set,
     on=`typeof(`any),
-    impl=`Setness(
+    impl={
         bp = (this, v) => true,
         br = (this, lc) => {true}
-    )
+    }
 );
 
 `implement(
     trait=`set,
     on=`typeof(`empty),
-    impl=`Setness(
+    impl={
         bp = (this, v) => false,
         br = (this, lc) => {false}
-    )
+    }
 );
 
 

@@ -1,0 +1,10 @@
+`expect_exit(0);
+
+let Point = struct { x: int, y: int };
+
+let make_point() : Point = {x=5, y=6};
+
+let p = make_point();
+
+`expect(p.x == 5);
+`expect(p.y == 6);

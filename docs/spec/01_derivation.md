@@ -227,13 +227,13 @@ let str = match v {
         `implement(
             trait=`set,
             on=t,
-            impl=`Setness(
+            impl={
                 bp = (this, v) => v == this,
                 br = (this, lc) =>
                     if (this ∉ lc) {false}
                     else if ({this} == lc) {true}
                     else {true, false}
-            )
+            }
         );
     };
 
@@ -247,7 +247,7 @@ If you zero-in on the `br` (Belonging Range) portion, notice what it calculates:
 - **Static Certainty**: If `{this} == lc`, the range of possible answers is `{true}`. The compiler now has static proof that membership is guaranteed. It can optimize away the runtime check, run the branch body unconditionally, and prune any subsequent match arms.
 - Otherwise, it returns `{true, false}`, signaling that a runtime check is necessary.
 
-How cool is that? The compiler still needs the ordinary machinery to remove unreachable code, but the proof that a branch is unreachable does not have to be hardcoded into pattern matching. It falls out of the set’s own user-defined abstract transformer.
+How cool is that? The compiler still needs the ordinary machinery to remove unreachable code, but the proof that a branch is unreachable does not have to be hardcoded into pattern matching. It falls out of the set’s own user-defined abstract heuristic.
 
 ## Conclusion
 

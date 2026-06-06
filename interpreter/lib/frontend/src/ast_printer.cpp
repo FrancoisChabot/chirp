@@ -96,6 +96,17 @@ public:
         result += ")";
     }
 
+    void visit(const AnonymousStructLiteralExpr& expr) override {
+        result += "(anon_struct";
+        for (const auto& field : expr.fields) {
+            result += " ";
+            result += field.name->lexeme;
+            result += "=";
+            field.value->accept(*this);
+        }
+        result += ")";
+    }
+
     void visit(const WhileExpr& expr) override {
         result += "(while ";
         expr.condition->accept(*this);

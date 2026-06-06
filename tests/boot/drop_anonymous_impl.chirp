@@ -1,0 +1,14 @@
+`expect_exit(0);
+`expect_stdout("drop\n");
+
+let Token = struct {};
+
+`implement(
+    trait=`drop,
+    on=Token,
+    impl={drop=(this) => `print("drop")}
+);
+
+do {
+    let t = Token();
+};
