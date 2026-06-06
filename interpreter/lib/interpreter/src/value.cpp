@@ -197,8 +197,12 @@ Value Value::make_enumerated_set(std::vector<Value> elements) {
     return Value(getEnumeratedSetType(), EnumeratedSetTag{std::make_shared<std::vector<Value>>(std::move(elements))});
 }
 
-Value Value::make_range(BigInt start, BigInt end, bool inclusive_end) {
-    return Value(getRangeType(), RangeTag{std::move(start), std::move(end), inclusive_end});
+Value Value::make_range(Value start, Value end, bool inclusive_end) {
+    return Value(getRangeType(), RangeTag{
+        std::make_shared<Value>(std::move(start)),
+        std::make_shared<Value>(std::move(end)),
+        inclusive_end
+    });
 }
 
 Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
@@ -647,7 +651,7 @@ std::string Value::toString() const {
     if (isRange()) {
         auto range = asRange();
         std::stringstream ss;
-        ss << range.start << (range.inclusive_end ? "..=" : "..") << range.end;
+        ss << range.start->toString() << (range.inclusive_end ? "..=" : "..") << range.end->toString();
         return ss.str();
     }
     if (isMinted()) {
@@ -771,15 +775,24 @@ Value RangeType::bp(const Value& S, const Value& v) const {
     if (!S.isRange()) {
         throw std::runtime_error("RangeType::bp: S must be a Range value");
     }
-    if (!v.isInt()) {
+    auto range = S.asRange();
+    if (!range.start || !range.end) {
         return Value::make_bool(false);
     }
-
-    auto range = S.asRange();
-    BigInt value = v.asInt();
-    bool in_range = value >= range.start &&
-        (range.inclusive_end ? value <= range.end : value < range.end);
-    return Value::make_bool(in_range);
+    if (v.getType() != range.start->getType()) {
+        return Value::make_bool(false);
+    }
+    if (v.isInt() && range.start->isInt() && range.end->isInt()) {
+        bool gte = range.start->asInt() <= v.asInt();
+        bool lte = range.inclusive_end ? v.asInt() <= range.end->asInt() : v.asInt() < range.end->asInt();
+        return Value::make_bool(gte && lte);
+    }
+    if (v.isChar() && range.start->isChar() && range.end->isChar()) {
+        bool gte = range.start->asChar() <= v.asChar();
+        bool lte = range.inclusive_end ? v.asChar() <= range.end->asChar() : v.asChar() < range.end->asChar();
+        return Value::make_bool(gte && lte);
+    }
+    throw std::runtime_error("RangeType::bp on user-defined types requires evaluator context");
 }
 
 Value RangeType::br(const Value& S, const Value& lc) const {

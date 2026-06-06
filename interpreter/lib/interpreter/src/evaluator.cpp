@@ -616,6 +616,63 @@ private:
         return registered_drop_impl_for(type) != nullptr;
     }
 
+    const Value* orderable_trait_value() const {
+        auto binding = lookup_binding_optional("`orderable");
+        if (binding == nullptr || !binding->getCV().isTrait()) {
+            return nullptr;
+        }
+        return &binding->getCV();
+    }
+
+    bool value_compare_less(const Value& left, const Value& right, const token& diag) {
+        if (left.isInt() && right.isInt()) {
+            return left.asInt() < right.asInt();
+        }
+        if (left.isChar() && right.isChar()) {
+            return left.asChar() < right.asChar();
+        }
+        if (left.isString() && right.isString()) {
+            return left.asString() < right.asString();
+        }
+        if (left.getType() == right.getType()) {
+            const Value* trait = orderable_trait_value();
+            if (trait != nullptr) {
+                const Value* impl = registered_impl_for(*trait, left.getType());
+                if (impl != nullptr && impl->isStructInstance()) {
+                    const auto& fields = *impl->asStructInstance().fields;
+                    auto it = fields.find("less");
+                    if (it != fields.end()) {
+                        Value less_res = call_callable_with_values(it->second, {left, right}, diag);
+                        if (!less_res.isBool()) {
+                            fail(diag, "orderable trait implementation 'less' must return bool");
+                        }
+                        return less_res.asBool();
+                    }
+                }
+            }
+        }
+        fail(diag, "Cannot compare values of types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
+        return false;
+    }
+
+    bool value_compare_less_equal(const Value& left, const Value& right, const token& diag) {
+        if (left.isInt() && right.isInt()) {
+            return left.asInt() <= right.asInt();
+        }
+        if (left.isChar() && right.isChar()) {
+            return left.asChar() <= right.asChar();
+        }
+        if (left.isString() && right.isString()) {
+            return left.asString() <= right.asString();
+        }
+        if (left.getType() == right.getType()) {
+            if (left == right) return true;
+            return value_compare_less(left, right, diag);
+        }
+        fail(diag, "Cannot compare values of types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
+        return false;
+    }
+
     static bool is_shared_heap_allocation_type(const std::shared_ptr<const Type>& type) {
         return type == getHeapSharedAllocationType();
     }
@@ -818,6 +875,18 @@ private:
             }
         }
 
+        if (set.isRange()) {
+            auto range = set.asRange();
+            if (value.getType() != range.start->getType()) {
+                return Value::make_bool(false);
+            }
+            bool gte = value_compare_less_equal(*range.start, value, diag);
+            bool lte = range.inclusive_end
+                ? value_compare_less_equal(value, *range.end, diag)
+                : value_compare_less(value, *range.end, diag);
+            return Value::make_bool(gte && lte);
+        }
+
         if (!set.isConstructedSet()) {
             return call_setness_bp(set, value, diag);
         }
@@ -898,25 +967,33 @@ private:
         if (set.isRange()) {
             std::vector<Value> elements;
             auto range = set.asRange();
-            BigInt current = range.start;
+            Value current = *range.start;
             int64_t iterations = 0;
             auto in_range = [&]() {
-                return range.inclusive_end ? current <= range.end : current < range.end;
+                return range.inclusive_end
+                    ? value_compare_less_equal(current, *range.end, diag)
+                    : value_compare_less(current, *range.end, diag);
             };
 
             while (in_range()) {
                 if (iterations++ >= MAX_LOOP_ITERATIONS) {
                     fail(diag, "Finite set materialization limit exceeded");
                 }
-                append_unique(elements, Value::make_int(current));
+                append_unique(elements, current);
 
-                if (current == BigInt("170141183460469231731687303715884105727")) {
-                    break;
-                }
-                try {
-                    current += BigInt(1);
-                } catch (const std::out_of_range&) {
-                    break;
+                if (current.isInt()) {
+                    if (current.asInt() == BigInt("170141183460469231731687303715884105727")) {
+                        break;
+                    }
+                    try {
+                        current = Value::make_int(current.asInt() + BigInt(1));
+                    } catch (const std::out_of_range&) {
+                        break;
+                    }
+                } else if (current.isChar()) {
+                    current = Value::make_char(current.asChar() + 1);
+                } else {
+                    fail(diag, "Type is not materializable in range");
                 }
             }
             return elements;
@@ -1864,28 +1941,28 @@ private:
                 result_ = Value::make_bool(left != right);
                 return;
             case BinaryOp::Lt:
-                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) < as_int(right, expr.diagnostic_token));
+                result_ = Value::make_bool(value_compare_less(left, right, expr.diagnostic_token));
                 return;
             case BinaryOp::Lte:
-                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) <= as_int(right, expr.diagnostic_token));
+                result_ = Value::make_bool(value_compare_less_equal(left, right, expr.diagnostic_token));
                 return;
             case BinaryOp::Gt:
-                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) > as_int(right, expr.diagnostic_token));
+                result_ = Value::make_bool(value_compare_less(right, left, expr.diagnostic_token));
                 return;
             case BinaryOp::Gte:
-                result_ = Value::make_bool(as_int(left, expr.diagnostic_token) >= as_int(right, expr.diagnostic_token));
+                result_ = Value::make_bool(value_compare_less_equal(right, left, expr.diagnostic_token));
                 return;
             case BinaryOp::Range:
-                result_ = Value::make_range(
-                    as_int(left, expr.diagnostic_token),
-                    as_int(right, expr.diagnostic_token),
-                    false);
+                if (left.getType() != right.getType()) {
+                    fail(expr.diagnostic_token, "Range bounds must be of the same type");
+                }
+                result_ = Value::make_range(left, right, false);
                 return;
             case BinaryOp::RangeInclusiveEnd:
-                result_ = Value::make_range(
-                    as_int(left, expr.diagnostic_token),
-                    as_int(right, expr.diagnostic_token),
-                    true);
+                if (left.getType() != right.getType()) {
+                    fail(expr.diagnostic_token, "Range bounds must be of the same type");
+                }
+                result_ = Value::make_range(left, right, true);
                 return;
             case BinaryOp::In:
                 result_ = belongs_to(right, left, expr.diagnostic_token);
@@ -2039,10 +2116,12 @@ private:
         }
 
         auto range = iterable.asRange();
-        BigInt current = range.start;
+        Value current = *range.start;
         int64_t iterations = 0;
         auto in_range = [&]() {
-            return range.inclusive_end ? current <= range.end : current < range.end;
+            return range.inclusive_end
+                ? value_compare_less_equal(current, *range.end, expr.diagnostic_token)
+                : value_compare_less(current, *range.end, expr.diagnostic_token);
         };
 
         while (in_range()) {
@@ -2053,7 +2132,7 @@ private:
             scopes_.push_back(std::make_shared<Scope>());
             bool loop_scope_active = true;
             try {
-                bind_loop_iterator(expr.iterator_binding, Value::make_int(current), expr.diagnostic_token);
+                bind_loop_iterator(expr.iterator_binding, current, expr.diagnostic_token);
                 run_loop_body(*expr.body);
                 leave_scope(nullptr, expr.diagnostic_token);
                 loop_scope_active = false;
@@ -2064,13 +2143,19 @@ private:
                 throw;
             }
 
-            if (current == BigInt("170141183460469231731687303715884105727")) {
-                break;
-            }
-            try {
-                current += BigInt(1);
-            } catch (const std::out_of_range&) {
-                break;
+            if (current.isInt()) {
+                if (current.asInt() == BigInt("170141183460469231731687303715884105727")) {
+                    break;
+                }
+                try {
+                    current = Value::make_int(current.asInt() + BigInt(1));
+                } catch (const std::out_of_range&) {
+                    break;
+                }
+            } else if (current.isChar()) {
+                current = Value::make_char(current.asChar() + 1);
+            } else {
+                fail(expr.diagnostic_token, "Type not iterable in range");
             }
         }
 

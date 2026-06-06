@@ -1,0 +1,49 @@
+`expect_exit(0);
+
+// 1. Basic Character Ranges & Iteration
+let rng = 'a'..='d';
+`expect_stdout("'a'\n'b'\n'c'\n'd'\n");
+for (c ∈ rng) do {
+    `print(c);
+};
+
+// 2. Character Range Membership
+`expect('c' ∈ 'a'..'f');
+`expect('f' ∉ 'a'..'f'); // exclusive
+`expect('f' ∈ 'a'..='f'); // inclusive
+`expect('z' ∉ 'a'..'f');
+
+// 3. Generalizing to User Structs via the `orderable` trait
+let Version = struct { major: int, minor: int };
+
+`implement(
+    trait=`orderable,
+    on=Version,
+    impl={
+        less = (this, other) => 
+            if (this.major < other.major) true
+            else if (this.major > other.major) false
+            else this.minor < other.minor
+    }
+);
+
+let v1 = Version(major=1, minor=0);
+let v2 = Version(major=1, minor=1);
+let v3 = Version(major=2, minor=0);
+let v4 = Version(major=2, minor=1);
+
+// Comparison operator checks using orderable trait
+`expect(v1 < v2);
+`expect(v2 < v3);
+`expect(v3 < v4);
+`expect(v4 > v1);
+`expect(v2 <= v2);
+
+// Struct ranges!
+let ver_range = v2..=v3; // from 1.1 to 2.0 (inclusive)
+
+`expect(v1 ∉ ver_range); // 1.0 is before 1.1
+`expect(v2 ∈ ver_range); // 1.1 is in
+`expect(Version(major=1, minor=2) ∈ ver_range); // 1.2 is in
+`expect(v3 ∈ ver_range); // 2.0 is in (inclusive)
+`expect(v4 ∉ ver_range); // 2.1 is out

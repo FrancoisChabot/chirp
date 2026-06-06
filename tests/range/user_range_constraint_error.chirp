@@ -1,0 +1,23 @@
+`expect_exit(1);
+
+let Version = struct { major: int, minor: int };
+
+`implement(
+    trait=`orderable,
+    on=Version,
+    impl={
+        less = (this, other) => 
+            if (this.major < other.major) true
+            else if (this.major > other.major) false
+            else this.minor < other.minor
+    }
+);
+
+let v1 = Version(major=1, minor=0);
+let v2 = Version(major=1, minor=1);
+let v3 = Version(major=2, minor=0);
+
+let ver_range = v2..=v3;
+
+// v1 is outside of ver_range (1.1..=2.0)
+let current_version : ver_range = v1;

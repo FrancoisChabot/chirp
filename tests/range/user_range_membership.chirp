@@ -1,0 +1,33 @@
+`expect_exit(0);
+
+let Version = struct { major: int, minor: int };
+
+`implement(
+    trait=`orderable,
+    on=Version,
+    impl={
+        less = (this, other) => 
+            if (this.major < other.major) true
+            else if (this.major > other.major) false
+            else this.minor < other.minor
+    }
+);
+
+let v1 = Version(major=1, minor=0);
+let v2 = Version(major=1, minor=1);
+let v3 = Version(major=2, minor=0);
+let v4 = Version(major=2, minor=1);
+
+let ver_range = v2..=v3;
+
+// Test membership operators
+`expect(v1 ∉ ver_range);
+`expect(v2 ∈ ver_range);
+`expect(Version(major=1, minor=2) ∈ ver_range);
+`expect(v3 ∈ ver_range);
+`expect(v4 ∉ ver_range);
+
+// Test local variable constraints using a user-defined range
+let current_version : ver_range = v2;
+`expect(current_version.major == 1);
+`expect(current_version.minor == 1);

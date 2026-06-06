@@ -41,12 +41,15 @@ public:
         bool operator==(const EnumeratedSetTag& other) const;
     };
     struct RangeTag {
-        BigInt start;
-        BigInt end;
+        std::shared_ptr<Value> start;
+        std::shared_ptr<Value> end;
         bool inclusive_end;
         bool operator==(const RangeTag& other) const {
-            return start == other.start &&
-                end == other.end &&
+            if (!start || !other.start || !end || !other.end) {
+                return start == other.start && end == other.end && inclusive_end == other.inclusive_end;
+            }
+            return *start == *other.start &&
+                *end == *other.end &&
                 inclusive_end == other.inclusive_end;
         }
     };
@@ -158,7 +161,7 @@ public:
     static Value make_type(std::shared_ptr<const Type> type_val);
     static Value make_binding(std::shared_ptr<Binding> binding_val);
     static Value make_enumerated_set(std::vector<Value> elements);
-    static Value make_range(BigInt start, BigInt end, bool inclusive_end);
+    static Value make_range(Value start, Value end, bool inclusive_end);
     static Value make_constructed_set(const frontend::ConstructedSetExpr& set, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
     static Value make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
     static Value make_host_function(HostFunction fn);
