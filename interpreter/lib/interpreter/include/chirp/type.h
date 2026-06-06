@@ -117,6 +117,11 @@ public:
     std::string_view name() const override { return "int"; }
 };
 
+class CharType : public Type {
+public:
+    std::string_view name() const override { return "char"; }
+};
+
 class StringType : public Type {
 public:
     std::string_view name() const override { return "string"; }

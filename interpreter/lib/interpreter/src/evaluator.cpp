@@ -107,6 +107,33 @@ std::string decode_quoted_literal(std::string_view literal, const token& diag) {
     return out;
 }
 
+uint32_t decode_utf8_char(std::string_view str, const token& diag) {
+    if (str.empty()) {
+        fail(diag, "Empty character literal");
+    }
+    unsigned char c1 = str[0];
+    if (c1 < 0x80) {
+        return c1;
+    } else if ((c1 & 0xE0) == 0xC0) {
+        if (str.size() < 2) fail(diag, "Malformed UTF-8 in character literal");
+        unsigned char c2 = str[1];
+        return ((c1 & 0x1F) << 6) | (c2 & 0x3F);
+    } else if ((c1 & 0xF0) == 0xE0) {
+        if (str.size() < 3) fail(diag, "Malformed UTF-8 in character literal");
+        unsigned char c2 = str[1];
+        unsigned char c3 = str[2];
+        return ((c1 & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
+    } else if ((c1 & 0xF8) == 0xF0) {
+        if (str.size() < 4) fail(diag, "Malformed UTF-8 in character literal");
+        unsigned char c2 = str[1];
+        unsigned char c3 = str[2];
+        unsigned char c4 = str[3];
+        return ((c1 & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F);
+    }
+    fail(diag, "Malformed UTF-8 in character literal");
+    return 0;
+}
+
 std::string display_string(const Value& value) {
     if (value.isString()) {
         return value.asString();
@@ -409,6 +436,7 @@ private:
         }
         void visit(const frontend::NumberExpr&) override {}
         void visit(const frontend::StringExpr&) override {}
+        void visit(const frontend::CharExpr&) override {}
         void visit(const frontend::BoolExpr&) override {}
         void visit(const frontend::UndecidedExpr&) override {}
         void visit(const frontend::SymbolicConstantExpr&) override {}
@@ -1940,6 +1968,12 @@ private:
 
     void visit(const StringExpr& expr) override {
         result_ = Value::make_string(decode_quoted_literal(expr.value, expr.diagnostic_token));
+    }
+
+    void visit(const CharExpr& expr) override {
+        std::string decoded = decode_quoted_literal(expr.value, expr.diagnostic_token);
+        uint32_t codepoint = decode_utf8_char(decoded, expr.diagnostic_token);
+        result_ = Value::make_char(codepoint);
     }
 
     void visit(const BoolExpr& expr) override {

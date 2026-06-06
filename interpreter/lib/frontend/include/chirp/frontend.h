@@ -120,6 +120,7 @@ class UnaryExpr;
 class GroupingExpr;
 class NumberExpr;
 class StringExpr;
+class CharExpr;
 class BoolExpr;
 class IdentifierExpr;
 class IntrinsicExpr;
@@ -155,6 +156,7 @@ public:
     virtual void visit(const GroupingExpr& expr) = 0;
     virtual void visit(const NumberExpr& expr) = 0;
     virtual void visit(const StringExpr& expr) = 0;
+    virtual void visit(const CharExpr& expr) = 0;
     virtual void visit(const BoolExpr& expr) = 0;
     virtual void visit(const IdentifierExpr& expr) = 0;
     virtual void visit(const IntrinsicExpr& expr) = 0;
@@ -272,6 +274,17 @@ public:
     token diagnostic_token;
 
     StringExpr(std::string_view value, token diag) 
+        : value(value), diagnostic_token(std::move(diag)) {}
+
+    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
+};
+
+class CharExpr : public Expr {
+public:
+    std::string_view value;
+    token diagnostic_token;
+
+    CharExpr(std::string_view value, token diag) 
         : value(value), diagnostic_token(std::move(diag)) {}
 
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }

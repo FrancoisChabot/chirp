@@ -70,6 +70,11 @@ std::shared_ptr<const Type> getIntType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getCharType() {
+    static auto instance = std::make_shared<CharType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getStringType() {
     static auto instance = std::make_shared<StringType>();
     return instance;
@@ -170,6 +175,10 @@ Value Value::make_bool(bool val) {
 
 Value Value::make_int(BigInt val) {
     return Value(getIntType(), std::move(val));
+}
+
+Value Value::make_char(uint32_t codepoint) {
+    return Value(getCharType(), CharTag{codepoint});
 }
 
 Value Value::make_string(std::string val) {
@@ -294,6 +303,17 @@ const std::string& Value::asString() const {
         throw std::runtime_error("Value is not a string");
     }
     return std::get<std::string>(payload_);
+}
+
+bool Value::isChar() const {
+    return std::holds_alternative<CharTag>(payload_);
+}
+
+uint32_t Value::asChar() const {
+    if (!isChar()) {
+        throw std::runtime_error("Value is not a char");
+    }
+    return std::get<CharTag>(payload_).codepoint;
 }
 
 bool Value::isSymbol() const {
@@ -558,6 +578,40 @@ std::string Value::toString() const {
     }
     if (isString()) {
         return "\"" + asString() + "\"";
+    }
+    if (isChar()) {
+        uint32_t cp = asChar();
+        std::string s;
+        s.push_back('\'');
+        if (cp == '\\') s += "\\\\";
+        else if (cp == '\'') s += "\\'";
+        else if (cp == '\n') s += "\\n";
+        else if (cp == '\r') s += "\\r";
+        else if (cp == '\t') s += "\\t";
+        else if (cp == '\0') s += "\\0";
+        else if (cp < 32 || cp == 127) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "\\u%04x", cp);
+            s += buf;
+        } else {
+            if (cp < 0x80) {
+                s.push_back(static_cast<char>(cp));
+            } else if (cp < 0x800) {
+                s.push_back(static_cast<char>(0xc0 | (cp >> 6)));
+                s.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+            } else if (cp < 0x10000) {
+                s.push_back(static_cast<char>(0xe0 | (cp >> 12)));
+                s.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f)));
+                s.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+            } else {
+                s.push_back(static_cast<char>(0xf0 | (cp >> 18)));
+                s.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3f)));
+                s.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f)));
+                s.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+            }
+        }
+        s.push_back('\'');
+        return s;
     }
     if (isSymbol()) {
         return asSymbol();

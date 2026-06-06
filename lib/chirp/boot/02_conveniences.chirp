@@ -43,6 +43,7 @@ let final make_type_a_self_set(t) = do {
 
 make_type_a_self_set(bool);
 make_type_a_self_set(int);
+make_type_a_self_set(char);
 make_type_a_self_set(string);
 make_type_a_self_set(symbol);
 make_type_a_self_set(`typeof(undecided));

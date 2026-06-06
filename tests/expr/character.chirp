@@ -1,0 +1,44 @@
+`expect_exit(0);
+
+// 1. Basic Literals
+let c_a = 'a';
+`expect_stdout("'a'\n");
+`print(c_a);
+
+// 2. Unicode and escapes
+let c_nl = '\n';
+`expect_stdout("'\\n'\n");
+`print(c_nl);
+
+let c_quote = '\'';
+`expect_stdout("'\\''\n");
+`print(c_quote);
+
+let c_utf = '😀';
+`expect_stdout("'😀'\n");
+`print(c_utf);
+
+let c_hex = '\u00AB';
+`expect_stdout("'«'\n");
+`print(c_hex);
+
+// 3. Types and Identity
+`expect(`typeof('a') == char);
+`expect(`typeof('😀') == char);
+`expect('a' == 'a');
+`expect('a' != 'b');
+`expect('😀' == '😀');
+`expect('😀' != '😀' == false);
+
+// 4. Match and Set-ness
+let classify_char(c: char) = match c {
+    'a' => "vowel-a",
+    'b' => "consonant-b",
+    '😀' => "happy",
+    `any => "other"
+};
+
+`expect(classify_char('a') == "vowel-a");
+`expect(classify_char('b') == "consonant-b");
+`expect(classify_char('😀') == "happy");
+`expect(classify_char('x') == "other");

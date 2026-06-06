@@ -102,6 +102,10 @@ public:
         std::string name;
         bool operator==(const SymbolTag& other) const { return name == other.name; }
     };
+    struct CharTag {
+        uint32_t codepoint;
+        bool operator==(const CharTag& other) const { return codepoint == other.codepoint; }
+    };
     struct ListTag {
         std::shared_ptr<std::vector<Value>> elements;
         bool operator==(const ListTag& other) const;
@@ -149,6 +153,7 @@ public:
     // Factory/Constructors for different kinds of Chirp values
     static Value make_bool(bool val);
     static Value make_int(BigInt val);
+    static Value make_char(uint32_t codepoint);
     static Value make_string(std::string val);
     static Value make_type(std::shared_ptr<const Type> type_val);
     static Value make_binding(std::shared_ptr<Binding> binding_val);
@@ -183,6 +188,9 @@ public:
 
     bool isString() const;
     const std::string& asString() const;
+
+    bool isChar() const;
+    uint32_t asChar() const;
 
     bool isSymbol() const;
     const std::string& asSymbol() const;
@@ -242,7 +250,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag, ModuleTag, HeapAllocationTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag, ModuleTag, HeapAllocationTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

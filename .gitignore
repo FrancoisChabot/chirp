@@ -5,3 +5,4 @@ build/
 CMakeUserPresets.json
 *.user
 .cache/
+agents.md

@@ -578,7 +578,7 @@ private:
 
         if (match(token_type::number)) return std::make_unique<NumberExpr>(previous().lexeme, previous());
         if (match(token_type::string)) return std::make_unique<StringExpr>(previous().lexeme, previous());
-        if (match(token_type::character)) return std::make_unique<StringExpr>(previous().lexeme, previous());
+        if (match(token_type::character)) return std::make_unique<CharExpr>(previous().lexeme, previous());
         if (match(token_type::symbolic_constant)) return std::make_unique<SymbolicConstantExpr>(previous().lexeme, previous());
         
         if (match(token_type::identifier)) return std::make_unique<IdentifierExpr>(previous().lexeme, previous());
