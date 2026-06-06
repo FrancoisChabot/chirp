@@ -1,0 +1,12 @@
+`expect_exit(1);
+
+let Token = struct {};
+
+`implement(
+    trait=`drop,
+    on=Token,
+    impl=`Dropness(drop=(this) => void)
+);
+
+let a = Token();
+let b = a;

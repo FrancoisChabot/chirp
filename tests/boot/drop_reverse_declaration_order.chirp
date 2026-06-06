@@ -1,0 +1,22 @@
+`expect_exit(0);
+`expect_stdout("B\nA\n");
+
+let A = struct {};
+let B = struct {};
+
+`implement(
+    trait=`drop,
+    on=A,
+    impl=`Dropness(drop=(this) => `print("A"))
+);
+
+`implement(
+    trait=`drop,
+    on=B,
+    impl=`Dropness(drop=(this) => `print("B"))
+);
+
+do {
+    let a = A();
+    let b = B();
+};

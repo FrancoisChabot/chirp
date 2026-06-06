@@ -1,0 +1,9 @@
+`expect_exit(1);
+
+let Token = struct {};
+
+`implement(
+    trait=`drop,
+    on=Token,
+    impl=(this) => void
+);

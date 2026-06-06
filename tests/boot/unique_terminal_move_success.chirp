@@ -1,0 +1,8 @@
+`expect_exit(0);
+
+`implement(trait=`unique, on=int, impl=void);
+
+let moved = do {
+    let a = 5;
+    break a; // Terminal move!
+};

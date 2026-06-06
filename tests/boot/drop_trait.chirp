@@ -1,0 +1,15 @@
+`expect_exit(0);
+
+`expect(`interface(`drop) == `Dropness);
+
+let Token = struct {};
+
+`expect(Token() ∉ `drop);
+
+`implement(
+    trait=`drop,
+    on=Token,
+    impl=`Dropness(drop=(this) => void)
+);
+
+`expect(Token() ∈ `drop);

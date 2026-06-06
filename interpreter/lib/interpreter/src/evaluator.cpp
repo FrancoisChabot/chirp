@@ -28,6 +28,7 @@ using namespace chirp::frontend;
 
 struct BreakSignal {
     Value value;
+    std::shared_ptr<Binding> handoff_binding;
 };
 
 std::string at(const token& tok) {
@@ -217,6 +218,11 @@ private:
     uint64_t next_trait_id_ = 1;
     bool testing_enabled_ = false;
     Value yielder_trait_;
+    struct TerminalHandoff {
+        size_t depth;
+        std::shared_ptr<Binding> binding;
+    };
+    std::optional<TerminalHandoff> terminal_handoff_;
     std::optional<std::filesystem::path> chirp_root_;
     std::unordered_map<std::string, ModuleCacheEntry> module_cache_;
     std::vector<std::unique_ptr<SourceUnit>> module_sources_;
@@ -449,11 +455,23 @@ private:
         stmt.accept(*this);
     }
 
+    std::pair<std::shared_ptr<Binding>, size_t> lookup_binding_with_depth(std::string_view name, const token& diag) const {
+        std::string key = to_key(name);
+        size_t depth = scopes_.size() - 1;
+        for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope, --depth) {
+            auto found = (*scope)->bindings.find(key);
+            if (found != (*scope)->bindings.end()) {
+                return {found->second, depth};
+            }
+        }
+        fail(diag, "Undefined identifier '" + key + "'");
+    }
+
     std::shared_ptr<Binding> lookup_binding(std::string_view name, const token& diag) const {
         std::string key = to_key(name);
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-            auto found = (*scope)->find(key);
-            if (found != (*scope)->end()) {
+            auto found = (*scope)->bindings.find(key);
+            if (found != (*scope)->bindings.end()) {
                 return found->second;
             }
         }
@@ -463,8 +481,8 @@ private:
     std::shared_ptr<Binding> lookup_binding_optional(std::string_view name) const {
         std::string key = to_key(name);
         for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-            auto found = (*scope)->find(key);
-            if (found != (*scope)->end()) {
+            auto found = (*scope)->bindings.find(key);
+            if (found != (*scope)->bindings.end()) {
                 return found->second;
             }
         }
@@ -479,25 +497,27 @@ private:
         std::string key = to_key(name);
         if (!scopes_.empty()) {
             for (auto scope = scopes_.begin(); scope != std::prev(scopes_.end()); ++scope) {
-                auto found = (*scope)->find(key);
-                if (found != (*scope)->end() && found->second->isFinal()) {
+                auto found = (*scope)->bindings.find(key);
+                if (found != (*scope)->bindings.end() && found->second->isFinal()) {
                     fail(diag, "Identifier '" + key + "' cannot shadow final binding");
                 }
             }
         }
 
-        auto [_, inserted] = scopes_.back()->emplace(key, std::move(binding));
+        auto [it, inserted] = scopes_.back()->bindings.emplace(key, std::move(binding));
         if (!inserted) {
             fail(diag, "Identifier '" + key + "' is already defined in this scope");
         }
+        scopes_.back()->declaration_order.push_back(it->second);
     }
 
     void publish_global_binding(std::string_view name, std::shared_ptr<Binding> binding, const token& diag) {
         std::string key = to_key(name);
-        auto [_, inserted] = scopes_.front()->emplace(key, std::move(binding));
+        auto [it, inserted] = scopes_.front()->bindings.emplace(key, std::move(binding));
         if (!inserted) {
             fail(diag, "Public boot identifier '" + key + "' is already defined globally");
         }
+        scopes_.front()->declaration_order.push_back(it->second);
     }
 
     static bool as_bool(const Value& value, const token& diag) {
@@ -527,6 +547,99 @@ private:
         return registered_impl_for(Set(), dispatch_target);
     }
 
+    const Value* unique_trait_value() const {
+        auto binding = lookup_binding_optional("`unique");
+        if (binding == nullptr || !binding->getCV().isTrait()) {
+            return nullptr;
+        }
+        return &binding->getCV();
+    }
+
+    const Value* registered_unique_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
+        const Value* trait = unique_trait_value();
+        if (trait == nullptr) {
+            return nullptr;
+        }
+        return registered_impl_for(*trait, dispatch_target);
+    }
+
+    const Value* drop_trait_value() const {
+        auto binding = lookup_binding_optional("`drop");
+        if (binding == nullptr || !binding->getCV().isTrait()) {
+            return nullptr;
+        }
+        return &binding->getCV();
+    }
+
+    const Value* registered_drop_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
+        const Value* trait = drop_trait_value();
+        if (trait == nullptr) {
+            return nullptr;
+        }
+        return registered_impl_for(*trait, dispatch_target);
+    }
+
+    bool has_drop(const std::shared_ptr<const Type>& type) const {
+        return registered_drop_impl_for(type) != nullptr;
+    }
+
+    bool is_uncopyable(const std::shared_ptr<const Type>& type) const {
+        return registered_unique_impl_for(type) != nullptr || has_drop(type);
+    }
+
+    bool is_terminal_handoff(const std::shared_ptr<Binding>& binding, size_t depth) const {
+        return terminal_handoff_.has_value() &&
+            terminal_handoff_->depth == depth &&
+            terminal_handoff_->binding == binding;
+    }
+
+    void drop_value(const Value& value, const token& diag) {
+        const Value* impl = registered_drop_impl_for(value.getType());
+        if (impl == nullptr) {
+            return;
+        }
+        if (!impl->isStructInstance()) {
+            fail(diag, "`drop implementation must be a Dropness instance");
+        }
+
+        const auto& fields = *impl->asStructInstance().fields;
+        auto found = fields.find("drop");
+        if (found == fields.end()) {
+            fail(diag, "`drop implementation is missing method 'drop'");
+        }
+
+        Value result = call_callable_with_values(found->second, {value}, diag, {false});
+        if (!result.isVoid()) {
+            fail(diag, "`drop.drop must return void");
+        }
+    }
+
+    void leave_scope(std::shared_ptr<Binding> handoff_binding, const token& diag) {
+        auto scope = scopes_.back();
+        std::vector<Value> values_to_drop;
+
+        for (auto it = scope->declaration_order.rbegin(); it != scope->declaration_order.rend(); ++it) {
+            const auto& binding = *it;
+            if (binding == handoff_binding || !binding->ownsCV()) {
+                continue;
+            }
+
+            const Value& cv = binding->getCV();
+            if (!has_drop(cv.getType())) {
+                continue;
+            }
+
+            values_to_drop.push_back(cv);
+            binding->setOwnsCV(false);
+        }
+
+        scopes_.pop_back();
+
+        for (const Value& value : values_to_drop) {
+            drop_value(value, diag);
+        }
+    }
+
     bool has_setness(const Value& value) const {
         if (value.isTrait()) {
             return true;
@@ -549,7 +662,7 @@ private:
 
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
             const auto& setness = impl->asSetnessImpl();
-            return call_callable_with_values(*setness.bp, {set, value}, diag);
+            return call_callable_with_values(*setness.bp, {set, value}, diag, {false, false});
         }
 
         if (!set.getType()->hasSetness()) {
@@ -569,7 +682,7 @@ private:
 
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
             const auto& setness = impl->asSetnessImpl();
-            return call_callable_with_values(*setness.br, {set, lc}, diag);
+            return call_callable_with_values(*setness.br, {set, lc}, diag, {false, false});
         }
 
         if (!set.getType()->hasSetness()) {
@@ -773,7 +886,16 @@ private:
     }
 
     Value builtin_identifier(std::string_view name, const token& diag) const {
-        return lookup_binding(name, diag)->getCV();
+        auto [binding, depth] = lookup_binding_with_depth(name, diag);
+        Value cv = binding->getCV();
+        
+        if (binding->ownsCV() && is_uncopyable(cv.getType())) {
+            if (!is_terminal_handoff(binding, depth)) {
+                fail(diag, "Cannot copy unique or droppable value; use terminal move semantics (e.g., break)");
+            }
+        }
+        
+        return cv;
     }
 
     Value builtin_intrinsic(std::string_view name, const token& diag) const {
@@ -1002,7 +1124,7 @@ private:
                     fail(diag, "`trait expects one positional argument");
                 }
                 Value interface = evaluate(*args.front().value);
-                if (!has_setness(interface)) {
+                if (!interface.isVoid() && !has_setness(interface)) {
                     fail(diag, "`trait interface must be a set");
                 }
                 return Value::make_trait(next_trait_id_++, std::move(interface));
@@ -1223,11 +1345,18 @@ private:
         }
     }
 
-    Value call_lambda_with_values(const Value::LambdaTag& lambda_tag, std::vector<Value> arg_values, const token& diag) {
+    Value call_lambda_with_values(
+        const Value::LambdaTag& lambda_tag,
+        std::vector<Value> arg_values,
+        const token& diag,
+        std::vector<bool> arg_ownership = {}) {
         const LambdaExpr& lambda = *lambda_tag.lambda;
         if (arg_values.size() != lambda.parameters.size()) {
             fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
                 " arguments, got " + std::to_string(arg_values.size()));
+        }
+        if (!arg_ownership.empty() && arg_ownership.size() != arg_values.size()) {
+            fail(diag, "Internal error: argument ownership metadata does not match argument count");
         }
 
         RuntimeScopeChain saved_scopes = std::move(scopes_);
@@ -1243,7 +1372,8 @@ private:
                 Value constraint = param.type_bound ? evaluate(*param.type_bound) : VoidVal();
                 enforce_constraint(constraint, arg_values[i], param.name);
 
-                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final);
+                bool owns_arg = arg_ownership.empty() ? true : arg_ownership[i];
+                auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final, owns_arg);
                 define_binding(param.name.lexeme, std::move(binding), param.name);
             }
 
@@ -1251,6 +1381,7 @@ private:
             Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : VoidVal();
             enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
 
+            leave_scope(nullptr, lambda.diagnostic_token);
             scopes_ = std::move(saved_scopes);
             return return_value;
         } catch (...) {
@@ -1259,11 +1390,15 @@ private:
         }
     }
 
-    Value call_callable_with_values(const Value& callee, std::vector<Value> arg_values, const token& diag) {
+    Value call_callable_with_values(
+        const Value& callee,
+        std::vector<Value> arg_values,
+        const token& diag,
+        std::vector<bool> arg_ownership = {}) {
         if (!callee.isLambda()) {
             fail(diag, "Value is not callable: " + callee.toString());
         }
-        return call_lambda_with_values(callee.asLambdaTag(), std::move(arg_values), diag);
+        return call_lambda_with_values(callee.asLambdaTag(), std::move(arg_values), diag, std::move(arg_ownership));
     }
 
     Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const StructType* struct_t, const std::vector<Argument>& args, const token& diag) {
@@ -1630,12 +1765,16 @@ private:
             }
 
             scopes_.push_back(std::make_shared<Scope>());
+            bool loop_scope_active = true;
             try {
                 bind_loop_iterator(expr.iterator_binding, Value::make_int(current), expr.diagnostic_token);
                 run_loop_body(*expr.body);
-                scopes_.pop_back();
+                leave_scope(nullptr, expr.diagnostic_token);
+                loop_scope_active = false;
             } catch (...) {
-                scopes_.pop_back();
+                if (loop_scope_active) {
+                    scopes_.pop_back();
+                }
                 throw;
             }
 
@@ -1658,17 +1797,22 @@ private:
 
     void visit(const BlockExpr& expr) override {
         scopes_.push_back(std::make_shared<Scope>());
+        bool block_scope_active = true;
         try {
             for (const auto& stmt : expr.statements) {
                 execute_stmt(*stmt);
             }
-            scopes_.pop_back();
+            leave_scope(nullptr, expr.diagnostic_token);
+            block_scope_active = false;
             result_ = VoidVal();
         } catch (const BreakSignal& signal) {
-            scopes_.pop_back();
+            leave_scope(signal.handoff_binding, expr.diagnostic_token);
+            block_scope_active = false;
             result_ = signal.value;
         } catch (...) {
-            scopes_.pop_back();
+            if (block_scope_active) {
+                scopes_.pop_back();
+            }
             throw;
         }
     }
@@ -1768,7 +1912,8 @@ private:
     }
 
     void visit(const ExprStmt& stmt) override {
-        evaluate(*stmt.expression);
+        Value value = evaluate(*stmt.expression);
+        drop_value(value, stmt.diagnostic_token);
     }
 
     void visit(const LetStmt& stmt) override {
@@ -1792,8 +1937,33 @@ private:
     }
 
     void visit(const BreakStmt& stmt) override {
-        Value value = stmt.value ? evaluate(*stmt.value) : VoidVal();
-        throw BreakSignal{std::move(value)};
+        std::optional<TerminalHandoff> handoff;
+        if (stmt.value) {
+            if (auto* identifier = dynamic_cast<const IdentifierExpr*>(stmt.value.get())) {
+                auto [binding, depth] = lookup_binding_with_depth(identifier->name, identifier->diagnostic_token);
+                if (depth == scopes_.size() - 1 && is_uncopyable(binding->getCV().getType())) {
+                    handoff = TerminalHandoff{depth, binding};
+                }
+            }
+        }
+
+        auto prev_terminal = terminal_handoff_;
+        terminal_handoff_ = handoff;
+        Value value;
+        try {
+            value = stmt.value ? evaluate(*stmt.value) : VoidVal();
+            terminal_handoff_ = prev_terminal;
+        } catch (...) {
+            terminal_handoff_ = prev_terminal;
+            throw;
+        }
+
+        std::shared_ptr<Binding> handoff_binding;
+        if (handoff.has_value()) {
+            handoff_binding = handoff->binding;
+            handoff_binding->setOwnsCV(false);
+        }
+        throw BreakSignal{std::move(value), std::move(handoff_binding)};
     }
 
     void visit(const AssignStmt& stmt) override {
@@ -1838,7 +2008,15 @@ private:
         }
 
         enforce_constraint(binding->getFC(), value, stmt.diagnostic_token);
+        if (binding->ownsCV()) {
+            Value old_value = binding->getCV();
+            if (has_drop(old_value.getType())) {
+                binding->setOwnsCV(false);
+                drop_value(old_value, stmt.diagnostic_token);
+            }
+        }
         binding->setCV(std::move(value));
+        binding->setOwnsCV(true);
     }
 
     void visit(const IfStmt& stmt) override {

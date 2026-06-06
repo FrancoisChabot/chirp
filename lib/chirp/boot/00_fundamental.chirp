@@ -74,3 +74,11 @@ let pub final `Yieldness = `interface(`yielder);
 // Determining if a yielder is pure or not is internal interpreter machinery
 let pub `is_pure = `import("is_pure_func", "__chirp_boot");
 let pub `pure_fn = { v: `yielder | `is_pure(v) };
+
+// ---------- Capabilities ----------
+let pub final `Dropness = struct { drop: `yielder };
+let pub final `drop = `trait(`Dropness);
+
+// A marker trait indicating that a type opts out of default copyability.
+// Assignments of unique types are restricted to Terminal Move Semantics.
+let pub final `unique = `trait(do {});

@@ -20,7 +20,10 @@ namespace chirp::interpreter {
 class Type;
 class Binding;
 
-using RuntimeScope = std::unordered_map<std::string, std::shared_ptr<Binding>>;
+struct RuntimeScope {
+    std::unordered_map<std::string, std::shared_ptr<Binding>> bindings;
+    std::vector<std::shared_ptr<Binding>> declaration_order;
+};
 using RuntimeScopeChain = std::vector<std::shared_ptr<RuntimeScope>>;
 
 class Value {

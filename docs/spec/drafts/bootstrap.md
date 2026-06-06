@@ -1,18 +1,15 @@
 # The Bootstrap (Draft)
 
-This chapter clarifies the relationship between the core Chirp interpreter and the standard bootstrap, establishing rules for how language features should be designed, implemented, and specified.
-
 ## The Interpreter vs. The Bootstrap
 
-Chirp's architecture cleanly separates the mechanical execution of code from the definition of its standard user-facing semantics. 
+**Chirp is primarily built in Chirp.** As a guiding principle, the more stuff we can shove in the bootstrap code, the better. At the same time, the special rules under which the boostrap code operates is kept to a minimum.
 
-This separation means that **Chirp is primarily built in Chirp.** 
+A good example of that principle in action is the `final` keyword. We *could* have defined `true` as a keyword. We *could* have stipulated that symbols defined in the bootstrap. Instead, we figured it's better to make unshadowability a general-purpose feature that the bootstrap happens to make use of.
+
+> [!Note]
+> What belongs in the interpreter is still a bit in flux. For example, the current reference interpreter still exposes printing directly.
 
 ### The Interpreter (`chirp` binary): 
-
-What belongs in the interpreter may evolve during bootstrapping. For example, the current reference interpreter still exposes printing directly. Such cases should be treated as implementation staging, not as a design preference.
-
-The general rule is "If it can be done in the bootstrap, it should". However, that ambiguity is only the specification writer's problem. The specification will keep what lives where clear.
 
 The interpreter must inject one and only one symbol into the global namespace prior to loading a bootstrap:
 
@@ -20,10 +17,9 @@ The interpreter must inject one and only one symbol into the global namespace pr
 `import(key: string, format: string = "chirp"): `any;
 ```
 
-Furthermore, it must respond to queries on this endpoint when the format is `"__chirp_boot"` like so:
+Furthermore, it must implement the `"__chirp_boot"` format like this:
 
-- While loading the bootstrap: Provide the keyed values as the rest of the specification prescribes
-
+- While loading the bootstrap: Provide the keyed values as the rest of the specification prescribes.
 - In user code: Reject the query and abort evaluation.
 
 ### The Bootstrap (`lib/chirp/boot/`):
@@ -38,8 +34,8 @@ A set of Chirp modules evaluated before user code. Their public exports are publ
 
 ## Specification Rules and Delimitations
 
-From this chapter on, every feature and mechanism prescribed by the specification will be split in two parts:
+From this chapter on, every feature and mechanism prescribed by the specification will contain two authoritative sections:
 
 **The interpreter's burden:** What a compliant interpreter must provide as far as behavior and the "__chirp_boot" symbols it must expose.
 
-**The bootstrap's burden:** What a compliant bootstrap provides as far as user-facing features go. This **can** involve a reference implementation of the feature as an addendum, but the functionality should be presented from a user's point of view.
+**The bootstrap's burden:** What a compliant bootstrap provides as far as user-facing features go. This **can** involve a reference implementation of the feature as an addendum.

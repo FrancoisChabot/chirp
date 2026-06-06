@@ -1,0 +1,16 @@
+`expect_exit(0);
+`expect_stdout("drop\nafter\ndrop\n");
+
+let Token = struct {};
+
+`implement(
+    trait=`drop,
+    on=Token,
+    impl=`Dropness(drop=(this) => `print("drop"))
+);
+
+do {
+    let mut t = Token();
+    t = Token();
+    `print("after");
+};
