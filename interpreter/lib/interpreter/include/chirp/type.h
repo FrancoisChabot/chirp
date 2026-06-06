@@ -150,6 +150,11 @@ public:
     std::string_view name() const override { return "HeapAllocation"; }
 };
 
+class HeapSharedAllocationType : public Type {
+public:
+    std::string_view name() const override { return "HeapSharedAllocation"; }
+};
+
 class MintedType : public Type {
 public:
     explicit MintedType(uint64_t id);

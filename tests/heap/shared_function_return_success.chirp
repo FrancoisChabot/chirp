@@ -1,0 +1,13 @@
+`expect_exit(0);
+
+let heap = `import("std/heap");
+
+let make_shared() = do {
+    let local = heap.shared(13);
+    break local;
+};
+
+do {
+    let p: heap.Shared(int) = make_shared();
+    `expect(*p == 13);
+};

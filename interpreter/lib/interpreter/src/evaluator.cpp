@@ -588,8 +588,13 @@ private:
         return registered_drop_impl_for(type) != nullptr;
     }
 
+    static bool is_shared_heap_allocation_type(const std::shared_ptr<const Type>& type) {
+        return type == getHeapSharedAllocationType();
+    }
+
     bool is_uncopyable(const std::shared_ptr<const Type>& type) const {
-        return registered_unique_impl_for(type) != nullptr || has_drop(type);
+        return registered_unique_impl_for(type) != nullptr ||
+            (has_drop(type) && !is_shared_heap_allocation_type(type));
     }
 
     bool is_terminal_handoff(const std::shared_ptr<Binding>& binding, size_t depth) const {
@@ -620,7 +625,7 @@ private:
     }
 
     void destroy_heap_allocation(const Value& value, const token& diag) {
-        if (!value.isHeapAllocation()) {
+        if (!value.isHeapAllocation() || value.getType() != getHeapAllocationType()) {
             fail(diag, "`heap_destroy expects a heap allocation");
         }
 
@@ -636,6 +641,63 @@ private:
         state->destroyed = true;
         state->stored.reset();
         drop_value(stored, diag);
+    }
+
+    void retain_shared_heap_allocation(const Value& value, const token& diag) {
+        if (!value.isHeapAllocation() || value.getType() != getHeapSharedAllocationType()) {
+            return;
+        }
+
+        const auto& state = value.asHeapAllocation().state;
+        if (!state || state->destroyed || !state->stored) {
+            fail(diag, "Cannot retain destroyed shared heap allocation");
+        }
+        ++state->strong_count;
+    }
+
+    void release_shared_heap_allocation(const Value& value, const token& diag) {
+        if (!value.isHeapAllocation() || value.getType() != getHeapSharedAllocationType()) {
+            fail(diag, "`heap_shared_destroy expects a shared heap allocation");
+        }
+
+        const auto& state = value.asHeapAllocation().state;
+        if (!state) {
+            fail(diag, "Invalid shared heap allocation");
+        }
+        if (state->destroyed) {
+            return;
+        }
+
+        if (state->strong_count > 0) {
+            --state->strong_count;
+        }
+        if (state->strong_count != 0) {
+            return;
+        }
+
+        Value stored = state->stored ? *state->stored : VoidVal();
+        state->destroyed = true;
+        state->stored.reset();
+        drop_value(stored, diag);
+    }
+
+    void disown_shared_heap_allocation_without_destroy(const Value& value, const token& diag) {
+        if (!value.isHeapAllocation() || value.getType() != getHeapSharedAllocationType()) {
+            return;
+        }
+
+        const auto& state = value.asHeapAllocation().state;
+        if (!state || state->destroyed || !state->stored) {
+            fail(diag, "Cannot transfer destroyed shared heap allocation");
+        }
+        if (state->strong_count == 0) {
+            fail(diag, "Cannot transfer unowned shared heap allocation");
+        }
+        --state->strong_count;
+    }
+
+    void retain_owned_value(const Value& value, const token& diag) {
+        retain_shared_heap_allocation(value, diag);
     }
 
     void leave_scope(std::shared_ptr<Binding> handoff_binding, const token& diag) {
@@ -1000,6 +1062,9 @@ private:
         if (is_name(name, "heap_allocation_type")) return Value::make_type(getHeapAllocationType());
         if (is_name(name, "heap_create_func")) return Value::make_host_function(Value::HostFunction::HeapCreate);
         if (is_name(name, "heap_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
+        if (is_name(name, "heap_shared_allocation_type")) return Value::make_type(getHeapSharedAllocationType());
+        if (is_name(name, "heap_shared_create_func")) return Value::make_host_function(Value::HostFunction::HeapSharedCreate);
+        if (is_name(name, "heap_shared_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapSharedDestroy);
         if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
         if (is_name(name, "is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
@@ -1375,6 +1440,21 @@ private:
                 destroy_heap_allocation(value, diag);
                 return VoidVal();
             }
+            case Value::HostFunction::HeapSharedCreate: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`heap_shared_create expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                return Value::make_heap_shared_allocation(next_heap_allocation_id_++, std::move(value));
+            }
+            case Value::HostFunction::HeapSharedDestroy: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`heap_shared_destroy expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                release_shared_heap_allocation(value, diag);
+                return VoidVal();
+            }
         }
         fail(diag, "Unknown host function");
     }
@@ -1432,6 +1512,9 @@ private:
                 enforce_constraint(constraint, arg_values[i], param.name);
 
                 bool owns_arg = arg_ownership.empty() ? true : arg_ownership[i];
+                if (owns_arg) {
+                    retain_owned_value(arg_values[i], param.name);
+                }
                 auto binding = std::make_shared<Binding>(constraint, constraint, std::move(arg_values[i]), param.is_final, owns_arg);
                 define_binding(param.name.lexeme, std::move(binding), param.name);
             }
@@ -1683,6 +1766,7 @@ private:
     void bind_loop_iterator(const NamedBinding& binding, Value value, const token& diag) {
         Value constraint = binding.type_bound ? evaluate(*binding.type_bound) : VoidVal();
         enforce_constraint(constraint, value, diag);
+        retain_owned_value(value, diag);
 
         auto iterator_binding = std::make_shared<Binding>(constraint, constraint, std::move(value), binding.is_final);
         define_binding(binding.name.lexeme, std::move(iterator_binding), binding.name);
@@ -2088,6 +2172,7 @@ private:
         Value constraint = stmt.binding.type_bound ? evaluate(*stmt.binding.type_bound) : VoidVal();
         Value initializer = evaluate_with_expected_type(*stmt.binding.initializer, constraint, stmt.diagnostic_token);
         enforce_constraint(constraint, initializer, stmt.diagnostic_token);
+        retain_owned_value(initializer, stmt.diagnostic_token);
 
         auto binding = std::make_shared<Binding>(constraint, constraint, initializer, stmt.binding.is_final);
         define_binding(stmt.binding.name.lexeme, binding, stmt.binding.name);
@@ -2109,7 +2194,9 @@ private:
         if (stmt.value) {
             if (auto* identifier = dynamic_cast<const IdentifierExpr*>(stmt.value.get())) {
                 auto [binding, depth] = lookup_binding_with_depth(identifier->name, identifier->diagnostic_token);
-                if (depth == scopes_.size() - 1 && is_uncopyable(binding->getCV().getType())) {
+                if (depth == scopes_.size() - 1 &&
+                    (is_uncopyable(binding->getCV().getType()) ||
+                        is_shared_heap_allocation_type(binding->getCV().getType()))) {
                     handoff = TerminalHandoff{depth, binding};
                 }
             }
@@ -2129,6 +2216,7 @@ private:
         std::shared_ptr<Binding> handoff_binding;
         if (handoff.has_value()) {
             handoff_binding = handoff->binding;
+            disown_shared_heap_allocation_without_destroy(handoff_binding->getCV(), stmt.diagnostic_token);
             handoff_binding->setOwnsCV(false);
         }
         throw BreakSignal{std::move(value), std::move(handoff_binding)};
@@ -2176,6 +2264,7 @@ private:
         }
 
         enforce_constraint(binding->getFC(), value, stmt.diagnostic_token);
+        retain_owned_value(value, stmt.diagnostic_token);
         if (binding->ownsCV()) {
             Value old_value = binding->getCV();
             if (has_drop(old_value.getType())) {

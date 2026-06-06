@@ -100,6 +100,11 @@ std::shared_ptr<const Type> getHeapAllocationType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getHeapSharedAllocationType() {
+    static auto instance = std::make_shared<HeapSharedAllocationType>();
+    return instance;
+}
+
 
 // --- Core Value Accessors ---
 
@@ -239,6 +244,12 @@ Value Value::make_module(std::string identity, std::map<std::string, std::shared
 
 Value Value::make_heap_allocation(uint64_t id, Value stored) {
     return Value(getHeapAllocationType(), HeapAllocationTag{
+        std::make_shared<HeapAllocationState>(id, std::move(stored))
+    });
+}
+
+Value Value::make_heap_shared_allocation(uint64_t id, Value stored) {
+    return Value(getHeapSharedAllocationType(), HeapAllocationTag{
         std::make_shared<HeapAllocationState>(id, std::move(stored))
     });
 }
@@ -613,6 +624,9 @@ std::string Value::toString() const {
         const auto& state = asHeapAllocation().state;
         if (!state) {
             return "<heap allocation>";
+        }
+        if (type_ == getHeapSharedAllocationType()) {
+            return "<shared heap allocation " + std::to_string(state->id) + ">";
         }
         return "<heap allocation " + std::to_string(state->id) + ">";
     }

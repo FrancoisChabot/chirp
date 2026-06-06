@@ -1,0 +1,19 @@
+`expect_exit(0);
+`expect_stdout("inner done\ndrop\n");
+
+let heap = `import("std/heap");
+let Token = struct {};
+
+`implement(
+    trait=`drop,
+    on=Token,
+    impl=`Dropness(drop=(this) => `print("drop"))
+);
+
+do {
+    let p = heap.shared(Token());
+    do {
+        let q = p;
+        `print("inner done");
+    };
+};

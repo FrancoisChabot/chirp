@@ -1,0 +1,12 @@
+`expect_exit(0);
+`expect_stdout("7\n");
+
+let heap = `import("std/heap");
+
+let read(p: heap.Shared(int)) = *p;
+
+do {
+    let p = heap.shared(7);
+    `print(read(p));
+    `expect(*p == 7);
+};

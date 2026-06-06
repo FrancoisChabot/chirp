@@ -80,7 +80,9 @@ public:
         ExpectTestFailure,
         IsPure,
         HeapCreate,
-        HeapDestroy
+        HeapDestroy,
+        HeapSharedCreate,
+        HeapSharedDestroy
     };
     struct HostFunctionTag {
         HostFunction fn;
@@ -130,6 +132,7 @@ public:
     struct HeapAllocationState {
         uint64_t id;
         std::shared_ptr<Value> stored;
+        size_t strong_count = 0;
         bool destroyed = false;
 
         HeapAllocationState(uint64_t id, Value stored);
@@ -163,6 +166,7 @@ public:
     static Value make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields);
     static Value make_module(std::string identity, std::map<std::string, std::shared_ptr<Binding>> exports);
     static Value make_heap_allocation(uint64_t id, Value stored);
+    static Value make_heap_shared_allocation(uint64_t id, Value stored);
 
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
