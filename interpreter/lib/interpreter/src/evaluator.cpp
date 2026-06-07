@@ -440,6 +440,7 @@ private:
         void visit(const frontend::BoolExpr&) override {}
         void visit(const frontend::UndecidedExpr&) override {}
         void visit(const frontend::SymbolicConstantExpr&) override {}
+        void visit(const frontend::EnumExpr&) override {}
         void visit(const frontend::EnumeratedSetExpr& expr) override {
             for (const auto& e : expr.elements) e->accept(*this);
         }
@@ -625,6 +626,12 @@ private:
     }
 
     bool value_compare_less(const Value& left, const Value& right, const token& diag) {
+        if (left.isEnumVariant() && right.isEnumVariant()) {
+            if (left.asEnumVariant().enum_node_id != right.asEnumVariant().enum_node_id) {
+                fail(diag, "Cannot compare enum variants of different enum families");
+            }
+            return left.asEnumVariant().index < right.asEnumVariant().index;
+        }
         if (left.isInt() && right.isInt()) {
             return left.asInt() < right.asInt();
         }
@@ -656,6 +663,12 @@ private:
     }
 
     bool value_compare_less_equal(const Value& left, const Value& right, const token& diag) {
+        if (left.isEnumVariant() && right.isEnumVariant()) {
+            if (left.asEnumVariant().enum_node_id != right.asEnumVariant().enum_node_id) {
+                fail(diag, "Cannot compare enum variants of different enum families");
+            }
+            return left.asEnumVariant().index <= right.asEnumVariant().index;
+        }
         if (left.isInt() && right.isInt()) {
             return left.asInt() <= right.asInt();
         }
@@ -1898,8 +1911,19 @@ private:
                 result_ = it->second->getCV();
                 return;
             }
+            if (left.isEnumFamily()) {
+                std::string variant_name = std::string(right_ident->name);
+                const auto& variants = left.asEnumFamily().variants;
+                auto it = std::find(variants.begin(), variants.end(), variant_name);
+                if (it == variants.end()) {
+                    fail(expr.diagnostic_token, "Enum family has no variant '" + variant_name + "'");
+                }
+                size_t index = std::distance(variants.begin(), it);
+                result_ = Value::make_enum_variant(left.asEnumFamily().node_id, variant_name, index);
+                return;
+            }
             if (!left.isStructInstance()) {
-                fail(expr.diagnostic_token, "Left side of '.' must be a struct instance or module");
+                fail(expr.diagnostic_token, "Left side of '.' must be a struct instance, module, or enum family");
             }
             const auto& fields = *left.asStructInstance().fields;
             std::string field_name = std::string(right_ident->name);
@@ -2191,6 +2215,10 @@ private:
     void visit(const StructExpr& expr) override {
         auto type = std::make_shared<StructType>(&expr);
         result_ = Value::make_type(std::move(type));
+    }
+
+    void visit(const EnumExpr& expr) override {
+        result_ = Value::make_enum_family(expr.node_id, expr.variants);
     }
 
     void visit(const CallExpr& expr) override {

@@ -1,0 +1,49 @@
+`expect_exit(0);
+
+// 1. Basic definition and access
+let Color = enum { Red, Green, Blue };
+`expect(Color.Red != Color.Green);
+`expect(Color.Green != Color.Blue);
+
+// 2. Setness & Membership
+`expect(Color.Red ∈ Color);
+`expect(Color.Green ∈ Color);
+`expect(Color.Blue ∈ Color);
+
+// 3. Idempotency (AST node static identity)
+let get_family() = enum { X, Y };
+let f1 = get_family();
+let f2 = get_family();
+`expect(f1.X == f2.X); // True because it's the same AST node!
+
+// 4. Distinctness (different AST nodes, even if identical structure)
+let OtherColor = enum { Red, Green, Blue };
+`expect(Color.Red != OtherColor.Red);
+
+// 5. Automatic Ordering based on declaration order
+`expect(Color.Red < Color.Green);
+`expect(Color.Green < Color.Blue);
+`expect(Color.Red < Color.Blue);
+`expect(Color.Blue > Color.Red);
+`expect(Color.Green <= Color.Green);
+`expect(Color.Green >= Color.Green);
+
+// 6. Pattern Matching
+let get_name(c) = match c {
+    Color.Red => "red",
+    Color.Green => "green",
+    Color.Blue => "blue"
+};
+
+`expect(get_name(Color.Red) == "red");
+`expect(get_name(Color.Green) == "green");
+`expect(get_name(Color.Blue) == "blue");
+
+// Match on the Enum family itself as a set
+let is_color_variant(x) = match x {
+    Color => true,
+    `any => false
+};
+
+`expect(is_color_variant(Color.Red) == true);
+`expect(is_color_variant(OtherColor.Red) == false);

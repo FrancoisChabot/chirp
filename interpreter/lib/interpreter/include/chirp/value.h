@@ -148,6 +148,19 @@ public:
         std::shared_ptr<HeapAllocationState> state;
         bool operator==(const HeapAllocationTag& other) const { return state == other.state; }
     };
+    struct EnumFamilyTag {
+        uint64_t node_id;
+        std::vector<std::string> variants;
+        bool operator==(const EnumFamilyTag& other) const { return node_id == other.node_id; }
+    };
+    struct EnumVariantTag {
+        uint64_t enum_node_id;
+        std::string variant_name;
+        size_t index;
+        bool operator==(const EnumVariantTag& other) const {
+            return enum_node_id == other.enum_node_id && index == other.index;
+        }
+    };
 
 
     // Constructs a Chirp `void` value.
@@ -175,6 +188,8 @@ public:
     static Value make_module(std::string identity, std::map<std::string, std::shared_ptr<Binding>> exports);
     static Value make_heap_allocation(uint64_t id, Value stored);
     static Value make_heap_shared_allocation(uint64_t id, Value stored);
+    static Value make_enum_family(uint64_t node_id, std::vector<std::string> variants);
+    static Value make_enum_variant(uint64_t enum_node_id, std::string variant_name, size_t index);
 
 
     // In Chirp, every Value has exactly one intrinsic Type tag associated with it.
@@ -247,13 +262,18 @@ public:
     bool isHeapAllocation() const;
     const HeapAllocationTag& asHeapAllocation() const;
 
+    bool isEnumFamily() const;
+    const EnumFamilyTag& asEnumFamily() const;
+    bool isEnumVariant() const;
+    const EnumVariantTag& asEnumVariant() const;
+
     bool operator==(const Value& other) const;
     bool operator!=(const Value& other) const { return !(*this == other); }
 
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag, ModuleTag, HeapAllocationTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

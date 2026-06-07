@@ -110,6 +110,16 @@ std::shared_ptr<const Type> getHeapSharedAllocationType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getEnumFamilyType() {
+    static auto instance = std::make_shared<EnumFamilyType>();
+    return instance;
+}
+
+std::shared_ptr<const Type> getEnumVariantType() {
+    static auto instance = std::make_shared<EnumVariantType>();
+    return instance;
+}
+
 
 // --- Core Value Accessors ---
 
@@ -265,6 +275,14 @@ Value Value::make_heap_shared_allocation(uint64_t id, Value stored) {
     return Value(getHeapSharedAllocationType(), HeapAllocationTag{
         std::make_shared<HeapAllocationState>(id, std::move(stored))
     });
+}
+
+Value Value::make_enum_family(uint64_t node_id, std::vector<std::string> variants) {
+    return Value(getEnumFamilyType(), EnumFamilyTag{node_id, std::move(variants)});
+}
+
+Value Value::make_enum_variant(uint64_t enum_node_id, std::string variant_name, size_t index) {
+    return Value(getEnumVariantType(), EnumVariantTag{enum_node_id, std::move(variant_name), index});
 }
 
 
@@ -522,6 +540,28 @@ const Value::HeapAllocationTag& Value::asHeapAllocation() const {
     return std::get<HeapAllocationTag>(payload_);
 }
 
+bool Value::isEnumFamily() const {
+    return std::holds_alternative<EnumFamilyTag>(payload_);
+}
+
+const Value::EnumFamilyTag& Value::asEnumFamily() const {
+    if (!isEnumFamily()) {
+        throw std::runtime_error("Value is not an enum family");
+    }
+    return std::get<EnumFamilyTag>(payload_);
+}
+
+bool Value::isEnumVariant() const {
+    return std::holds_alternative<EnumVariantTag>(payload_);
+}
+
+const Value::EnumVariantTag& Value::asEnumVariant() const {
+    if (!isEnumVariant()) {
+        throw std::runtime_error("Value is not an enum variant");
+    }
+    return std::get<EnumVariantTag>(payload_);
+}
+
 bool Value::operator==(const Value& other) const {
     if (isVoid() && other.isVoid()) {
         return true;
@@ -573,6 +613,20 @@ bool Value::StructInstanceTag::operator==(const StructInstanceTag& other) const 
 std::string Value::toString() const {
     if (isVoid()) {
         return "`void";
+    }
+    if (isEnumFamily()) {
+        std::stringstream ss;
+        ss << "enum {";
+        const auto& vars = asEnumFamily().variants;
+        for (size_t i = 0; i < vars.size(); ++i) {
+            ss << vars[i];
+            if (i + 1 < vars.size()) ss << ", ";
+        }
+        ss << "}";
+        return ss.str();
+    }
+    if (isEnumVariant()) {
+        return asEnumVariant().variant_name;
     }
     if (isBool()) {
         return asBool() ? "true" : "false";
@@ -852,6 +906,20 @@ Value StructType::bp(const Value& S, const Value& v) const {
 
 Value StructType::br(const Value& S, const Value& lc) const {
     throw std::runtime_error("Range operations on struct types are not supported");
+}
+
+Value EnumFamilyType::bp(const Value& S, const Value& v) const {
+    if (!S.isEnumFamily()) {
+        throw std::runtime_error("EnumFamilyType::bp: S must be an EnumFamily value");
+    }
+    if (!v.isEnumVariant()) {
+        return Value::make_bool(false);
+    }
+    return Value::make_bool(S.asEnumFamily().node_id == v.asEnumVariant().enum_node_id);
+}
+
+Value EnumFamilyType::br(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
 } // namespace chirp::interpreter

@@ -62,6 +62,7 @@ enum class token_type {
     kw_match,
     kw_do,
     kw_debug,
+    kw_enum,
 
     eof,
     error
@@ -139,6 +140,7 @@ class CallExpr;
 class IndexExpr;
 class ListExpr;
 class MatchExpr;
+class EnumExpr;
 
 class ExprStmt;
 class LetStmt;
@@ -175,6 +177,7 @@ public:
     virtual void visit(const IndexExpr& expr) = 0;
     virtual void visit(const ListExpr& expr) = 0;
     virtual void visit(const MatchExpr& expr) = 0;
+    virtual void visit(const EnumExpr& expr) = 0;
 };
 
 class StmtVisitor {
@@ -437,6 +440,21 @@ public:
 
     StructExpr(std::vector<NamedBinding> fields, token diag)
         : fields(std::move(fields)), diagnostic_token(std::move(diag)) {}
+
+    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
+};
+
+class EnumExpr : public Expr {
+public:
+    std::vector<std::string> variants;
+    token diagnostic_token;
+    uint64_t node_id;
+
+    EnumExpr(std::vector<std::string> variants, token diag)
+        : variants(std::move(variants)), diagnostic_token(std::move(diag)) {
+        static uint64_t next_id = 1;
+        node_id = next_id++;
+    }
 
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };

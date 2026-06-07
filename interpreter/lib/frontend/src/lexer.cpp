@@ -258,6 +258,7 @@ class Lexer {
         else if (text == "match") type = token_type::kw_match;
         else if (text == "do") type = token_type::kw_do;
         else if (text == "debug") type = token_type::kw_debug;
+        else if (text == "enum") type = token_type::kw_enum;
 
         add_token(type);
     }

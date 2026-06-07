@@ -54,6 +54,8 @@ std::shared_ptr<const Type> getTraitType();
 std::shared_ptr<const Type> getModuleType();
 std::shared_ptr<const Type> getHeapAllocationType();
 std::shared_ptr<const Type> getHeapSharedAllocationType();
+std::shared_ptr<const Type> getEnumFamilyType();
+std::shared_ptr<const Type> getEnumVariantType();
 
 
 // Core Values (as Value objects)

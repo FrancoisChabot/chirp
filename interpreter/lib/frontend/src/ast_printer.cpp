@@ -184,6 +184,14 @@ public:
         result += ")";
     }
 
+    void visit(const EnumExpr& expr) override {
+        result += "(enum";
+        for (const auto& variant : expr.variants) {
+            result += " " + variant;
+        }
+        result += ")";
+    }
+
     void visit(const CallExpr& expr) override {
         result += "(call ";
         expr.callee->accept(*this);

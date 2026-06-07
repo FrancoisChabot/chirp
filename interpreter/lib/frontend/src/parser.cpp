@@ -516,6 +516,22 @@ private:
             return std::make_unique<StructExpr>(std::move(fields), struct_tok);
         }
 
+        if (match(token_type::kw_enum)) {
+            token enum_tok = previous();
+            consume(token_type::left_brace, "Expect '{' after 'enum'.");
+            std::vector<std::string> variants;
+            if (!check(token_type::right_brace)) {
+                while (true) {
+                    token variant_tok = consume(token_type::identifier, "Expect enum variant identifier.");
+                    variants.push_back(std::string(variant_tok.lexeme));
+                    if (!match(token_type::comma)) break;
+                    if (check(token_type::right_brace)) break;
+                }
+            }
+            consume(token_type::right_brace, "Expect '}' after enum variants.");
+            return std::make_unique<EnumExpr>(std::move(variants), enum_tok);
+        }
+
         if (match(token_type::kw_for)) {
             token for_tok = previous();
             consume(token_type::left_paren, "Expect '(' after 'for'.");
