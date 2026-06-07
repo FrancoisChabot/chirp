@@ -1,0 +1,40 @@
+`expect_exit(0);
+
+let Complex = struct { r: int, i: int };
+
+`implement(
+    trait=`arithmetic,
+    on=Complex,
+    impl={
+        add = (this, other) => Complex(this.r + other.r, this.i + other.i),
+        sub = (this, other) => Complex(this.r - other.r, this.i - other.i),
+        mul = (this, other) => Complex(this.r * other.r - this.i * other.i, this.r * other.i + this.i * other.r),
+        div = (this, other) => do {
+            let denom = other.r * other.r + other.i * other.i;
+            Complex(
+                (this.r * other.r + this.i * other.i) / denom,
+                (this.i * other.r - this.r * other.i) / denom
+            )
+        }
+    }
+);
+
+let c1 = Complex(r=1, i=2);
+let c2 = Complex(r=3, i=4);
+
+let c3 = c1 + c2;
+`expect(c3.r == 4);
+`expect(c3.i == 6);
+
+let c4 = c1 - c2;
+`expect(c4.r == -2);
+`expect(c4.i == -2);
+
+let c5 = c1 * c2;
+`expect(c5.r == -5);
+`expect(c5.i == 10);
+
+let c6 = Complex(r=6, i=8) / Complex(r=3, i=4);
+// (6+8i)/(3+4i) = ((6*3+8*4) + (8*3-6*4)i) / 25 = (50 + 0i) / 25 = 2 + 0i
+`expect(c6.r == 2);
+`expect(c6.i == 0);

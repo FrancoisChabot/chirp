@@ -625,6 +625,54 @@ private:
         return &binding->getCV();
     }
 
+    const Value* arithmetic_trait_value() const {
+        auto binding = lookup_binding_optional("`arithmetic");
+        if (binding == nullptr || !binding->getCV().isTrait()) {
+            return nullptr;
+        }
+        return &binding->getCV();
+    }
+
+    Value value_arithmetic(const Value& left, const Value& right, BinaryOp op, const token& diag) {
+        if (left.isInt() && right.isInt()) {
+            return Value::make_int(binary_int(left, right, op, diag));
+        }
+        if (left.getType() == right.getType()) {
+            const Value* trait = arithmetic_trait_value();
+            if (trait != nullptr) {
+                const Value* impl = registered_impl_for(*trait, left.getType());
+                if (impl != nullptr && impl->isStructInstance()) {
+                    const auto& fields = *impl->asStructInstance().fields;
+                    std::string method_name;
+                    switch (op) {
+                        case BinaryOp::Add: method_name = "add"; break;
+                        case BinaryOp::Sub: method_name = "sub"; break;
+                        case BinaryOp::Mul: method_name = "mul"; break;
+                        case BinaryOp::Div: method_name = "div"; break;
+                        default: break;
+                    }
+                    if (!method_name.empty()) {
+                        auto it = fields.find(method_name);
+                        if (it != fields.end()) {
+                            return call_callable_with_values(it->second, {left, right}, diag);
+                        }
+                    }
+                }
+            }
+        }
+        std::string op_str;
+        switch (op) {
+            case BinaryOp::Add: op_str = "+"; break;
+            case BinaryOp::Sub: op_str = "-"; break;
+            case BinaryOp::Mul: op_str = "*"; break;
+            case BinaryOp::Div: op_str = "/"; break;
+            case BinaryOp::Mod: op_str = "%"; break;
+            default: op_str = "?"; break;
+        }
+        fail(diag, "Cannot perform arithmetic operation '" + op_str + "' on types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
+        return Value();
+    }
+
     bool value_compare_less(const Value& left, const Value& right, const token& diag) {
         if (left.isEnumVariant() && right.isEnumVariant()) {
             if (left.asEnumVariant().enum_node_id != right.asEnumVariant().enum_node_id) {
@@ -1956,7 +2004,7 @@ private:
             case BinaryOp::Mul:
             case BinaryOp::Div:
             case BinaryOp::Mod:
-                result_ = Value::make_int(binary_int(left, right, expr.op, expr.diagnostic_token));
+                result_ = value_arithmetic(left, right, expr.op, expr.diagnostic_token);
                 return;
             case BinaryOp::Eq:
                 result_ = Value::make_bool(left == right);

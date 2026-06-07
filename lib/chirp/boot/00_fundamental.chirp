@@ -88,6 +88,15 @@ let pub final `drop = `trait(`Dropness);
 let pub final `Orderness = struct { less: Fn };
 let pub final `orderable = `trait(`Orderness);
 
+// ---------- Arithmetic ----------
+let pub final `Arithmeticness = struct {
+    add: Fn,
+    sub: Fn,
+    mul: Fn,
+    div: Fn
+};
+let pub final `arithmetic = `trait(`Arithmeticness);
+
 // A marker trait indicating that a type opts out of default copyability.
 // Assignments of unique types are restricted to Terminal Move Semantics.
 let pub final `unique = `trait(do {});
