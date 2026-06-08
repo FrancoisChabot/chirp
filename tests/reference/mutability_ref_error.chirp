@@ -1,0 +1,7 @@
+`expect_exit(1);
+
+let mut x : int = 10;
+let p = &x; // immutable reference to x
+
+// Cannot take mutable reference through immutable reference p
+let q = &mut *p;

@@ -17,6 +17,7 @@ public:
     virtual ~Type() = default;
 
     virtual std::string_view name() const = 0;
+    virtual bool equals(const Type& other) const { return this == &other; }
 
     // Checks if instances of this type can act as sets.
     virtual bool hasSetness() const { return false; }
@@ -195,7 +196,27 @@ public:
 
 class EnumVariantType : public Type {
 public:
-    std::string_view name() const override { return "EnumVariant"; }
+    virtual std::string_view name() const override { return "EnumVariant"; }
+};
+
+class ReferenceType : public Type {
+public:
+    ReferenceType(Value target_type, bool is_mut)
+        : target_type_(std::move(target_type)), is_mut_(is_mut) {}
+
+    std::string_view name() const override;
+    bool equals(const Type& other) const override;
+    bool hasSetness() const override { return true; }
+    Value bp(const Value& S, const Value& v) const override;
+    Value br(const Value& S, const Value& lc) const override;
+
+    const Value& target_type() const { return target_type_; }
+    bool is_mut() const { return is_mut_; }
+
+private:
+    Value target_type_;
+    bool is_mut_;
+    mutable std::string name_;
 };
 
 } // namespace chirp::interpreter

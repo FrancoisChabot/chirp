@@ -1,0 +1,7 @@
+`expect_exit(1);
+
+let mut x : int = 10;
+let p = &x;
+
+// Cannot assign to an immutable reference
+*p = 20;

@@ -30,7 +30,7 @@ class Value {
 public:
     struct TypeTag {
         std::shared_ptr<const Type> t;
-        bool operator==(const TypeTag& other) const { return t == other.t; }
+        bool operator==(const TypeTag& other) const;
     };
     struct BindingTag {
         std::shared_ptr<Binding> b;

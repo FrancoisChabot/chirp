@@ -1,0 +1,13 @@
+`expect_exit(0);
+
+let mut x : int = 42;
+let p = &x;
+`expect(*p == 42);
+
+let p_mut = &mut x;
+`expect(*p_mut == 42);
+
+*p_mut = 100;
+`expect(x == 100);
+`expect(*p == 100);
+`expect(*p_mut == 100);

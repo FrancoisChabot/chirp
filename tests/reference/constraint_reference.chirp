@@ -1,0 +1,15 @@
+`expect_exit(0);
+
+let mut x : int = 10;
+let mut y : bool = true;
+
+// Correct type bindings
+let p : -> int = &x;
+let p_mut : ->mut int = &mut x;
+
+`expect(*p == 10);
+`expect(*p_mut == 10);
+
+// We can assign a mutable reference to an immutable reference variable
+let p_from_mut : -> int = &mut x;
+`expect(*p_from_mut == 10);

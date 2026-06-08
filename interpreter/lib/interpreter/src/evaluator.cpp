@@ -2097,9 +2097,58 @@ private:
                 }
                 return;
             }
+            case UnaryOp::AddressOf:
+            case UnaryOp::MutableAddressOf: {
+                bool is_mut = (expr.op == UnaryOp::MutableAddressOf);
+                std::shared_ptr<Binding> binding;
+                if (const auto* ident = dynamic_cast<const IdentifierExpr*>(expr.right.get())) {
+                    binding = lookup_binding(ident->name, ident->diagnostic_token);
+                } else if (const auto* deref = dynamic_cast<const UnaryExpr*>(expr.right.get())) {
+                    if (deref->op == UnaryOp::Deref) {
+                        Value ref_val = evaluate_deref_target(*deref->right);
+                        if (!ref_val.isBinding()) {
+                            fail(expr.diagnostic_token, "Cannot take address of non-lvalue dereference");
+                        }
+                        binding = ref_val.asBinding();
+                        if (is_mut) {
+                            const auto* ref_type = dynamic_cast<const ReferenceType*>(ref_val.getType().get());
+                            if (!ref_type || !ref_type->is_mut()) {
+                                fail(expr.diagnostic_token, "Cannot take mutable address through immutable reference");
+                            }
+                        }
+                    } else {
+                        fail(expr.diagnostic_token, "Cannot take address of non-lvalue expression");
+                    }
+                } else {
+                    fail(expr.diagnostic_token, "Cannot take address of non-lvalue expression");
+                }
+
+                auto ref_type = std::make_shared<ReferenceType>(binding->getFC(), is_mut);
+                result_ = Value(std::move(ref_type), Value::BindingTag{std::move(binding)});
+                return;
+            }
+            case UnaryOp::PointerType:
+            case UnaryOp::MutablePointerType: {
+                bool is_mut = (expr.op == UnaryOp::MutablePointerType);
+                Value target_type = evaluate(*expr.right);
+                auto ref_type = std::make_shared<ReferenceType>(std::move(target_type), is_mut);
+                result_ = Value::make_type(std::move(ref_type));
+                return;
+            }
             case UnaryOp::Deref: {
                 Value right = evaluate_deref_target(*expr.right);
-                result_ = dereference_heap_allocation(right, expr.diagnostic_token);
+                if (right.isHeapAllocation()) {
+                    result_ = dereference_heap_allocation(right, expr.diagnostic_token);
+                } else if (right.isBinding()) {
+                    auto binding = right.asBinding();
+                    Value cv = binding->getCV();
+                    if (binding->ownsCV() && is_uncopyable(cv.getType())) {
+                        fail(expr.diagnostic_token, "Cannot copy unique or droppable value through reference");
+                    }
+                    result_ = cv;
+                } else {
+                    fail(expr.diagnostic_token, "Cannot dereference non-pointer value");
+                }
                 return;
             }
             default:
@@ -2418,37 +2467,67 @@ private:
     }
 
     void visit(const AssignStmt& stmt) override {
-        const auto* target = dynamic_cast<const IdentifierExpr*>(stmt.target.get());
-        if (target == nullptr) {
-            fail(stmt.diagnostic_token, "Only identifier assignment is supported yet");
+        std::shared_ptr<Binding> binding;
+        bool is_heap_assignment = false;
+        std::shared_ptr<Value::HeapAllocationState> heap_state;
+
+        if (const auto* target = dynamic_cast<const IdentifierExpr*>(stmt.target.get())) {
+            binding = lookup_binding(target->name, target->diagnostic_token);
+        } else if (const auto* deref = dynamic_cast<const UnaryExpr*>(stmt.target.get())) {
+            if (deref->op == UnaryOp::Deref) {
+                Value ref_val = evaluate_deref_target(*deref->right);
+                if (ref_val.isHeapAllocation()) {
+                    heap_state = ref_val.asHeapAllocation().state;
+                    if (!heap_state || heap_state->destroyed) {
+                        fail(stmt.diagnostic_token, "Cannot assign to dereference of destroyed heap allocation");
+                    }
+                    is_heap_assignment = true;
+                } else if (ref_val.isBinding()) {
+                    const auto* ref_type = dynamic_cast<const ReferenceType*>(ref_val.getType().get());
+                    if (!ref_type) {
+                        fail(stmt.diagnostic_token, "Invalid reference type");
+                    }
+                    if (!ref_type->is_mut()) {
+                        fail(stmt.diagnostic_token, "Cannot assign to immutable reference");
+                    }
+                    binding = ref_val.asBinding();
+                } else {
+                    fail(stmt.diagnostic_token, "Cannot assign to dereference of non-pointer value");
+                }
+            } else {
+                fail(stmt.diagnostic_token, "Unsupported assignment target");
+            }
+        } else {
+            fail(stmt.diagnostic_token, "Only identifier and dereference assignment are supported");
         }
 
-        auto binding = lookup_binding(target->name, target->diagnostic_token);
-        Value value = evaluate_with_expected_type(*stmt.value, binding->getFC(), stmt.diagnostic_token);
+        Value constraint = is_heap_assignment ? VoidVal() : binding->getFC();
+        Value value = evaluate_with_expected_type(*stmt.value, constraint, stmt.diagnostic_token);
 
         try {
+            Value current_val = is_heap_assignment ? *heap_state->stored : binding->getCV();
             switch (stmt.op.type) {
                 case token_type::equal:
                     break;
                 case token_type::plus_equal:
-                    value = Value::make_int(as_int(binding->getCV(), stmt.op) + as_int(value, stmt.op));
+                    value = Value::make_int(as_int(current_val, stmt.op) + as_int(value, stmt.op));
                     break;
                 case token_type::minus_equal:
-                    value = Value::make_int(as_int(binding->getCV(), stmt.op) - as_int(value, stmt.op));
+                    value = Value::make_int(as_int(current_val, stmt.op) - as_int(value, stmt.op));
                     break;
                 case token_type::star_equal:
-                    value = Value::make_int(as_int(binding->getCV(), stmt.op) * as_int(value, stmt.op));
+                    value = Value::make_int(as_int(current_val, stmt.op) * as_int(value, stmt.op));
                     break;
                 case token_type::slash_equal: {
                     BigInt rhs = as_int(value, stmt.op);
                     if (rhs == BigInt(0)) fail(stmt.op, "Division by zero");
-                    value = Value::make_int(as_int(binding->getCV(), stmt.op) / rhs);
+                    value = Value::make_int(as_int(current_val, stmt.op) / rhs);
                     break;
                 }
                 case token_type::percent_equal: {
                     BigInt rhs = as_int(value, stmt.op);
                     if (rhs == BigInt(0)) fail(stmt.op, "Modulo by zero");
-                    value = Value::make_int(as_int(binding->getCV(), stmt.op) % rhs);
+                    value = Value::make_int(as_int(current_val, stmt.op) % rhs);
                     break;
                 }
                 default:
@@ -2458,17 +2537,24 @@ private:
             fail(stmt.op, e.what());
         }
 
-        enforce_constraint(binding->getFC(), value, stmt.diagnostic_token);
-        retain_owned_value(value, stmt.diagnostic_token);
-        if (binding->ownsCV()) {
-            Value old_value = binding->getCV();
-            if (has_drop(old_value.getType())) {
-                binding->setOwnsCV(false);
-                drop_value(old_value, stmt.diagnostic_token);
+        if (is_heap_assignment) {
+            Value old_value = heap_state->stored ? *heap_state->stored : VoidVal();
+            retain_owned_value(value, stmt.diagnostic_token);
+            drop_value(old_value, stmt.diagnostic_token);
+            heap_state->stored = std::make_shared<Value>(std::move(value));
+        } else {
+            enforce_constraint(binding->getFC(), value, stmt.diagnostic_token);
+            retain_owned_value(value, stmt.diagnostic_token);
+            if (binding->ownsCV()) {
+                Value old_value = binding->getCV();
+                if (has_drop(old_value.getType())) {
+                    binding->setOwnsCV(false);
+                    drop_value(old_value, stmt.diagnostic_token);
+                }
             }
+            binding->setCV(std::move(value));
+            binding->setOwnsCV(true);
         }
-        binding->setCV(std::move(value));
-        binding->setOwnsCV(true);
     }
 
     void visit(const IfStmt& stmt) override {

@@ -1,0 +1,22 @@
+`expect_exit(0);
+
+let heap = `import("std/heap");
+
+// Struct containing a mutable reference to an int
+let RefStruct = struct { ptr: ->mut int };
+
+let mut val : int = 42;
+
+// Instantiate the struct and allocate it on the heap
+let s = RefStruct(ptr = &mut val);
+let hs = heap.create(s);
+
+// Verify initial value
+`expect(*(*hs).ptr == 42);
+
+// Mutate target through the heap-allocated struct's reference
+*(*hs).ptr = 100;
+
+// Verify target was mutated
+`expect(val == 100);
+`expect(*(*hs).ptr == 100);

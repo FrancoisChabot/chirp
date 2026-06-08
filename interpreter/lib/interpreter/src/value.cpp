@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <sstream>
 #include <utility>
+#include <iostream>
 
 namespace chirp::interpreter {
 
@@ -562,6 +563,13 @@ const Value::EnumVariantTag& Value::asEnumVariant() const {
     return std::get<EnumVariantTag>(payload_);
 }
 
+bool Value::TypeTag::operator==(const TypeTag& other) const {
+    if (!t || !other.t) {
+        return t == other.t;
+    }
+    return t->equals(*other.t) || other.t->equals(*t);
+}
+
 bool Value::operator==(const Value& other) const {
     if (isVoid() && other.isVoid()) {
         return true;
@@ -569,7 +577,7 @@ bool Value::operator==(const Value& other) const {
     if (isVoid() || other.isVoid()) {
         return false;
     }
-    if (type_ != other.type_) {
+    if (type_ != other.type_ && (!type_ || !other.type_ || !type_->equals(*other.type_))) {
         return false;
     }
     return payload_ == other.payload_;
@@ -678,6 +686,9 @@ std::string Value::toString() const {
         return std::string(asType()->name());
     }
     if (isBinding()) {
+        if (const auto* ref_type = dynamic_cast<const ReferenceType*>(type_.get())) {
+            return (ref_type->is_mut() ? "&mut " : "&") + asBinding()->getCV().toString();
+        }
         return "Binding(" + asBinding()->getCV().toString() + ")";
     }
     if (isEnumeratedSet()) {
@@ -790,7 +801,12 @@ Value MetaType::bp(const Value& S, const Value& v) const {
     if (!S.isType()) {
         throw std::runtime_error("MetaType::bp: first argument S must be a type tag value");
     }
-    return Value::make_bool(v.getType() == S.asType());
+    auto t1 = v.getType();
+    auto t2 = S.asType();
+    if (dynamic_cast<const ReferenceType*>(t2.get())) {
+        return t2->bp(S, v);
+    }
+    return Value::make_bool(t1 == t2 || (t1 && t2 && t1->equals(*t2)));
 }
 
 Value MetaType::br(const Value& S, const Value& lc) const {
@@ -919,6 +935,48 @@ Value EnumFamilyType::bp(const Value& S, const Value& v) const {
 }
 
 Value EnumFamilyType::br(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+std::string_view ReferenceType::name() const {
+    if (name_.empty()) {
+        name_ = (is_mut_ ? "->mut " : "-> ") + target_type_.toString();
+    }
+    return name_;
+}
+
+bool ReferenceType::equals(const Type& other) const {
+    if (const auto* o = dynamic_cast<const ReferenceType*>(&other)) {
+        return is_mut_ == o->is_mut_ && target_type_ == o->target_type_;
+    }
+    return false;
+}
+
+Value ReferenceType::bp(const Value& S, const Value& v) const {
+    if (!S.isType() || dynamic_cast<const ReferenceType*>(S.asType().get()) == nullptr) {
+        throw std::runtime_error("ReferenceType::bp: S must be a ReferenceType value");
+    }
+    const auto* S_ref_t = dynamic_cast<const ReferenceType*>(S.asType().get());
+
+    if (!v.isBinding()) {
+        return Value::make_bool(false);
+    }
+
+    const auto* v_ref_t = dynamic_cast<const ReferenceType*>(v.getType().get());
+    if (!v_ref_t) {
+        return Value::make_bool(false);
+    }
+
+    // Mutability check: S_ref_t->is_mut() implies v_ref_t->is_mut()
+    if (S_ref_t->is_mut() && !v_ref_t->is_mut()) {
+        return Value::make_bool(false);
+    }
+
+    // Target constraint check
+    return Value::make_bool(S_ref_t->target_type() == v_ref_t->target_type());
+}
+
+Value ReferenceType::br(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 

@@ -1,0 +1,13 @@
+`expect_exit(0);
+
+let heap = `import("std/heap");
+
+let p: heap.Unique(int) = heap.create(42);
+`expect(*p == 42);
+
+// Modify the heap allocation via dereference assignment
+*p = 100;
+`expect(*p == 100);
+
+*p += 5;
+`expect(*p == 105);
