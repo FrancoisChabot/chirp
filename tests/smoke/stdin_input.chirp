@@ -1,0 +1,16 @@
+`expect_exit(0);
+
+// Inject some lines to stdin buffer
+`inject_stdin("hello\n");
+`inject_stdin("world\n");
+
+// Read and verify lines using input()
+let line1 = `input();
+`expect(line1 == "hello");
+
+let line2 = `input();
+`expect(line2 == "world");
+
+// After consuming all injected input, it should return an empty string
+let line3 = `input();
+`expect(line3 == "");

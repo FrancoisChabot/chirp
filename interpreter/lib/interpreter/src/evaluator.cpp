@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <iostream>
 #include <limits>
 #include <map>
 #include <memory>
@@ -245,6 +246,9 @@ private:
     uint64_t next_trait_id_ = 1;
     uint64_t next_heap_allocation_id_ = 1;
     bool testing_enabled_ = false;
+    bool stdin_injected_ = false;
+    std::string injected_stdin_;
+    size_t stdin_cursor_ = 0;
     struct TerminalHandoff {
         size_t depth;
         std::shared_ptr<Binding> binding;
@@ -1211,6 +1215,8 @@ private:
 
     Value boot_bind(std::string_view name, const token& diag) const {
         if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
+        if (is_name(name, "input_func")) return Value::make_host_function(Value::HostFunction::Input);
+        if (is_name(name, "inject_stdin_func")) return Value::make_host_function(Value::HostFunction::InjectStdin);
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
         if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
@@ -1400,6 +1406,45 @@ private:
                 }
                 Value value = evaluate(*args.front().value);
                 out_ << display_string(value) << '\n';
+                return VoidVal();
+            }
+            case Value::HostFunction::Input: {
+                if (!args.empty()) {
+                    fail(diag, "`input expects zero arguments");
+                }
+                if (stdin_injected_) {
+                    if (stdin_cursor_ < injected_stdin_.size()) {
+                        size_t found = injected_stdin_.find('\n', stdin_cursor_);
+                        if (found != std::string::npos) {
+                            std::string line = injected_stdin_.substr(stdin_cursor_, found - stdin_cursor_);
+                            stdin_cursor_ = found + 1;
+                            return Value::make_string(line);
+                        } else {
+                            std::string line = injected_stdin_.substr(stdin_cursor_);
+                            stdin_cursor_ = injected_stdin_.size();
+                            return Value::make_string(line);
+                        }
+                    } else {
+                        return Value::make_string("");
+                    }
+                } else {
+                    std::string line;
+                    if (!std::getline(std::cin, line)) {
+                        return Value::make_string("");
+                    }
+                    return Value::make_string(line);
+                }
+            }
+            case Value::HostFunction::InjectStdin: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`inject_stdin expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                if (!value.isString()) {
+                    fail(diag, "`inject_stdin expects a string");
+                }
+                stdin_injected_ = true;
+                injected_stdin_ += value.asString();
                 return VoidVal();
             }
             case Value::HostFunction::TypeOf: {
