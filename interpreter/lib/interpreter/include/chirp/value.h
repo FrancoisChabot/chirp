@@ -70,6 +70,7 @@ public:
 
     enum class HostFunction {
         Print,
+        Write,
         TypeOf,
         Exit,
         Mint,
@@ -79,6 +80,7 @@ public:
         SetnessConstructor,
         Expect,
         ExpectStdout,
+        ExpectStderr,
         ExpectExit,
         ExpectTestFailure,
         IsPure,

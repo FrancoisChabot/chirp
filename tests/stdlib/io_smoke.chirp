@@ -1,0 +1,15 @@
+`expect_stdout("Hello World!\n");
+`expect_stderr("Error: Something went wrong\n");
+
+let io = `import("std/io");
+let message = "Hello World!\n";
+
+io.write(
+    what=message,
+    to=io.stdout
+);
+
+io.write(
+    what="Error: Something went wrong\n",
+    to=io.stderr
+);

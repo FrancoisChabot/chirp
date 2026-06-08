@@ -7,5 +7,6 @@
 // Once we get to implementing the standard library, these will likely be deprecated and replaced with lower-level primitives, or FFI-driven lookups.
 
 let pub final `print = `import("print_func", "__chirp_boot");
+let pub final `write = `import("write_func", "__chirp_boot");
 let pub final `input = `import("input_func", "__chirp_boot");
 let pub final `inject_stdin = `import("inject_stdin_func", "__chirp_boot");

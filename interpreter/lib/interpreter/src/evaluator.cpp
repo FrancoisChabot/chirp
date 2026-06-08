@@ -1265,6 +1265,7 @@ private:
 
     Value boot_bind(std::string_view name, const token& diag) const {
         if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
+        if (is_name(name, "write_func")) return Value::make_host_function(Value::HostFunction::Write);
         if (is_name(name, "input_func")) return Value::make_host_function(Value::HostFunction::Input);
         if (is_name(name, "inject_stdin_func")) return Value::make_host_function(Value::HostFunction::InjectStdin);
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
@@ -1275,6 +1276,7 @@ private:
         if (is_name(name, "implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
         if (is_name(name, "expect_func")) return Value::make_host_function(Value::HostFunction::Expect);
         if (is_name(name, "expect_stdout_func")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
+        if (is_name(name, "expect_stderr_func")) return Value::make_host_function(Value::HostFunction::ExpectStderr);
         if (is_name(name, "expect_exit_func")) return Value::make_host_function(Value::HostFunction::ExpectExit);
         if (is_name(name, "expect_test_failure_func")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
         if (is_name(name, "true_val")) return True();
@@ -1456,6 +1458,27 @@ private:
                 }
                 Value value = evaluate(*args.front().value);
                 out_ << display_string(value) << '\n';
+                return VoidVal();
+            }
+            case Value::HostFunction::Write: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`write expects two positional arguments");
+                }
+                Value what_val = evaluate(*args[0].value);
+                Value to_val = evaluate(*args[1].value);
+
+                if (!to_val.isInt()) {
+                    fail(diag, "`write expects 'to' to be an integer file descriptor");
+                }
+
+                BigInt fd = to_val.asInt();
+                if (fd == BigInt(1)) {
+                    out_ << display_string(what_val);
+                } else if (fd == BigInt(2)) {
+                    std::cerr << display_string(what_val);
+                } else {
+                    fail(diag, "Unsupported file descriptor for `write");
+                }
                 return VoidVal();
             }
             case Value::HostFunction::Input: {
@@ -1649,6 +1672,22 @@ private:
                     expectations.expected_stdout = value.asString();
                 } else {
                     *expectations.expected_stdout += value.asString();
+                }
+                return VoidVal();
+            }
+            case Value::HostFunction::ExpectStderr: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`expect_stderr expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                if (!value.isString()) {
+                    fail(diag, "`expect_stderr expects a string");
+                }
+                expectations.has_expectations = true;
+                if (!expectations.expected_stderr.has_value()) {
+                    expectations.expected_stderr = value.asString();
+                } else {
+                    *expectations.expected_stderr += value.asString();
                 }
                 return VoidVal();
             }

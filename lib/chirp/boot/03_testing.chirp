@@ -11,5 +11,6 @@ let testing_enabled = `import("testing_enabled", "__chirp_boot");
 // We need to formalize "expressions are yielders" properly before we can achieve that.
 let pub final `expect : `pure_fn = if (testing_enabled) `import("expect_func", "__chirp_boot") else (_:`any) => void;
 let pub final `expect_stdout : `pure_fn = if (testing_enabled) `import("expect_stdout_func", "__chirp_boot") else (_:`any) => void;
+let pub final `expect_stderr : `pure_fn = if (testing_enabled) `import("expect_stderr_func", "__chirp_boot") else (_:`any) => void;
 let pub final `expect_exit : `pure_fn = if (testing_enabled) `import("expect_exit_func", "__chirp_boot") else (_:`any) => void;
 let pub final `expect_test_failure : `pure_fn = if (testing_enabled) `import("expect_test_failure_func", "__chirp_boot") else () => void;

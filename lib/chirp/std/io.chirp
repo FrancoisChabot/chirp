@@ -1,0 +1,4 @@
+let pub stdout = 1;
+let pub stderr = 2;
+
+let pub write = (what, to) => `write(what, to);

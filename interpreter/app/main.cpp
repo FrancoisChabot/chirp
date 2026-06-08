@@ -216,6 +216,7 @@ struct RunReport {
     std::optional<int> script_exit;
     std::vector<Diagnostic> diagnostics;
     std::optional<std::string> expected_stdout;
+    std::optional<std::string> expected_stderr;
     std::optional<int> expected_exit;
     bool expect_test_failure = false;
     int expectation_checks = 0;
@@ -262,6 +263,12 @@ bool writeRunReport(std::ostream& out, const RunReport& report) {
     out << ", \"expected_stdout\": ";
     if (report.expected_stdout.has_value()) {
         writeJsonString(out, *report.expected_stdout);
+    } else {
+        out << "null";
+    }
+    out << ", \"expected_stderr\": ";
+    if (report.expected_stderr.has_value()) {
+        writeJsonString(out, *report.expected_stderr);
     } else {
         out << "null";
     }
@@ -364,6 +371,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
             auto dynamic_expectations = session.getExpectations();
             if (dynamic_expectations.has_expectations) {
                 report.expected_stdout = dynamic_expectations.expected_stdout;
+                report.expected_stderr = dynamic_expectations.expected_stderr;
                 report.expected_exit = dynamic_expectations.expected_exit;
                 report.expect_test_failure = dynamic_expectations.expect_test_failure;
                 report.expectation_checks = dynamic_expectations.expectation_checks;

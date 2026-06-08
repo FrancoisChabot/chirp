@@ -54,6 +54,7 @@ def run_test(chirp_bin, file_path):
         return False, f"Could not truncate report file {report_path}: {e}", False, runner_id
     
     expected_stdout = None
+    expected_stderr = None
     expected_exit = None
     expect_test_failure = False
 
@@ -79,6 +80,7 @@ def run_test(chirp_bin, file_path):
                         report["script_exit"] = event.get("script_exit")
                     elif event.get("event") == "expectations":
                         expected_stdout = event.get("expected_stdout")
+                        expected_stderr = event.get("expected_stderr")
                         expected_exit = event.get("expected_exit")
                         expect_test_failure = event.get("expect_test_failure", False)
                     elif event.get("event") == "expectation_checks":
@@ -112,6 +114,9 @@ def run_test(chirp_bin, file_path):
             
     if expected_stdout is not None and actual_stdout != expected_stdout:
         failures.append(f"Stdout mismatch:\n  Expected: {repr(expected_stdout)}\n  Actual:   {repr(actual_stdout)}")
+        
+    if expected_stderr is not None and actual_stderr != expected_stderr:
+        failures.append(f"Stderr mismatch:\n  Expected: {repr(expected_stderr)}\n  Actual:   {repr(actual_stderr)}")
         
     if failures:
         return False, "\n".join(failures), expect_test_failure, runner_id
