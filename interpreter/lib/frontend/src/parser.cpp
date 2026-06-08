@@ -594,6 +594,31 @@ private:
 
         if (match(token_type::number)) return std::make_unique<NumberExpr>(previous().lexeme, previous());
         if (match(token_type::string)) return std::make_unique<StringExpr>(previous().lexeme, previous());
+        if (match(token_type::fstring_literal)) {
+            std::vector<std::unique_ptr<Expr>> parts;
+            parts.push_back(std::make_unique<StringExpr>(previous().lexeme, previous()));
+            return std::make_unique<FStringExpr>(std::move(parts), previous());
+        }
+        if (match(token_type::fstring_head)) {
+            token head_tok = previous();
+            std::vector<std::unique_ptr<Expr>> parts;
+            parts.push_back(std::make_unique<StringExpr>(head_tok.lexeme, head_tok));
+            
+            while (true) {
+                parts.push_back(expression());
+                if (match(token_type::fstring_middle)) {
+                    token mid_tok = previous();
+                    parts.push_back(std::make_unique<StringExpr>(mid_tok.lexeme, mid_tok));
+                } else if (match(token_type::fstring_tail)) {
+                    token tail_tok = previous();
+                    parts.push_back(std::make_unique<StringExpr>(tail_tok.lexeme, tail_tok));
+                    break;
+                } else {
+                    throw std::runtime_error("Expect fstring middle or tail.");
+                }
+            }
+            return std::make_unique<FStringExpr>(std::move(parts), head_tok);
+        }
         if (match(token_type::character)) return std::make_unique<CharExpr>(previous().lexeme, previous());
         if (match(token_type::symbolic_constant)) return std::make_unique<SymbolicConstantExpr>(previous().lexeme, previous());
         

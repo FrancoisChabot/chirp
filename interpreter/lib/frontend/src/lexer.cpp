@@ -15,6 +15,7 @@ class Lexer {
     int start_column = 1;
     std::string_view pending_trivia;
     std::vector<token> tokens;
+    std::vector<int> template_brace_counts;
 
     bool is_at_end() const { 
         return current >= source.length(); 
@@ -303,6 +304,29 @@ class Lexer {
         add_token(token_type::string);
     }
 
+    void scan_template_string_part(bool is_head) {
+        while (peek() != '"' && peek() != '{' && !is_at_end()) {
+            if (peek() == '\\') {
+                advance();
+                if (!is_at_end()) advance();
+                continue;
+            }
+            advance();
+        }
+        if (is_at_end()) {
+            add_token(token_type::error);
+            return;
+        }
+        if (peek() == '"') {
+            advance(); // consume '"'
+            add_token(is_head ? token_type::fstring_literal : token_type::fstring_tail);
+        } else if (peek() == '{') {
+            advance(); // consume '{'
+            add_token(is_head ? token_type::fstring_head : token_type::fstring_middle);
+            template_brace_counts.push_back(0);
+        }
+    }
+
     void character() {
         if (is_at_end() || peek() == '\'' || peek() == '\n' || peek() == '\r') {
             consume_invalid_character_literal();
@@ -358,6 +382,12 @@ class Lexer {
 
         char c = advance();
 
+        if (c == 'f' && peek() == '"') {
+            advance(); // consume '"'
+            scan_template_string_part(true);
+            return;
+        }
+
         if (std::isalpha(c) || c == '_') { identifier(); return; }
         if (c == '`') { intrinsic(); return; }
         if (c == '~') { add_token(token_type::tilde); return; }
@@ -366,8 +396,25 @@ class Lexer {
         switch (c) {
             case '(': add_token(token_type::left_paren); break;
             case ')': add_token(token_type::right_paren); break;
-            case '{': add_token(token_type::left_brace); break;
-            case '}': add_token(token_type::right_brace); break;
+            case '{': 
+                if (!template_brace_counts.empty()) {
+                    template_brace_counts.back()++;
+                }
+                add_token(token_type::left_brace); 
+                break;
+            case '}': 
+                if (!template_brace_counts.empty()) {
+                    if (template_brace_counts.back() > 0) {
+                        template_brace_counts.back()--;
+                        add_token(token_type::right_brace);
+                    } else {
+                        template_brace_counts.pop_back();
+                        scan_template_string_part(false);
+                    }
+                } else {
+                    add_token(token_type::right_brace);
+                }
+                break;
             case '[': add_token(token_type::left_bracket); break;
             case ']': add_token(token_type::right_bracket); break;
             case ',': add_token(token_type::comma); break;

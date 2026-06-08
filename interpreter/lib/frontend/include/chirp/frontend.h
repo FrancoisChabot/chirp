@@ -47,6 +47,10 @@ enum class token_type {
     identifier,
     intrinsic,  // e.g., `any
     string,
+    fstring_head,
+    fstring_middle,
+    fstring_tail,
+    fstring_literal,
     character,
     number,
     symbolic_constant,
@@ -141,6 +145,7 @@ class IndexExpr;
 class ListExpr;
 class MatchExpr;
 class EnumExpr;
+class FStringExpr;
 
 class ExprStmt;
 class LetStmt;
@@ -178,6 +183,7 @@ public:
     virtual void visit(const ListExpr& expr) = 0;
     virtual void visit(const MatchExpr& expr) = 0;
     virtual void visit(const EnumExpr& expr) = 0;
+    virtual void visit(const FStringExpr& expr) = 0;
 };
 
 class StmtVisitor {
@@ -278,6 +284,17 @@ public:
 
     StringExpr(std::string_view value, token diag) 
         : value(value), diagnostic_token(std::move(diag)) {}
+
+    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
+};
+
+class FStringExpr : public Expr {
+public:
+    std::vector<std::unique_ptr<Expr>> parts;
+    token diagnostic_token;
+
+    FStringExpr(std::vector<std::unique_ptr<Expr>> parts, token diag)
+        : parts(std::move(parts)), diagnostic_token(std::move(diag)) {}
 
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };

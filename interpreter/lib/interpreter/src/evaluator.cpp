@@ -108,7 +108,54 @@ std::string decode_quoted_literal(std::string_view literal, const token& diag) {
     return out;
 }
 
-uint32_t decode_utf8_char(std::string_view str, const token& diag) {
+std::string decode_fstring_part(std::string_view literal, frontend::token_type t, const frontend::token& diag) {
+    size_t start = (t == frontend::token_type::fstring_head || t == frontend::token_type::fstring_literal) ? 2 : 1;
+    size_t end = (t == frontend::token_type::fstring_tail || t == frontend::token_type::fstring_literal) ? literal.size() - 1 : literal.size() - 1;
+    if (start > end) return "";
+
+    std::string out;
+    for (size_t i = start; i < end; ++i) {
+        char c = literal[i];
+        if (c != '\\') {
+            out.push_back(c);
+            continue;
+        }
+
+        if (++i >= end) {
+            fail(diag, "Malformed escape sequence");
+        }
+
+        char escaped = literal[i];
+        switch (escaped) {
+            case '\\': out.push_back('\\'); break;
+            case '\'': out.push_back('\''); break;
+            case '"': out.push_back('"'); break;
+            case '{': out.push_back('{'); break;
+            case '}': out.push_back('}'); break;
+            case 'n': out.push_back('\n'); break;
+            case 'r': out.push_back('\r'); break;
+            case 't': out.push_back('\t'); break;
+            case '0': out.push_back('\0'); break;
+            case 'u': {
+                if (i + 4 >= end) {
+                    fail(diag, "Malformed unicode escape");
+                }
+                uint32_t codepoint = 0;
+                for (int n = 0; n < 4; ++n) {
+                    char h = literal[++i];
+                    codepoint = (codepoint << 4) | static_cast<uint32_t>(hex_value(h));
+                }
+                append_utf8(out, codepoint);
+                break;
+            }
+            default:
+                fail(diag, "Unsupported escape sequence");
+        }
+    }
+    return out;
+}
+
+uint32_t decode_utf8_char(std::string_view str, const frontend::token& diag) {
     if (str.empty()) {
         fail(diag, "Empty character literal");
     }
@@ -440,6 +487,9 @@ private:
         }
         void visit(const frontend::NumberExpr&) override {}
         void visit(const frontend::StringExpr&) override {}
+        void visit(const frontend::FStringExpr& expr) override {
+            for (const auto& part : expr.parts) part->accept(*this);
+        }
         void visit(const frontend::CharExpr&) override {}
         void visit(const frontend::BoolExpr&) override {}
         void visit(const frontend::UndecidedExpr&) override {}
@@ -2210,7 +2260,27 @@ private:
     }
 
     void visit(const StringExpr& expr) override {
+        frontend::token_type t = expr.diagnostic_token.type;
+        if (t == frontend::token_type::fstring_head || t == frontend::token_type::fstring_middle || t == frontend::token_type::fstring_tail || t == frontend::token_type::fstring_literal) {
+            result_ = Value::make_string(decode_fstring_part(expr.value, t, expr.diagnostic_token));
+            return;
+        }
         result_ = Value::make_string(decode_quoted_literal(expr.value, expr.diagnostic_token));
+    }
+
+    void visit(const FStringExpr& expr) override {
+        std::string res;
+        for (const auto& part : expr.parts) {
+            result_ = evaluate(*part);
+            if (result_.isString()) {
+                res += result_.asString();
+            } else if (result_.isChar()) {
+                append_utf8(res, result_.asChar());
+            } else {
+                res += result_.toString();
+            }
+        }
+        result_ = Value::make_string(res);
     }
 
     void visit(const CharExpr& expr) override {

@@ -1,0 +1,34 @@
+`expect_exit(0);
+
+// Basic interpolation
+let name = "world";
+let basic = f"Hello {name}!";
+`expect(basic == "Hello world!");
+
+// Multiple interpolations
+let a = 1;
+let b = 2;
+let mult = f"a={a}, b={b}, sum={a+b}";
+`expect(mult == "a=1, b=2, sum=3");
+
+// No interpolations
+let none = f"Just a string";
+`expect(none == "Just a string");
+
+// Nested f-strings
+let inner = "nested";
+let outer = f"This is {f"a {inner} string"}!";
+`expect(outer == "This is a nested string!");
+
+// Nested braces (block expression inside f-string)
+let block = f"Value: {do { let x = 5; break x * 2; }}";
+`expect(block == "Value: 10");
+
+// Strings inside interpolation
+let empty = f"Empty: {""}";
+`expect(empty == "Empty: ");
+
+// Function calls inside f-string
+let func = (x) => x * 3;
+let call = f"Result: {func(4)}";
+`expect(call == "Result: 12");

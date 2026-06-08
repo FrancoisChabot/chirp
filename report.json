@@ -1,0 +1,5 @@
+{"schema": "chirp-run-report/v2"}
+{"event": "diagnostic", "phase": "evaluate", "message": "`expect check failed at line 6:8", "file": "tests/string/fstrings.chirp"}
+{"event": "expectations", "expected_stdout": null, "expected_exit": 0, "expect_test_failure": false}
+{"event": "expectation_checks", "count": 1}
+{"event": "outcome", "outcome": "evaluation_failure", "script_exit": null}

@@ -67,6 +67,14 @@ public:
     }
     void visit(const NumberExpr& expr) override { result += expr.value; }
     void visit(const StringExpr& expr) override { result += expr.value; }
+    void visit(const FStringExpr& expr) override {
+        result += "(fstring";
+        for (const auto& part : expr.parts) {
+            result += " ";
+            part->accept(*this);
+        }
+        result += ")";
+    }
     void visit(const CharExpr& expr) override { result += expr.value; }
     void visit(const BoolExpr& expr) override { result += (expr.value ? "true" : "false"); }
     void visit(const IdentifierExpr& expr) override { result += expr.name; }
