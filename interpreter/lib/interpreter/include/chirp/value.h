@@ -89,7 +89,9 @@ public:
         HeapSharedCreate,
         HeapSharedDestroy,
         Input,
-        InjectStdin
+        InjectStdin,
+        Invoke,
+        FunctionArgs
     };
     struct HostFunctionTag {
         HostFunction fn;

@@ -37,7 +37,11 @@ let pub `typeof = `import("typeof_func", "__chirp_boot");
 // Mint a new nominal type and returns its value. Use typeof() to reclaim the type.
 let pub `mint = `import("mint_func", "__chirp_boot");
 
+// Invoke a lambda with a struct or list of arguments
+let pub `invoke = `import("invoke_func", "__chirp_boot");
 
+// Get the parameter struct type of a function
+let pub `function_args = `import("function_args_func", "__chirp_boot");
 
 // ------------------ Interfaces ------------------ //
 

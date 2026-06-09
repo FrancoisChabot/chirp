@@ -1342,6 +1342,8 @@ private:
         if (is_name(name, "write_func")) return Value::make_host_function(Value::HostFunction::Write);
         if (is_name(name, "input_func")) return Value::make_host_function(Value::HostFunction::Input);
         if (is_name(name, "inject_stdin_func")) return Value::make_host_function(Value::HostFunction::InjectStdin);
+        if (is_name(name, "invoke_func")) return Value::make_host_function(Value::HostFunction::Invoke);
+        if (is_name(name, "function_args_func")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
         if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
         if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
@@ -1605,6 +1607,64 @@ private:
                 stdin_injected_ = true;
                 injected_stdin_ += value.asString();
                 return VoidVal();
+            }
+            case Value::HostFunction::Invoke: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`invoke_func expects two positional arguments: callee and args struct");
+                }
+                Value callee = evaluate(*args[0].value);
+                Value args_val = evaluate(*args[1].value);
+
+                if (callee.isLambda()) {
+                    const auto& lambda_tag = callee.asLambdaTag();
+                    const LambdaExpr& lambda = *lambda_tag.lambda;
+                    std::vector<Value> arg_values(lambda.parameters.size());
+
+                    if (args_val.isStructInstance()) {
+                        const auto& fields = *args_val.asStructInstance().fields;
+                        for (size_t i = 0; i < lambda.parameters.size(); ++i) {
+                            std::string param_name = std::string(to_key(lambda.parameters[i].name.lexeme));
+                            auto it = fields.find(param_name);
+                            if (it != fields.end()) {
+                                arg_values[i] = it->second;
+                            } else {
+                                // Fallback to positional mapping by index
+                                auto pos_it = fields.find(std::to_string(i));
+                                if (pos_it != fields.end()) {
+                                    arg_values[i] = pos_it->second;
+                                } else {
+                                    fail(diag, "`invoke_func missing argument for parameter '" + param_name + "'");
+                                }
+                            }
+                        }
+                    } else if (args_val.isList()) {
+                        const auto& list_elems = args_val.asList();
+                        if (list_elems.size() != lambda.parameters.size()) {
+                            fail(diag, "`invoke_func list arity mismatch");
+                        }
+                        for (size_t i = 0; i < list_elems.size(); ++i) {
+                            arg_values[i] = list_elems[i];
+                        }
+                    } else {
+                        fail(diag, "`invoke_func second argument must be a struct or list");
+                    }
+                    return call_lambda_with_values(lambda_tag, std::move(arg_values), diag);
+                } else if (callee.isHostFunction()) {
+                    // For host functions, just pass args as positional arguments.
+                    // To do this, we'd need to construct std::vector<Argument>... wait, call_host_function takes vector<Argument> which are AST nodes.
+                    // This is annoying since HostFunctions expect un-evaluated arguments (they do their own evaluate()).
+                    fail(diag, "`invoke_func cannot currently invoke host functions");
+                } else {
+                    fail(diag, "`invoke_func expects a lambda");
+                }
+            }
+            case Value::HostFunction::FunctionArgs: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`function_args_func expects one positional argument");
+                }
+                // For now, return `any (which is getSetType() conceptually) or `list.
+                // Since this is purely conceptual for now, we just return `list type as a placeholder.
+                return Value::make_type(getListType());
             }
             case Value::HostFunction::TypeOf: {
                 if (args.size() != 1 || args.front().name.has_value()) {

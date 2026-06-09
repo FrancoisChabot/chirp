@@ -43,7 +43,7 @@ let pub final `type = `typeof(bool);
     trait=`Callable,
     on=`function,
     impl=`interface(`Callable)(
-        invoke = (this, args: `list) => this(args),
+        invoke = (this, args: `list) => `invoke(this, args),
         param_space = (this) => `any,
         result_space = (this, params: `Set) => `any
     )
