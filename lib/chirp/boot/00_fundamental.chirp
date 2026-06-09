@@ -31,6 +31,7 @@ let register = `import("register_func", "__chirp_boot");
 // ------------------ Typing ------------------ //
 
 // Get the type of a value
+// - Types implements the Set trait such that all of its values belong to it.
 let pub `typeof = `import("typeof_func", "__chirp_boot");
 
 // Mint a new nominal type and returns its value. Use typeof() to reclaim the type.
@@ -51,7 +52,7 @@ let pub `interface = `import("interface_func", "__chirp_boot");
 // ------------------ Traits ------------------ //
 
 // Creates a trait (takes the trait interface in the form of a struct value as parameter)
-// Traits implement the Set trait such that every value of a type that implements that trait is a member of it.
+// - Traits implement the Set trait such that every value of a type that implements that trait is a member of it.
 let pub `trait = `import("trait_func", "__chirp_boot");
 
 // Implements a trait for a type.
@@ -62,7 +63,12 @@ let pub `implement = `import("implement_func", "__chirp_boot");
 // ------------------ Fundamental values ------------------ //
 let pub final true = `import("true_val", "__chirp_boot");
 let pub final false = `import("false_val", "__chirp_boot");
-let pub final undecided = `import("undecided_val", "__chirp_boot");
+
+// N.B. has a different type from true and false.
+// This is important because if(v) will error-out if v is not constrained to a boolean.
+// if a computation can be {true, false, undecided}, you have to explicitly handle the undecided case.
+// e.g. match(v) {true => ..., false => ..., undecided => ...}
+let pub final undecided = `import("undecided_val", "__chirp_boot"); 
 
 
 
@@ -70,7 +76,12 @@ let pub final undecided = `import("undecided_val", "__chirp_boot");
 let pub `function = `typeof(() => true);
 
 let pub `is_pure = `import("is_pure_func", "__chirp_boot");
-let pub `pure_fn = { v: `function | `is_pure(v) };
+
+// N.B. The ideal definition would be { v : `Callable | `is_pure(v) };
+// However, that runs into a circular dependency.
+// Instead we take for granted that the abstract evaluation of `is_pure()
+// will close the loop once we register "callable_trait"
+let pub `pure_fn = { v | `is_pure(v) };
 
 // ------------------ Sets ------------------ //
 let pub `Set = `trait(struct {
@@ -85,7 +96,9 @@ let pub `Set = `trait(struct {
         {true, false, undecided}
     },
     
-    // MUST conform to belongs_approx
+
+    // Checks if a value v is a member of this set.
+    // - belongs() returning a value that was not in belongs_approx() is UB
     belongs: `pure_fn ∩ (self, v) -> {true, false, undecided}
 });
 
