@@ -24,16 +24,16 @@
 
 `expect_stdout("--- Set Capability Relations ---\n");
 `print("--- Set Capability Relations ---");
-`expect(bool ∈ `set);
-`expect(int ∈ `set);
-`expect(string ∈ `set);
-`expect(`type ∈ `set);
-`expect(`any ∈ `set);
-`expect(`empty ∈ `set);
-`expect(`set ∈ `set);
-`expect(true ∈ `set);
-`expect(1 ∈ `set);
-`expect("" ∈ `set);
+`expect(bool ∈ `Set);
+`expect(int ∈ `Set);
+`expect(string ∈ `Set);
+`expect(`type ∈ `Set);
+`expect(`any ∈ `Set);
+`expect(`empty ∈ `Set);
+`expect(`Set ∈ `Set);
+`expect(true ∈ `Set);
+`expect(1 ∈ `Set);
+`expect("" ∈ `Set);
 
 `expect_stdout("--- Top (any) and Bottom (empty) Relations ---\n");
 `print("--- Top (any) and Bottom (empty) Relations ---");

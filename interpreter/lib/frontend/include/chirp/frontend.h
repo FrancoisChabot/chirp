@@ -138,6 +138,7 @@ class IfExpr;
 class WhileExpr;
 class ForExpr;
 class LambdaExpr;
+class SignatureExpr;
 class BlockExpr;
 class StructExpr;
 class CallExpr;
@@ -176,6 +177,7 @@ public:
     virtual void visit(const WhileExpr& expr) = 0;
     virtual void visit(const ForExpr& expr) = 0;
     virtual void visit(const LambdaExpr& expr) = 0;
+    virtual void visit(const SignatureExpr& expr) = 0;
     virtual void visit(const BlockExpr& expr) = 0;
     virtual void visit(const StructExpr& expr) = 0;
     virtual void visit(const CallExpr& expr) = 0;
@@ -446,6 +448,18 @@ public:
 
     LambdaExpr(std::vector<NamedBinding> parameters, std::unique_ptr<Expr> return_bound, std::unique_ptr<Expr> body, token diag)
         : parameters(std::move(parameters)), return_bound(std::move(return_bound)), body(std::move(body)), diagnostic_token(std::move(diag)) {}
+
+    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
+};
+
+class SignatureExpr : public Expr {
+public:
+    std::vector<NamedBinding> parameters;
+    std::unique_ptr<Expr> return_bound;
+    token diagnostic_token;
+
+    SignatureExpr(std::vector<NamedBinding> parameters, std::unique_ptr<Expr> return_bound, token diag)
+        : parameters(std::move(parameters)), return_bound(std::move(return_bound)), diagnostic_token(std::move(diag)) {}
 
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };

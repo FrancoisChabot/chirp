@@ -29,11 +29,11 @@ let pub final uint64 = 0..=18446744073709551615;
 // This makes each instance of a type a set of itself, which is really convenient for match arms.
 let final make_type_a_self_set(t) = do {
     `implement(
-        trait=`set,
+        trait=`Set,
         on=t,
         impl={
-            bp = (this, v) => v == this,
-            br = (this, lc) =>
+            belongs = (this, v) => v == this,
+            belongs_approx = (this, lc) =>
                 if (this ∉ lc) {false}
                 else if ({this} == lc) {true}
                 else {true, false}

@@ -3,8 +3,6 @@
 // - backtick-prefixed identifiers can be defined here. Normal scripts can only use them, not define them. This guarantees backwards-compatibility when we introduce new stuff.
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
-// --------- Derived bindings ---------
-// We like those. We like them a lot.
 
 // Core type keywords. Extracted from their literals
 let pub final bool = `typeof(true);
@@ -21,34 +19,32 @@ let pub final `any = `mint();
 let pub final `empty = `mint();
 
 `implement(
-    trait=`yielder,
-    on=Fn,
-    impl={
-        invoke = (this, arg) => this(arg),
-        param_space = (this) => `any,
-        result_space = (this, arg) => `any
-    }
-);
-
-`implement(
-    trait=`set,
+    trait=`Set,
     on=`typeof(`any),
     impl={
-        bp = (this, v) => true,
-        br = (this, lc) => {true}
+        belongs = (this, v) => true,
+        belongs_approx = (this, lc: `Set) => {true}
     }
 );
 
 `implement(
-    trait=`set,
+    trait=`Set,
     on=`typeof(`empty),
     impl={
-        bp = (this, v) => false,
-        br = (this, lc) => {false}
+        belongs = (this, v) => false,
+        belongs_approx = (this, lc: `Set) => {false}
     }
 );
 
-
-// --------- The fixed point ---------
-// It's weird enough to deserve its own section.
+// The type of all types. 
 let pub final `type = `typeof(bool);
+
+`implement(
+    trait=`Callable,
+    on=`function,
+    impl=`interface(`Callable)(
+        invoke = (this, args: `list) => this(args),
+        param_space = (this) => `any,
+        result_space = (this, params: `Set) => `any
+    )
+);

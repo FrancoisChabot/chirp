@@ -58,10 +58,7 @@ TEST(InterpreterTest, TypeTagIdentity) {
     
 
 
-    // typeof(set) == SetType
-    EXPECT_EQ(Set().getType(), getSetType());
-    // typeof(SetType) == Type
-    EXPECT_EQ(SetTypeVal().getType(), getMetaType());
+
 
     // typeof(`void) == Void
     EXPECT_EQ(VoidVal().getType(), getVoidType());
@@ -73,12 +70,11 @@ TEST(InterpreterTest, TypeTagIdentity) {
     EXPECT_TRUE(host_print.isHostFunction());
     EXPECT_EQ(host_print.asHostFunction(), Value::HostFunction::Print);
 
-    Value trait = Value::make_trait(1, Set());
+    Value trait = Value::make_trait(1, Bool());
     EXPECT_EQ(trait.getType(), getTraitType());
     EXPECT_TRUE(trait.isTrait());
     EXPECT_EQ(trait.asTraitId(), 1);
-    EXPECT_EQ(trait.asTraitInterface(), Set());
-    EXPECT_EQ(belongsTo(Set(), trait), Value::make_bool(true));
+    EXPECT_EQ(trait.asTraitInterface(), Bool());
 }
 
 // 2. Void is equal to itself (reflexive)
@@ -117,13 +113,7 @@ TEST(InterpreterTest, BelongingPredicate) {
 
 
 
-    // Bool ∈ set -> true (since Bool's type is Type, which has setness)
-    EXPECT_EQ(belongsTo(Set(), Bool()), Value::make_bool(true));
-    EXPECT_EQ(belongsTo(Set(), TypeVal()), Value::make_bool(true));
 
-    // true ∈ set -> false (since True's type is Bool, which does not have setness)
-    EXPECT_EQ(belongsTo(Set(), True()), Value::make_bool(false));
-    EXPECT_EQ(belongsTo(Set(), UndecidedVal()), Value::make_bool(false));
 }
 
 // 4. Enumerated sets

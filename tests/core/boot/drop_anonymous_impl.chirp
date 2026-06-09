@@ -4,9 +4,11 @@
 let Token = struct {};
 
 `implement(
-    trait=`drop,
+    trait=`Drop,
     on=Token,
-    impl={drop=(this) => `print("drop")}
+    impl={
+        drop=(this) => `print("drop")
+    }
 );
 
 do {

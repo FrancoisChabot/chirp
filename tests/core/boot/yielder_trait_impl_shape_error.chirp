@@ -3,7 +3,7 @@
 let Token = `mint();
 
 `implement(
-    trait=`yielder,
+    trait=`Callable,
     on=`typeof(Token),
     impl={
         invoke = (this, arg) => arg

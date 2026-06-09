@@ -1,6 +1,6 @@
 `expect_exit(0);
 
-`implement(trait=`unique, on=int, impl=void);
+`implement(trait=`Unique, on=int, impl=`interface(`Unique)());
 
 let moved = do {
     let a = 5;

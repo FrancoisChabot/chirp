@@ -4,9 +4,9 @@
 let Token = struct {};
 
 `implement(
-    trait=`drop,
+    trait=`Drop,
     on=Token,
-    impl=`Dropness(drop=(this) => do {
+    impl=`interface(`Drop)(drop=(this) => do {
         `print("drop");
     })
 );

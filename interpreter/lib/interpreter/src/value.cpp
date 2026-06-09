@@ -4,6 +4,7 @@
 #include <sstream>
 #include <utility>
 #include <iostream>
+#include "chirp/frontend.h"
 
 namespace chirp::interpreter {
 
@@ -25,11 +26,6 @@ std::shared_ptr<const Type> getUndecidedType() {
 }
 
 
-
-std::shared_ptr<const Type> getSetType() {
-    static auto instance = std::make_shared<SetType>();
-    return instance;
-}
 
 std::shared_ptr<const Type> getVoidType() {
     static auto instance = std::make_shared<VoidType>();
@@ -156,16 +152,6 @@ const Value& TypeVal() {
 
 
 
-const Value& Set() {
-    static Value instance = Value(getSetType(), std::monostate{});
-    return instance;
-}
-
-const Value& SetTypeVal() {
-    static Value instance = Value::make_type(getSetType());
-    return instance;
-}
-
 const Value& Void() {
     static Value instance = Value::make_type(getVoidType());
     return instance;
@@ -246,13 +232,6 @@ Value Value::make_minted(std::shared_ptr<const Type> type, uint64_t id) {
 
 Value Value::make_trait(uint64_t id, Value interface) {
     return Value(getTraitType(), TraitTag{id, std::make_shared<Value>(std::move(interface))});
-}
-
-Value Value::make_setness_impl(Value bp, Value br) {
-    return Value(getFunctionType(), SetnessImplTag{
-        std::make_shared<Value>(std::move(bp)),
-        std::make_shared<Value>(std::move(br))
-    });
 }
 
 Value Value::make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields) {
@@ -497,17 +476,6 @@ const Value& Value::asTraitInterface() const {
     return *interface;
 }
 
-bool Value::isSetnessImpl() const {
-    return std::holds_alternative<SetnessImplTag>(payload_);
-}
-
-const Value::SetnessImplTag& Value::asSetnessImpl() const {
-    if (!isSetnessImpl()) {
-        throw std::runtime_error("Value is not a setness implementation");
-    }
-    return std::get<SetnessImplTag>(payload_);
-}
-
 bool Value::isStructInstance() const {
     return std::holds_alternative<StructInstanceTag>(payload_);
 }
@@ -595,19 +563,6 @@ bool Value::ListTag::operator==(const ListTag& other) const {
         return elements == other.elements;
     }
     return *elements == *other.elements;
-}
-
-bool Value::SetnessImplTag::operator==(const SetnessImplTag& other) const {
-    if (!bp || !other.bp) {
-        if (bp != other.bp) return false;
-    } else if (*bp != *other.bp) {
-        return false;
-    }
-
-    if (!br || !other.br) {
-        return br == other.br;
-    }
-    return *br == *other.br;
 }
 
 bool Value::StructInstanceTag::operator==(const StructInstanceTag& other) const {
@@ -734,9 +689,7 @@ std::string Value::toString() const {
     if (isHostFunction()) {
         return "<host-function>";
     }
-    if (isSetnessImpl()) {
-        return "<setness-impl>";
-    }
+
     if (isStructInstance()) {
         return "<struct-instance>";
     }
@@ -756,10 +709,6 @@ std::string Value::toString() const {
     if (type_ == getUndecidedType()) {
         return "undecided";
     }
-
-    if (type_ == getSetType()) {
-        return "set";
-    }
     return "Value(type=" + std::string(type_->name()) + ")";
 }
 
@@ -775,58 +724,49 @@ Value belongsTo(const Value& S, const Value& v) {
     if (!S.getType()->hasSetness()) {
         throw std::runtime_error("Type '" + std::string(S.getType()->name()) + "' of value does not support set-ness");
     }
-    return S.getType()->bp(S, v);
+    return S.getType()->belongs(S, v);
 }
 
 Value belongsRange(const Value& S, const Value& lc) {
     if (!S.getType()->hasSetness()) {
         throw std::runtime_error("Type '" + std::string(S.getType()->name()) + "' of value does not support set-ness");
     }
-    return S.getType()->br(S, lc);
+    return S.getType()->belongs_approx(S, lc);
 }
 
 // --- Type bp/br default implementations ---
 
-Value Type::bp(const Value& S, const Value& v) const {
-    throw std::runtime_error("Type " + std::string(name()) + " does not support bp");
+Value Type::belongs(const Value& S, const Value& v) const {
+    auto t1 = v.getType();
+    auto t2 = S.asType();
+    return Value::make_bool(t1 == t2 || (t1 && t2 && t1->equals(*t2)));
 }
 
-Value Type::br(const Value& S, const Value& lc) const {
-    throw std::runtime_error("Type " + std::string(name()) + " does not support br");
+Value Type::belongs_approx(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
 // --- MetaType bp/br implementations (Type) ---
 
-Value MetaType::bp(const Value& S, const Value& v) const {
+Value MetaType::belongs(const Value& S, const Value& v) const {
     if (!S.isType()) {
         throw std::runtime_error("MetaType::bp: first argument S must be a type tag value");
     }
-    auto t1 = v.getType();
     auto t2 = S.asType();
-    if (dynamic_cast<const ReferenceType*>(t2.get())) {
-        return t2->bp(S, v);
+    if (dynamic_cast<const MetaType*>(t2.get())) {
+        return Value::make_bool(v.isType());
     }
-    return Value::make_bool(t1 == t2 || (t1 && t2 && t1->equals(*t2)));
+    return t2->belongs(S, v);
 }
 
-Value MetaType::br(const Value& S, const Value& lc) const {
+Value MetaType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
-
-// --- SetType bp/br implementations (set) ---
-
-Value SetType::bp(const Value& S, const Value& v) const {
-    return Value::make_bool(v.getType()->hasSetness());
-}
-
-Value SetType::br(const Value& S, const Value& lc) const {
-    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
-}
 
 // --- EnumeratedSetType bp/br implementations ({1, 2, 3}) ---
 
-Value EnumeratedSetType::bp(const Value& S, const Value& v) const {
+Value EnumeratedSetType::belongs(const Value& S, const Value& v) const {
     if (!S.isEnumeratedSet()) {
         throw std::runtime_error("EnumeratedSetType::bp: S must be an EnumeratedSet value");
     }
@@ -835,13 +775,13 @@ Value EnumeratedSetType::bp(const Value& S, const Value& v) const {
     return Value::make_bool(found);
 }
 
-Value EnumeratedSetType::br(const Value& S, const Value& lc) const {
+Value EnumeratedSetType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
 // --- RangeType bp/br implementations (1..5, 1..=5) ---
 
-Value RangeType::bp(const Value& S, const Value& v) const {
+Value RangeType::belongs(const Value& S, const Value& v) const {
     if (!S.isRange()) {
         throw std::runtime_error("RangeType::bp: S must be a Range value");
     }
@@ -865,23 +805,23 @@ Value RangeType::bp(const Value& S, const Value& v) const {
     throw std::runtime_error("RangeType::bp on user-defined types requires evaluator context");
 }
 
-Value RangeType::br(const Value& S, const Value& lc) const {
+Value RangeType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
 // --- ConstructedSetType bp/br implementations ({x | predicate}) ---
 
-Value ConstructedSetType::bp(const Value& S, const Value& v) const {
+Value ConstructedSetType::belongs(const Value& S, const Value& v) const {
     throw std::runtime_error("ConstructedSetType::bp requires evaluator context");
 }
 
-Value ConstructedSetType::br(const Value& S, const Value& lc) const {
+Value ConstructedSetType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
 // --- CompositeSetType bp/br implementations (A ∪ B, A ∩ B) ---
 
-Value CompositeSetType::bp(const Value& S, const Value& v) const {
+Value CompositeSetType::belongs(const Value& S, const Value& v) const {
     if (!S.isCompositeSet()) {
         throw std::runtime_error("CompositeSetType::bp: S must be a CompositeSet value");
     }
@@ -901,30 +841,45 @@ Value CompositeSetType::bp(const Value& S, const Value& v) const {
     }
 }
 
-Value CompositeSetType::br(const Value& S, const Value& lc) const {
+Value CompositeSetType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
 // --- TraitType bp/br implementations (user-defined traits) ---
 
-Value TraitType::bp(const Value& S, const Value& v) const {
-    throw std::runtime_error("TraitType::bp requires evaluator context");
+Value TraitType::belongs(const Value& S, const Value& v) const {
+    return Value::make_bool(v.isTrait());
 }
 
-Value TraitType::br(const Value& S, const Value& lc) const {
+Value TraitType::belongs_approx(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+Value SignatureType::belongs(const Value& S, const Value& v) const {
+    if (v.isLambda()) {
+        size_t v_size = v.asLambdaTag().lambda->parameters.size();
+        return Value::make_bool(v_size == parameter_count_);
+    }
+    if (v.isHostFunction() || v.isStructInstance()) {
+        return Value::make_bool(true);
+    }
     return Value::make_bool(false);
 }
 
-Value StructType::bp(const Value& S, const Value& v) const {
+Value SignatureType::belongs_approx(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+Value StructType::belongs(const Value& S, const Value& v) const {
     if (!v.isStructInstance()) return Value::make_bool(false);
     return Value::make_bool(v.getType() == S.asType());
 }
 
-Value StructType::br(const Value& S, const Value& lc) const {
+Value StructType::belongs_approx(const Value& S, const Value& lc) const {
     throw std::runtime_error("Range operations on struct types are not supported");
 }
 
-Value EnumFamilyType::bp(const Value& S, const Value& v) const {
+Value EnumFamilyType::belongs(const Value& S, const Value& v) const {
     if (!S.isEnumFamily()) {
         throw std::runtime_error("EnumFamilyType::bp: S must be an EnumFamily value");
     }
@@ -934,7 +889,7 @@ Value EnumFamilyType::bp(const Value& S, const Value& v) const {
     return Value::make_bool(S.asEnumFamily().node_id == v.asEnumVariant().enum_node_id);
 }
 
-Value EnumFamilyType::br(const Value& S, const Value& lc) const {
+Value EnumFamilyType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 
@@ -952,7 +907,7 @@ bool ReferenceType::equals(const Type& other) const {
     return false;
 }
 
-Value ReferenceType::bp(const Value& S, const Value& v) const {
+Value ReferenceType::belongs(const Value& S, const Value& v) const {
     if (!S.isType() || dynamic_cast<const ReferenceType*>(S.asType().get()) == nullptr) {
         throw std::runtime_error("ReferenceType::bp: S must be a ReferenceType value");
     }
@@ -976,7 +931,7 @@ Value ReferenceType::bp(const Value& S, const Value& v) const {
     return Value::make_bool(S_ref_t->target_type() == v_ref_t->target_type());
 }
 
-Value ReferenceType::br(const Value& S, const Value& lc) const {
+Value ReferenceType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 

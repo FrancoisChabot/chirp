@@ -15,7 +15,7 @@ let Other = `trait(`any);
 
 `expect("" ∉ Marker);
 
-`expect(Marker ∈ `set);
+`expect(Marker ∈ `Set);
 
 `expect(Marker != Other);
 

@@ -1,6 +1,6 @@
 `expect_exit(1);
 
-`implement(trait=`unique, on=int, impl=void);
+`implement(trait=`Unique, on=int, impl=`interface(`Unique)());
 
 let a = 5;
 let b = a; // Copy! Fails

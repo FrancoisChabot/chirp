@@ -77,7 +77,7 @@ public:
         Trait,
         Interface,
         Implement,
-        SetnessConstructor,
+        Register,
         Expect,
         ExpectStdout,
         ExpectStderr,
@@ -126,11 +126,7 @@ public:
         std::shared_ptr<Value> interface;
         bool operator==(const TraitTag& other) const { return id == other.id; }
     };
-    struct SetnessImplTag {
-        std::shared_ptr<Value> bp;
-        std::shared_ptr<Value> br;
-        bool operator==(const SetnessImplTag& other) const;
-    };
+
     struct StructInstanceTag {
         std::shared_ptr<std::map<std::string, Value>> fields;
         bool operator==(const StructInstanceTag& other) const;
@@ -187,7 +183,6 @@ public:
     static Value make_list(std::vector<Value> elements);
     static Value make_minted(std::shared_ptr<const Type> type, uint64_t id);
     static Value make_trait(uint64_t id, Value interface);
-    static Value make_setness_impl(Value bp, Value br);
     static Value make_struct_instance(std::shared_ptr<const Type> type, std::map<std::string, Value> fields);
     static Value make_module(std::string identity, std::map<std::string, std::shared_ptr<Binding>> exports);
     static Value make_heap_allocation(uint64_t id, Value stored);
@@ -254,9 +249,6 @@ public:
     uint64_t asTraitId() const;
     const Value& asTraitInterface() const;
 
-    bool isSetnessImpl() const;
-    const SetnessImplTag& asSetnessImpl() const;
-
     bool isStructInstance() const;
     const StructInstanceTag& asStructInstance() const;
 
@@ -277,7 +269,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, SetnessImplTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

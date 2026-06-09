@@ -3,7 +3,7 @@
 let Complex = struct { r: int, i: int };
 
 `implement(
-    trait=`arithmetic,
+    trait=`Arithmetic,
     on=Complex,
     impl={
         add = (this, other) => Complex(this.r + other.r, this.i + other.i),

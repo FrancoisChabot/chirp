@@ -99,7 +99,7 @@ class Parser {
         return type == token_type::identifier || type == token_type::intrinsic;
     }
 
-    bool is_lambda_ahead() const {
+    bool is_lambda_or_signature_ahead() const {
         size_t temp = current;
         int parens = 0;
         
@@ -119,11 +119,11 @@ class Parser {
         if (parens != 0) return false;
         
         if (temp < tokens.size()) {
-            if (tokens[temp].type == token_type::fat_arrow) return true;
+            if (tokens[temp].type == token_type::fat_arrow || tokens[temp].type == token_type::arrow) return true;
             if (tokens[temp].type == token_type::colon) {
                 size_t look = temp + 1;
                 while (look < tokens.size()) {
-                    if (tokens[look].type == token_type::fat_arrow) return true;
+                    if (tokens[look].type == token_type::fat_arrow || tokens[look].type == token_type::arrow) return true;
                     if (tokens[look].type == token_type::semicolon ||
                         tokens[look].type == token_type::right_brace ||
                         tokens[look].type == token_type::right_paren ||
@@ -626,7 +626,7 @@ private:
         if (match(token_type::intrinsic)) return std::make_unique<IntrinsicExpr>(previous().lexeme, previous());
 
         if (check(token_type::left_paren)) {
-            if (is_lambda_ahead()) {
+            if (is_lambda_or_signature_ahead()) {
                 token paren_tok = advance(); 
                 std::vector<NamedBinding> parameters;
                 if (!check(token_type::right_paren)) {
@@ -634,16 +634,21 @@ private:
                         parameters.push_back(parse_binding(false, false));
                     } while (match(token_type::comma));
                 }
-                consume(token_type::right_paren, "Expect ')' after lambda parameters.");
+                consume(token_type::right_paren, "Expect ')' after lambda/signature parameters.");
                 
                 std::unique_ptr<Expr> return_bound = nullptr;
                 if (match(token_type::colon)) {
                     return_bound = expression();
                 }
                 
-                consume(token_type::fat_arrow, "Expect '=>' for lambda body.");
-                auto body = expression();
-                return std::make_unique<LambdaExpr>(std::move(parameters), std::move(return_bound), std::move(body), paren_tok);
+                if (match(token_type::fat_arrow)) {
+                    auto body = expression();
+                    return std::make_unique<LambdaExpr>(std::move(parameters), std::move(return_bound), std::move(body), paren_tok);
+                } else {
+                    consume(token_type::arrow, "Expect '=>' or '->' after parameters.");
+                    auto return_constraint = expression();
+                    return std::make_unique<SignatureExpr>(std::move(parameters), std::move(return_constraint), paren_tok);
+                }
             } else {
                 advance(); 
                 auto expr = expression();

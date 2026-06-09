@@ -3,7 +3,7 @@
 let Token = `mint();
 
 `implement(
-    trait=`set,
+    trait=`Set,
     on=`typeof(Token),
     impl={
         bp = (this, v) => false,

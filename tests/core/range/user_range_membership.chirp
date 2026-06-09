@@ -3,7 +3,7 @@
 let Version = struct { major: int, minor: int };
 
 `implement(
-    trait=`orderable,
+    trait=`Orderable,
     on=Version,
     impl={
         less = (this, other) => 

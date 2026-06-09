@@ -3,7 +3,7 @@
 let Token = struct {};
 
 `implement(
-    trait=`drop,
+    trait=`Drop,
     on=Token,
     impl=(this) => void
 );

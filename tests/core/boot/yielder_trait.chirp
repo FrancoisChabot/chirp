@@ -1,7 +1,6 @@
-`expect(`interface(`yielder) == `Yieldness);
 
-`expect(((x) => x) ∈ `yielder);
-`expect(`typeof ∈ `yielder);
+`expect(((x) => x) ∈ `Callable);
+`expect(`typeof ∈ `Callable);
 
-let f: `yielder = (x) => x;
-let h: `yielder = `typeof;
+let f: `Callable = (x) => x;
+let h: `Callable = `typeof;

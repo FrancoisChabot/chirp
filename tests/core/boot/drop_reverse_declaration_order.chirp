@@ -5,15 +5,15 @@ let A = struct {};
 let B = struct {};
 
 `implement(
-    trait=`drop,
+    trait=`Drop,
     on=A,
-    impl=`Dropness(drop=(this) => `print("A"))
+    impl=`interface(`Drop)(drop=(this) => `print("A"))
 );
 
 `implement(
-    trait=`drop,
+    trait=`Drop,
     on=B,
-    impl=`Dropness(drop=(this) => `print("B"))
+    impl=`interface(`Drop)(drop=(this) => `print("B"))
 );
 
 do {

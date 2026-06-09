@@ -172,6 +172,26 @@ public:
         result += ")";
     }
 
+    void visit(const SignatureExpr& expr) override {
+        result += "(signature (";
+        for (size_t i = 0; i < expr.parameters.size(); ++i) {
+            result += "(" + std::string(expr.parameters[i].name.lexeme);
+            if (expr.parameters[i].type_bound) {
+                result += " ";
+                expr.parameters[i].type_bound->accept(*this);
+            }
+            result += ")";
+            if (i + 1 < expr.parameters.size()) result += " ";
+        }
+        result += ") ";
+        if (expr.return_bound) {
+            expr.return_bound->accept(*this);
+        } else {
+            result += "`any";
+        }
+        result += ")";
+    }
+
     void visit(const StructExpr& expr) override {
         result += "(struct";
         for (const auto& field : expr.fields) {

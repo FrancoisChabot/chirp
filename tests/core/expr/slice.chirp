@@ -1,0 +1,22 @@
+`expect_exit(0);
+
+let list = [10, 20, 30, 40, 50];
+
+// Exclusive range slice
+let s1 = list[1..3];
+`expect(s1[0] == 20);
+`expect(s1[1] == 30);
+
+// Inclusive range slice
+let s2 = list[1..=3];
+`expect(s2[0] == 20);
+`expect(s2[1] == 30);
+`expect(s2[2] == 40);
+
+// String slicing
+let str = "hello world";
+let s3 = str[0..5];
+`expect(s3 == "hello");
+
+let s4 = str[6..=10];
+`expect(s4 == "world");

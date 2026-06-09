@@ -6,6 +6,6 @@
 `expect(!(undecided != undecided));
 `expect(undecided ∈ `typeof(undecided));
 `expect(true ∉ `typeof(undecided));
-`expect(`typeof(undecided) ∈ `set);
-`expect(undecided ∈ `set);
+`expect(`typeof(undecided) ∈ `Set);
+`expect(undecided ∈ `Set);
 `expect(undecided ∉ bool);

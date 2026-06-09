@@ -5,9 +5,9 @@ let heap = `import("std/heap");
 let Token = struct {};
 
 `implement(
-    trait=`drop,
+    trait=`Drop,
     on=Token,
-    impl=`Dropness(drop=(this) => `print("drop"))
+    impl=`interface(`Drop)(drop=(this) => `print("drop"))
 );
 
 do {

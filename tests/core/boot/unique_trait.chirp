@@ -1,12 +1,11 @@
 `expect_exit(0);
 
-`expect(`interface(`unique) == void);
 
 // Basic types should not be unique by default
-`expect(1 ∉ `unique);
-`expect("" ∉ `unique);
-`expect(true ∉ `unique);
+`expect(1 ∉ `Unique);
+`expect("" ∉ `Unique);
+`expect(true ∉ `Unique);
 
 // The trait itself isn't a unique value
-`expect(`unique ∉ `unique);
-`expect(`unique ∈ `typeof(`unique));
+`expect(`Unique ∉ `Unique);
+`expect(`Unique ∈ `typeof(`Unique));

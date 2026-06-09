@@ -286,6 +286,7 @@ private:
 
     std::ostream& out_;
     RuntimeScopeChain scopes_;
+    std::unordered_map<std::string, Value> registered_items_;
     Value result_;
     bool boot_mode_ = false;
     bool boot_private_scope_active_ = false;
@@ -388,6 +389,8 @@ private:
                         if (val.asHostFunction() == Value::HostFunction::Print) {
                             is_pure = false; return;
                         }
+                    } else if (val.isEnumeratedSet() && binding->isFinal()) {
+                        // Capturing a final boolean/enumerated set is pure
                     } else if (!val.isType()) {
                         is_pure = false; return;
                     }
@@ -446,8 +449,22 @@ private:
             for (const auto& e : expr.elements) e->accept(*this);
         }
         void visit(const frontend::LambdaExpr& expr) override {
-            // defining a lambda is pure
+            if (!is_pure) return;
+            for (const auto& param : expr.parameters) {
+                if (param.type_bound) param.type_bound->accept(*this);
+            }
+            if (expr.return_bound) expr.return_bound->accept(*this);
+            // body purity is evaluated lazily, so we don't traverse it here
         }
+
+        void visit(const frontend::SignatureExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& param : expr.parameters) {
+                if (param.type_bound) param.type_bound->accept(*this);
+            }
+            if (expr.return_bound) expr.return_bound->accept(*this);
+        }
+
         void visit(const frontend::StructExpr& expr) override {
             for (const auto& f : expr.fields) {
                 if (f.initializer) f.initializer->accept(*this);
@@ -632,15 +649,26 @@ private:
     }
 
     const Value* registered_setness_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
-        return registered_impl_for(Set(), dispatch_target);
+        if (const Value* st = get_registered_item("set_trait")) {
+            return registered_impl_for(*st, dispatch_target);
+        }
+        return nullptr;
+    }
+
+    const Value* get_registered_item(const std::string& name) const {
+        auto it = registered_items_.find(name);
+        if (it != registered_items_.end()) {
+            return &it->second;
+        }
+        return nullptr;
+    }
+
+    const Value* callable_trait_value() const {
+        return get_registered_item("callable_trait");
     }
 
     const Value* unique_trait_value() const {
-        auto binding = lookup_binding_optional("`unique");
-        if (binding == nullptr || !binding->getCV().isTrait()) {
-            return nullptr;
-        }
-        return &binding->getCV();
+        return get_registered_item("unique_trait");
     }
 
     const Value* registered_unique_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
@@ -652,11 +680,7 @@ private:
     }
 
     const Value* drop_trait_value() const {
-        auto binding = lookup_binding_optional("`drop");
-        if (binding == nullptr || !binding->getCV().isTrait()) {
-            return nullptr;
-        }
-        return &binding->getCV();
+        return get_registered_item("drop_trait");
     }
 
     const Value* registered_drop_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
@@ -670,21 +694,17 @@ private:
     bool has_drop(const std::shared_ptr<const Type>& type) const {
         return registered_drop_impl_for(type) != nullptr;
     }
+    
+    const Value* equality_trait_value() const {
+        return get_registered_item("eq_trait");
+    }
 
     const Value* orderable_trait_value() const {
-        auto binding = lookup_binding_optional("`orderable");
-        if (binding == nullptr || !binding->getCV().isTrait()) {
-            return nullptr;
-        }
-        return &binding->getCV();
+        return get_registered_item("order_trait");
     }
 
     const Value* arithmetic_trait_value() const {
-        auto binding = lookup_binding_optional("`arithmetic");
-        if (binding == nullptr || !binding->getCV().isTrait()) {
-            return nullptr;
-        }
-        return &binding->getCV();
+        return get_registered_item("arithmetic_trait");
     }
 
     Value value_arithmetic(const Value& left, const Value& right, BinaryOp op, const token& diag) {
@@ -725,6 +745,51 @@ private:
         }
         fail(diag, "Cannot perform arithmetic operation '" + op_str + "' on types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
         return Value();
+    }
+
+    bool accepts_argument(const Value& callable, size_t arg_index, const Value& arg_value, const token& diag) {
+        if (!callable.isLambda()) return false;
+        const auto& tag = callable.asLambdaTag();
+        if (arg_index >= tag.lambda->parameters.size()) return false;
+        
+        Value constraint = evaluate_lambda_parameter_bound(tag, tag.lambda->parameters[arg_index]);
+        if (constraint.isVoid()) return true;
+        
+        Value belongs = belongs_to(constraint, arg_value, diag);
+        return belongs.isBool() && belongs.asBool();
+    }
+
+    bool value_equality(const Value& left, const Value& right, const token& diag) {
+        const Value* trait = equality_trait_value();
+        if (trait != nullptr) {
+            auto try_equals = [&](const Value& a, const Value& b) -> std::optional<bool> {
+                const Value* impl = registered_impl_for(*trait, a.getType());
+                if (impl != nullptr) {
+                    const auto& fields = *impl->asStructInstance().fields;
+                    auto found = fields.find("equals");
+                    if (found != fields.end() && found->second.isLambda()) {
+                        if (accepts_argument(found->second, 1, b, diag)) {
+                            Value res = call_callable_with_values(found->second, {a, b}, diag);
+                            if (!res.isBool()) fail(diag, "equality trait implementation 'equals' must return bool");
+                            return res.asBool();
+                        }
+                    }
+                }
+                return std::nullopt;
+            };
+
+            if (auto res = try_equals(left, right)) {
+                return *res;
+            }
+            if (auto res = try_equals(right, left)) {
+                return *res;
+            }
+        }
+
+        if (left.getType() == right.getType()) {
+            return left == right;
+        }
+        return false;
     }
 
     bool value_compare_less(const Value& left, const Value& right, const token& diag) {
@@ -935,7 +1000,7 @@ private:
     }
 
     Value call_setness_bp(const Value& set, const Value& value, const token& diag) {
-        if (set == Set()) {
+        if (const Value* st = get_registered_item("set_trait"); st && set == *st) {
             return Value::make_bool(has_setness(value));
         }
 
@@ -944,8 +1009,11 @@ private:
         }
 
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
-            const auto& setness = impl->asSetnessImpl();
-            return call_callable_with_values(*setness.bp, {set, value}, diag, {false, false});
+            const auto& fields = *impl->asStructInstance().fields;
+            auto found = fields.find("belongs");
+            if (found != fields.end() && found->second.isLambda()) {
+                return call_callable_with_values(found->second, {set, value}, diag, {false, false});
+            }
         }
 
         if (!set.getType()->hasSetness()) {
@@ -955,7 +1023,7 @@ private:
     }
 
     Value call_setness_br(const Value& set, const Value& lc, const token& diag) {
-        if (set == Set()) {
+        if (const Value* st = get_registered_item("set_trait"); st && set == *st) {
             return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
         }
 
@@ -964,8 +1032,11 @@ private:
         }
 
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
-            const auto& setness = impl->asSetnessImpl();
-            return call_callable_with_values(*setness.br, {set, lc}, diag, {false, false});
+            const auto& fields = *impl->asStructInstance().fields;
+            auto found = fields.find("belongs_approx");
+            if (found != fields.end() && found->second.isLambda()) {
+                return call_callable_with_values(found->second, {set, lc}, diag, {false, false});
+            }
         }
 
         if (!set.getType()->hasSetness()) {
@@ -985,8 +1056,11 @@ private:
                 if (left_res.asBool()) return Value::make_bool(true);
                 return belongs_to(*comp.right, value, diag);
             } else {
-                if (!left_res.asBool()) return Value::make_bool(false);
-                return belongs_to(*comp.right, value, diag);
+                if (!left_res.asBool()) {
+                    return Value::make_bool(false);
+                }
+                Value right_res = belongs_to(*comp.right, value, diag);
+                return right_res;
             }
         }
 
@@ -1282,7 +1356,7 @@ private:
         if (is_name(name, "true_val")) return True();
         if (is_name(name, "false_val")) return False();
         if (is_name(name, "undecided_val")) return UndecidedVal();
-        if (is_name(name, "set_trait")) return Set();
+        if (is_name(name, "register_func")) return Value::make_host_function(Value::HostFunction::Register);
         if (is_name(name, "heap_allocation_type")) return Value::make_type(getHeapAllocationType());
         if (is_name(name, "heap_create_func")) return Value::make_host_function(Value::HostFunction::HeapCreate);
         if (is_name(name, "heap_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
@@ -1452,6 +1526,18 @@ private:
 
     Value call_host_function(Value::HostFunction fn, const std::vector<Argument>& args, const token& diag) {
         switch (fn) {
+            case Value::HostFunction::Register: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`register expects two positional arguments");
+                }
+                Value key_val = evaluate(*args[0].value);
+                if (!key_val.isString()) {
+                    fail(diag, "First argument to `register must be a string");
+                }
+                Value value = evaluate(*args[1].value);
+                registered_items_[key_val.asString()] = value;
+                return VoidVal();
+            }
             case Value::HostFunction::Print: {
                 if (args.size() != 1 || args.front().name.has_value()) {
                     fail(diag, "`print expects one positional argument");
@@ -1561,16 +1647,10 @@ private:
                     fail(diag, "`interface expects one positional argument");
                 }
                 Value trait = evaluate(*args.front().value);
-                if (trait == Set()) {
-                    return Value::make_host_function(Value::HostFunction::SetnessConstructor);
-                }
                 if (trait.isTrait()) {
                     return trait.asTraitInterface();
                 }
                 fail(diag, "`interface expects a trait");
-            }
-            case Value::HostFunction::SetnessConstructor: {
-                return call_setness_constructor(args, diag);
             }
             case Value::HostFunction::Implement: {
                 const Argument* trait_arg = nullptr;
@@ -1614,25 +1694,16 @@ private:
 
                 Value trait = evaluate(*trait_arg->value);
                 Value on = evaluate(*on_arg->value);
-                if (trait != Set() && !trait.isTrait()) {
+                if (!trait.isTrait()) {
                     fail(*trait_arg->name, "`implement trait must be a trait");
                 }
                 if (!on.isType()) {
                     fail(*on_arg->name, "`implement on must be a type value");
                 }
 
-                Value impl;
-                if (trait == Set()) {
-                    Value interface = Value::make_host_function(Value::HostFunction::SetnessConstructor);
-                    impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
-                    if (!impl.isSetnessImpl()) {
-                        fail(*impl_arg->name, "`implement impl must be a Setness implementation");
-                    }
-                } else {
-                    Value interface = trait.asTraitInterface();
-                    impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
-                    enforce_constraint(interface, impl, *impl_arg->name);
-                }
+                Value interface = trait.asTraitInterface();
+                Value impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
+                enforce_constraint(interface, impl, *impl_arg->name);
 
                 if (registered_impl_for(trait, on.asType()) != nullptr) {
                     fail(*on_arg->name, "Duplicate implementation for trait/on pair");
@@ -1854,16 +1925,8 @@ private:
         return type_ptr;
     }
 
-    bool is_setness_constructor(const Value& expected) const {
-        return expected.isHostFunction() && expected.asHostFunction() == Value::HostFunction::SetnessConstructor;
-    }
-
     Value evaluate_with_expected_type(const Expr& expr, const Value& expected, const token& diag) {
         if (const auto* literal = dynamic_cast<const AnonymousStructLiteralExpr*>(&expr)) {
-            if (is_setness_constructor(expected)) {
-                return call_setness_constructor(literal->fields, literal->diagnostic_token);
-            }
-
             std::shared_ptr<const Type> type_ptr = direct_struct_type_from_constraint(expected);
             if (type_ptr == nullptr) {
                 fail(literal->diagnostic_token, "Anonymous struct literal requires a concrete struct context");
@@ -1872,48 +1935,6 @@ private:
             return call_struct_constructor(type_ptr, struct_t, literal->fields, literal->diagnostic_token);
         }
         return evaluate(expr);
-    }
-
-    Value call_setness_constructor(const std::vector<Argument>& args, const token& diag) {
-        const Argument* bp_arg = nullptr;
-        const Argument* br_arg = nullptr;
-        for (const auto& arg : args) {
-            if (!arg.name.has_value()) {
-                fail(diag, "Setness expects named arguments");
-            }
-
-            std::string name = to_key(arg.name->lexeme);
-            if (name == "bp") {
-                if (bp_arg != nullptr) {
-                    fail(*arg.name, "Duplicate argument for parameter 'bp'");
-                }
-                bp_arg = &arg;
-            } else if (name == "br") {
-                if (br_arg != nullptr) {
-                    fail(*arg.name, "Duplicate argument for parameter 'br'");
-                }
-                br_arg = &arg;
-            } else {
-                fail(*arg.name, "Unknown Setness parameter '" + name + "'");
-            }
-        }
-
-        if (bp_arg == nullptr) {
-            fail(diag, "Missing argument for parameter 'bp'");
-        }
-        if (br_arg == nullptr) {
-            fail(diag, "Missing argument for parameter 'br'");
-        }
-
-        Value bp = evaluate(*bp_arg->value);
-        Value br = evaluate(*br_arg->value);
-        if (!bp.isLambda()) {
-            fail(*bp_arg->name, "Setness bp must be a function");
-        }
-        if (!br.isLambda()) {
-            fail(*br_arg->name, "Setness br must be a function");
-        }
-        return Value::make_setness_impl(std::move(bp), std::move(br));
     }
 
     Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const StructType* struct_t, const std::vector<Argument>& args, const token& diag) {
@@ -2141,10 +2162,10 @@ private:
                 result_ = value_arithmetic(left, right, expr.op, expr.diagnostic_token);
                 return;
             case BinaryOp::Eq:
-                result_ = Value::make_bool(left == right);
+                result_ = Value::make_bool(value_equality(left, right, expr.diagnostic_token));
                 return;
             case BinaryOp::Neq:
-                result_ = Value::make_bool(left != right);
+                result_ = Value::make_bool(!value_equality(left, right, expr.diagnostic_token));
                 return;
             case BinaryOp::Lt:
                 result_ = Value::make_bool(value_compare_less(left, right, expr.diagnostic_token));
@@ -2441,6 +2462,11 @@ private:
         result_ = Value::make_lambda(expr, capture_scopes());
     }
 
+    void visit(const SignatureExpr& expr) override {
+        auto type = std::make_shared<SignatureType>(expr.parameters.size());
+        result_ = Value::make_type(std::move(type));
+    }
+
     void visit(const BlockExpr& expr) override {
         scopes_.push_back(std::make_shared<Scope>());
         bool block_scope_active = true;
@@ -2498,31 +2524,101 @@ private:
             return;
         }
 
+        if (const Value* callable_trait = get_registered_item("callable_trait")) {
+            if (const Value* impl = registered_impl_for(*callable_trait, callee.getType())) {
+                if (impl->isStructInstance()) {
+                    const auto& fields = *impl->asStructInstance().fields;
+                    auto invoke_it = fields.find("invoke");
+                    if (invoke_it != fields.end() && invoke_it->second.isLambda()) {
+                        const auto& invoke_lambda = invoke_it->second.asLambdaTag();
+                        const LambdaExpr& lambda = *invoke_lambda.lambda;
+                        
+                        // Check if arguments are named vs positional
+                        bool has_named = false;
+                        for (const auto& arg : expr.args) {
+                            if (arg.name.has_value()) has_named = true;
+                        }
+                        if (has_named) {
+                            fail(expr.diagnostic_token, "Named arguments not yet supported for userland Callables");
+                        }
+                        
+                        if (1 + expr.args.size() != lambda.parameters.size()) {
+                            fail(expr.diagnostic_token, "Callable invoke arity mismatch: expected " + 
+                                std::to_string(lambda.parameters.size() - 1) + " args, got " + std::to_string(expr.args.size()));
+                        }
+                        
+                        std::vector<Value> arg_values;
+                        arg_values.reserve(lambda.parameters.size());
+                        arg_values.push_back(callee);
+                        
+                        for (size_t i = 0; i < expr.args.size(); ++i) {
+                            Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(expr.args[i].value.get()) != nullptr
+                                ? evaluate_lambda_parameter_bound(invoke_lambda, lambda.parameters[i + 1])
+                                : VoidVal();
+                            arg_values.push_back(evaluate_with_expected_type(*expr.args[i].value, expected, expr.diagnostic_token));
+                        }
+                        
+                        result_ = call_lambda_with_values(invoke_lambda, std::move(arg_values), expr.diagnostic_token);
+                        return;
+                    }
+                }
+            }
+        }
+
         fail(expr.diagnostic_token, "Value is not callable: " + callee.toString());
     }
 
     void visit(const IndexExpr& expr) override {
         Value target = evaluate(*expr.target);
-        if (!target.isList()) {
-            fail(expr.diagnostic_token, "Only list indexing is supported for now");
+        if (!target.isList() && !target.isString()) {
+            fail(expr.diagnostic_token, "Only list and string indexing/slicing are supported");
         }
         if (expr.args.size() != 1 || expr.args[0].name.has_value()) {
             fail(expr.diagnostic_token, "List indexing requires exactly one positional argument");
         }
         Value index_val = evaluate(*expr.args[0].value);
-        if (!index_val.isInt()) {
-            fail(expr.diagnostic_token, "List index must be an integer");
+        if (index_val.isInt()) {
+            if (!target.isList()) {
+                fail(expr.diagnostic_token, "Only list indexing is supported for integer indices");
+            }
+            BigInt index_big = index_val.asInt();
+            if (!index_big.fits_int64()) {
+                fail(expr.diagnostic_token, "List index is out of range for standard indexing");
+            }
+            int64_t index = index_big.to_int64();
+            const auto& list_elems = target.asList();
+            if (index < 0 || index >= static_cast<int64_t>(list_elems.size())) {
+                fail(expr.diagnostic_token, "List index out of bounds: " + std::to_string(index));
+            }
+            result_ = list_elems[index];
+            return;
+        } else if (index_val.isRange()) {
+            if (!target.isList() && !target.isString()) {
+                fail(expr.diagnostic_token, "Only list and string slicing are supported");
+            }
+            const auto& range = index_val.asRange();
+            if (!range.start->isInt() || !range.end->isInt()) {
+                fail(expr.diagnostic_token, "Slice range must have integer bounds");
+            }
+            int64_t start = range.start->asInt().to_int64();
+            int64_t end = range.end->asInt().to_int64();
+            if (range.inclusive_end) {
+                end++;
+            }
+            int64_t size = target.isList() ? target.asList().size() : target.asString().size();
+            if (start < 0 || end < start || end > size) {
+                fail(expr.diagnostic_token, "Slice range out of bounds");
+            }
+            if (target.isList()) {
+                const auto& list_elems = target.asList();
+                std::vector<Value> sliced_elems(list_elems.begin() + start, list_elems.begin() + end);
+                result_ = Value::make_list(std::move(sliced_elems));
+            } else {
+                result_ = Value::make_string(target.asString().substr(start, end - start));
+            }
+            return;
         }
-        BigInt index_big = index_val.asInt();
-        if (!index_big.fits_int64()) {
-            fail(expr.diagnostic_token, "List index is out of range for standard indexing");
-        }
-        int64_t index = index_big.to_int64();
-        const auto& list_elems = target.asList();
-        if (index < 0 || index >= static_cast<int64_t>(list_elems.size())) {
-            fail(expr.diagnostic_token, "List index out of bounds: " + std::to_string(index));
-        }
-        result_ = list_elems[index];
+        fail(expr.diagnostic_token, "List index must be an integer or a range");
     }
 
 

@@ -13,11 +13,11 @@ for (c ∈ rng) do {
 `expect('f' ∈ 'a'..='f'); // inclusive
 `expect('z' ∉ 'a'..'f');
 
-// 3. Generalizing to User Structs via the `orderable` trait
+// 3. Generalizing to User Structs via the `Orderable` trait
 let Version = struct { major: int, minor: int };
 
 `implement(
-    trait=`orderable,
+    trait=`Orderable,
     on=Version,
     impl={
         less = (this, other) => 
