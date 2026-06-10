@@ -109,8 +109,8 @@ let pub `Set = `trait(struct {
 register("set_trait", `Set);
 
 let pub `Callable = `trait(struct {
-    param_space: `pure_fn ∩ (self)->`Set,
-    result_space: `pure_fn ∩ (self, params: `Set)->`Set,
+    param_space: `pure_fn ∩ (self)->`type,
+    result_space: `pure_fn ∩ (self, params: `Set)->`type,
     invoke: `function,
 });
 
