@@ -1,0 +1,16 @@
+
+
+let MyBox = struct {
+    val: int
+};
+
+`implement(
+    trait=`Dereferenceable,
+    on=MyBox,
+    impl={
+        deref = (self) => self.val
+    }
+);
+
+let b = MyBox(val=42);
+`expect(*b == 42);

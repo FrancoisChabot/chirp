@@ -117,3 +117,8 @@ let pub `Callable = `trait(struct {
 // N.B. registering "callable_trait" will take care of assigning the lambda, struct, etc. types to it, as binding them 
 // here would be recursively akward (we've been calling functions already...)
 register("callable_trait", `Callable);
+
+let pub `Dereferenceable = `trait(struct {
+    deref: `function
+});
+register("dereferenceable_trait", `Dereferenceable);

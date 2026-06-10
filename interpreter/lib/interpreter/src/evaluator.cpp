@@ -2362,6 +2362,18 @@ private:
                     }
                     result_ = cv;
                 } else {
+                    if (const Value* deref_trait = get_registered_item("dereferenceable_trait")) {
+                        if (const Value* impl = registered_impl_for(*deref_trait, right.getType())) {
+                            if (impl->isStructInstance()) {
+                                const auto& fields = *impl->asStructInstance().fields;
+                                auto deref_it = fields.find("deref");
+                                if (deref_it != fields.end() && deref_it->second.isLambda()) {
+                                    result_ = call_callable_with_values(deref_it->second, {right}, expr.diagnostic_token, {false});
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     fail(expr.diagnostic_token, "Cannot dereference non-pointer value");
                 }
                 return;

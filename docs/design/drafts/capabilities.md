@@ -297,7 +297,7 @@ Examples:
 
 - `` `set `` powers `∈`, constraints, pattern matching, set operators, and
   `fc`/`lc` reasoning.
-- A future yield trait can power call syntax on non-function values.
+- `` `callable `` powers call syntax on non-function values.
 - A future layout trait can participate in calcification and machine
   representation.
 
