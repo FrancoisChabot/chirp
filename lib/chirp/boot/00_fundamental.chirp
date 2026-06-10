@@ -122,3 +122,9 @@ let pub `Dereferenceable = `trait(struct {
     deref: `function
 });
 register("dereferenceable_trait", `Dereferenceable);
+
+let pub `DereferenceableMut = `trait(struct {
+    deref_assign: `function
+});
+register("dereferenceable_mut_trait", `DereferenceableMut);
+

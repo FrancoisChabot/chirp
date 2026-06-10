@@ -2792,6 +2792,8 @@ private:
         std::shared_ptr<Binding> binding;
         bool is_heap_assignment = false;
         std::shared_ptr<Value::HeapAllocationState> heap_state;
+        const Value* trait_deref_assign_lambda = nullptr;
+        Value trait_ref_val;
 
         if (const auto* target = dynamic_cast<const IdentifierExpr*>(stmt.target.get())) {
             binding = lookup_binding(target->name, target->diagnostic_token);
@@ -2814,7 +2816,21 @@ private:
                     }
                     binding = ref_val.asBinding();
                 } else {
-                    fail(stmt.diagnostic_token, "Cannot assign to dereference of non-pointer value");
+                    if (const Value* deref_mut_trait = get_registered_item("dereferenceable_mut_trait")) {
+                        if (const Value* impl = registered_impl_for(*deref_mut_trait, ref_val.getType())) {
+                            if (impl->isStructInstance()) {
+                                const auto& fields = *impl->asStructInstance().fields;
+                                auto deref_assign_it = fields.find("deref_assign");
+                                if (deref_assign_it != fields.end() && deref_assign_it->second.isLambda()) {
+                                    trait_deref_assign_lambda = &deref_assign_it->second;
+                                    trait_ref_val = ref_val;
+                                }
+                            }
+                        }
+                    }
+                    if (!trait_deref_assign_lambda) {
+                        fail(stmt.diagnostic_token, "Cannot assign to dereference of non-pointer value");
+                    }
                 }
             } else {
                 fail(stmt.diagnostic_token, "Unsupported assignment target");
@@ -2823,11 +2839,30 @@ private:
             fail(stmt.diagnostic_token, "Only identifier and dereference assignment are supported");
         }
 
-        Value constraint = is_heap_assignment ? VoidVal() : binding->getFC();
+        Value constraint = is_heap_assignment ? VoidVal() : (trait_deref_assign_lambda ? VoidVal() : binding->getFC());
         Value value = evaluate_with_expected_type(*stmt.value, constraint, stmt.diagnostic_token);
 
         try {
-            Value current_val = is_heap_assignment ? *heap_state->stored : binding->getCV();
+            Value current_val;
+            if (stmt.op.type != token_type::equal) {
+                if (is_heap_assignment) {
+                    current_val = *heap_state->stored;
+                } else if (trait_deref_assign_lambda) {
+                    if (const Value* deref_trait = get_registered_item("dereferenceable_trait")) {
+                        if (const Value* read_impl = registered_impl_for(*deref_trait, trait_ref_val.getType())) {
+                            if (read_impl->isStructInstance()) {
+                                const auto& read_fields = *read_impl->asStructInstance().fields;
+                                auto deref_it = read_fields.find("deref");
+                                if (deref_it != read_fields.end() && deref_it->second.isLambda()) {
+                                    current_val = call_callable_with_values(deref_it->second, {trait_ref_val}, stmt.diagnostic_token, {false});
+                                } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
+                            } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
+                        } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
+                    } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
+                } else {
+                    current_val = binding->getCV();
+                }
+            }
             switch (stmt.op.type) {
                 case token_type::equal:
                     break;
@@ -2851,6 +2886,11 @@ private:
             }
         } catch (const std::out_of_range& e) {
             fail(stmt.op, e.what());
+        }
+
+        if (trait_deref_assign_lambda) {
+            call_callable_with_values(*trait_deref_assign_lambda, {trait_ref_val, value}, stmt.diagnostic_token, {false, false});
+            return;
         }
 
         if (is_heap_assignment) {

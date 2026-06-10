@@ -1,0 +1,32 @@
+
+let MyMutBox = struct {
+    ptr: ->mut int
+};
+
+`implement(
+    trait=`DereferenceableMut,
+    on=MyMutBox,
+    impl=`interface(`DereferenceableMut)(
+        deref_assign = (self, new_val) => do { *(self.ptr) = new_val; }
+    )
+);
+
+`implement(
+    trait=`Dereferenceable,
+    on=MyMutBox,
+    impl=`interface(`Dereferenceable)(
+        deref = (self) => *(self.ptr)
+    )
+);
+
+let mut val : int = 42;
+let b = MyMutBox(ptr=(&mut val));
+
+*b = 100;
+`expect(val == 100);
+
+*b += 50;
+`expect(val == 150);
+
+*b -= 10;
+`expect(val == 140);
