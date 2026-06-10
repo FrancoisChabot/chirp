@@ -1,0 +1,22 @@
+`expect_exit(0);
+
+let Token = `mint();
+
+`implement(
+    trait=`Callable,
+    on=`typeof(Token),
+    impl={
+        param_space = (this) => `any,
+        result_space = (this, params) => `any,
+        invoke = (this, x, y) => x - y
+    }
+);
+
+let result = Token(y=2, x=10);
+`expect(result == 8);
+
+let result2 = Token(10, 2);
+`expect(result2 == 8);
+
+let result3 = Token(y=20, x=30);
+`expect(result3 == 10);

@@ -2605,29 +2605,65 @@ private:
                         const auto& invoke_lambda = invoke_it->second.asLambdaTag();
                         const LambdaExpr& lambda = *invoke_lambda.lambda;
                         
-                        // Check if arguments are named vs positional
                         bool has_named = false;
+                        bool has_positional = false;
                         for (const auto& arg : expr.args) {
-                            if (arg.name.has_value()) has_named = true;
+                            has_named = has_named || arg.name.has_value();
+                            has_positional = has_positional || !arg.name.has_value();
                         }
+
+                        if (has_named && has_positional) {
+                            fail(expr.diagnostic_token, "Cannot mix named and positional arguments");
+                        }
+
+                        std::vector<Value> arg_values(lambda.parameters.size());
+                        arg_values[0] = callee;
+
                         if (has_named) {
-                            fail(expr.diagnostic_token, "Named arguments not yet supported for userland Callables");
-                        }
-                        
-                        if (1 + expr.args.size() != lambda.parameters.size()) {
-                            fail(expr.diagnostic_token, "Callable invoke arity mismatch: expected " + 
-                                std::to_string(lambda.parameters.size() - 1) + " args, got " + std::to_string(expr.args.size()));
-                        }
-                        
-                        std::vector<Value> arg_values;
-                        arg_values.reserve(lambda.parameters.size());
-                        arg_values.push_back(callee);
-                        
-                        for (size_t i = 0; i < expr.args.size(); ++i) {
-                            Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(expr.args[i].value.get()) != nullptr
-                                ? evaluate_lambda_parameter_bound(invoke_lambda, lambda.parameters[i + 1])
-                                : VoidVal();
-                            arg_values.push_back(evaluate_with_expected_type(*expr.args[i].value, expected, expr.diagnostic_token));
+                            std::unordered_map<std::string, size_t> parameter_indices;
+                            for (size_t i = 1; i < lambda.parameters.size(); ++i) {
+                                parameter_indices.emplace(to_key(lambda.parameters[i].name.lexeme), i);
+                            }
+
+                            std::vector<bool> provided(lambda.parameters.size(), false);
+                            provided[0] = true;
+
+                            for (const auto& arg : expr.args) {
+                                std::string name = to_key(arg.name->lexeme);
+                                auto found = parameter_indices.find(name);
+                                if (found == parameter_indices.end()) {
+                                    fail(*arg.name, "Unknown parameter '" + name + "'");
+                                }
+
+                                size_t index = found->second;
+                                if (provided[index]) {
+                                    fail(*arg.name, "Duplicate argument for parameter '" + name + "'");
+                                }
+
+                                Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(arg.value.get()) != nullptr
+                                    ? evaluate_lambda_parameter_bound(invoke_lambda, lambda.parameters[index])
+                                    : VoidVal();
+                                arg_values[index] = evaluate_with_expected_type(*arg.value, expected, *arg.name);
+                                provided[index] = true;
+                            }
+
+                            for (size_t i = 1; i < lambda.parameters.size(); ++i) {
+                                if (!provided[i]) {
+                                    fail(expr.diagnostic_token, "Missing argument for parameter '" + to_key(lambda.parameters[i].name.lexeme) + "'");
+                                }
+                            }
+                        } else {
+                            if (1 + expr.args.size() != lambda.parameters.size()) {
+                                fail(expr.diagnostic_token, "Callable invoke arity mismatch: expected " + 
+                                    std::to_string(lambda.parameters.size() - 1) + " args, got " + std::to_string(expr.args.size()));
+                            }
+                            
+                            for (size_t i = 0; i < expr.args.size(); ++i) {
+                                Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(expr.args[i].value.get()) != nullptr
+                                    ? evaluate_lambda_parameter_bound(invoke_lambda, lambda.parameters[i + 1])
+                                    : VoidVal();
+                                arg_values[i + 1] = evaluate_with_expected_type(*expr.args[i].value, expected, expr.diagnostic_token);
+                            }
                         }
                         
                         result_ = call_lambda_with_values(invoke_lambda, std::move(arg_values), expr.diagnostic_token);
