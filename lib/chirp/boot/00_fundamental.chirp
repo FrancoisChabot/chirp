@@ -19,6 +19,12 @@
 // - Types are intrinsic properties of values. A 3 is an integer, not matter what 
 // the constraint of the variable it's assigned to.
 
+// During bootstrap, the interpreter still knows how to parse and construct
+// literals, structs, lambdas, intersections, and comprehensions. What this file
+// replaces is not their syntax, but the public semantic protocols used for
+// set membership and call syntax after the corresponding traits are registered.
+
+
 // --------- The Implicit ---------
 // N.B.`import is the ONLY identifier provided directly by the interpreter, everything else is derived from it.
 // It's the exact same `import() user-side code uses for modules or FFI, just with a special format here.
@@ -28,69 +34,97 @@
 // Only needed during bootstrap, this is used to register primitives in the interpreter
 let register = `import("register_func", "__chirp_boot");
 
+// ------------------ Values ------------------ //
+// Checks if two values are the same.
+let pub `same = `import("values.same_func", "__chirp_boot");
+
 // ------------------ Typing ------------------ //
 
 // Get the type of a value
 // - Types implements the Set trait such that all of its values belong to it.
-let pub `typeof = `import("typeof_func", "__chirp_boot");
+let pub `typeof = `import("types.typeof_func", "__chirp_boot");
 
-// Mint a new nominal type and returns its value. Use typeof() to reclaim the type.
-let pub `mint = `import("mint_func", "__chirp_boot");
+// Creates a new type with n distinct values and returns a struct with two members:
+// type: `type
+// values: type[]
+// The order of the values in the array doesn't mean anything.
+// mint_finite(0) is valid and returns a type for which no value exist
+let pub `mint_finite = `import("types.mint_func", "__chirp_boot");
 
-// Invoke a lambda with a struct or list of arguments
-let pub `invoke = `import("invoke_func", "__chirp_boot");
-
-// Get the parameter struct type of a function
-let pub `function_args = `import("function_args_func", "__chirp_boot");
-
-// ------------------ Interfaces ------------------ //
-
-// General purpose "get the interface of this thing". Right now, this applies to: 
-// - traits
-// - modules
-// - structs
-let pub `interface = `import("interface_func", "__chirp_boot");
-
-
+// Checks if a type is a struct (TODO: Maybe introduce the notion of "type categories" if we ever need more of these)
+let pub `is_struct = `import("types.is_struct_func", "__chirp_boot");
 
 // ------------------ Traits ------------------ //
 
-// Creates a trait (takes the trait interface in the form of a struct value as parameter)
-// - Traits implement the Set trait such that every value of a type that implements that trait is a member of it.
-let pub `trait = `import("trait_func", "__chirp_boot");
+// Creates a trait (taking the trait interface in the form of a struct type as parameter)
+let pub `make_trait = `import("traits.make_func", "__chirp_boot");
 
 // Implements a trait for a type.
-let pub `implement = `import("implement_func", "__chirp_boot");
+let pub `implement = `import("traits.implement_func", "__chirp_boot");
 
+// Checks if a trait has a registered implementation for a given type
+let pub `implements = `import("traits.implements_func", "__chirp_boot");
 
+// Gets the implementation of a trait for a given type
+let pub `implementation = `import("traits.implementation_func", "__chirp_boot");
 
 // ------------------ Fundamental values ------------------ //
-let pub final true = `import("true_val", "__chirp_boot");
-let pub final false = `import("false_val", "__chirp_boot");
+// N.B. `undecided` is deliberately NOT a bool.
+// It participates in belonging heuristics, not ordinary boolean control flow.
 
-// N.B. has a different type from true and false.
-// This is important because if(v) will error-out if v is not constrained to a boolean.
-// if a computation can be {true, false, undecided}, you have to explicitly handle the undecided case.
-// e.g. match(v) {true => ..., false => ..., undecided => ...}
-let pub final undecided = `import("undecided_val", "__chirp_boot"); 
+let bool_mint = `mint_finite(2);
+let pub final true = bool_mint.values[0];
+let pub final false = bool_mint.values[1];
+let pub final bool = bool_mint.type;
 
+let pub final undecided = `mint_finite(1).values[0];
 
+register("true_val", true);
+register("false_val", false);
+register("undecided_val", undecided);
 
-// ------------------ Computation ------------------ //
-let pub `function = `typeof(() => true);
+let pub final `type = `typeof(bool);
 
-let pub `is_pure = `import("is_pure_func", "__chirp_boot");
+let pub `struct_type = {v: `type | `is_struct(v)};
 
-// N.B. The ideal definition would be { v : `Callable | `is_pure(v) };
-// However, that runs into a circular dependency.
-// Instead we take for granted that the abstract evaluation of `is_pure()
-// will close the loop once we register "callable_trait"
+// ------------------ Computation, part 1 ------------------ //
+
+// Invoke a lambda with a struct as argument list
+let pub `invoke = `import("compute.invoke_func", "__chirp_boot");
+
+// N.B. These are only needed during bootstraping. Users can and should get those via the Callable trait
+let lambda_param_space = `import("compute.lambda_param_space", "__chirp_boot");
+let lambda_result_space = `import("compute.lambda_result_space", "__chirp_boot");
+
+// Interpreter-assisted verification that a callable has no side-effects 
+let pub `is_pure = `import("compute.is_pure_func", "__chirp_boot");
 let pub `pure_fn = { v | `is_pure(v) };
 
 // ------------------ Sets ------------------ //
-let pub `Set = `trait(struct {
+// Returns a set of the types possibly present in a given set.
+// - Membership queries against the resulting set are always decidable:
+//   its belongs_range never contains `undecided`.
+// - It never omits possible types, but it may overestimate.
+// - The resulting set is not necessarily enumerable.
+// - The resulting set is always a subset of `type`.
+let pub `types_in_set = `import("set.types_in_set_func", "__chirp_boot");
+
+// Returns wether a set is enumerable or not.
+let pub `is_enumerable = `import("set.enumerable_func", "__chirp_boot");
+
+
+// N.B. The interpreter has specific expectations as far as this interface is concerned
+// So the cleaner stipulation here would be let pub `Set = `make_trait(`import("traits.set.interface", "__chirp_boot" ));
+// However, we instead inline an equivalent struct for legibility reasons
+let pub `Set = `make_trait(struct {
+    // Checks if a value v belongs to this set.
+    // - belongs() returning a value that was not in belongs_range() is UB
+    belongs: `pure_fn ∩ (self, v) -> {true, false, undecided},
+
     // Takes a set of candidate values, and returns the set of possible results.
-    belongs_approx: `pure_fn ∩ (self, candidates: `Set) -> {
+    // N.B. Set literals will be assigned this trait as soon as it's registered
+    // So this is fine, as long as we register the trait before implementing it anywhere.
+    belongs_range: `pure_fn ∩ (self, candidates: `Set) -> {
         {true}, 
         {false}, 
         {undecided},
@@ -98,33 +132,137 @@ let pub `Set = `trait(struct {
         {false, undecided},
         {true, false},
         {true, false, undecided}
-    },
-    
-
-    // Checks if a value v is a member of this set.
-    // - belongs() returning a value that was not in belongs_approx() is UB
-    belongs: `pure_fn ∩ (self, v) -> {true, false, undecided}
+    }
 });
 
-register("set_trait", `Set);
+// This will *replace* the interpreter's definition of what is eligible for set semantics.
+// Up until this point, only set literals and union/intersections on them are sets.
+register("traits.set", `Set);
 
-let pub `Callable = `trait(struct {
-    param_space: `pure_fn ∩ (self)->`type,
-    result_space: `pure_fn ∩ (self, params: `Set)->`type,
-    invoke: `function,
+// --------- Lattice edges ---------
+let pub final `any = `mint_finite(1).values[0];
+let pub final `empty = `mint_finite(1).values[0];
+
+`implement(
+    trait=`Set,
+    on=`typeof(`any),
+    impl={
+        belongs = (this, v) => true,
+        belongs_range = (this, candidates: `Set) => {true}
+    }
+);
+
+`implement(
+    trait=`Set,
+    on=`typeof(`empty),
+    impl={
+        belongs = (this, v) => false,
+        belongs_range = (this, candidates: `Set) => {false}
+    }
+);
+
+// --------- Define trait and type setness ---------
+
+let pub `trait = `typeof(`Set);
+
+// traits behave as sets that contain all values whose type implements that trait
+`implement(
+    trait=`Set,
+    on=`trait,
+    impl={
+        belongs=(self: `trait, v) => `implements(self, `typeof(v))
+
+        // belongs always resolve to true or false, so undecided doesn't need to show up
+        belongs_range=(self: `trait, candidates: `Set) => do {
+            let ts = `types_in_set(candidates);
+
+            if(`is_enumerable(ts)) {
+                let mut saw_true : bool = false;
+                let mut saw_false : bool = false;
+
+                for(t ∈ ts) {
+                    if(`implements(self, t)) {
+                        saw_true = true;
+                    } else {
+                        saw_false = true;
+                    }
+                }
+
+                if(saw_true && saw_false) {true, false}
+                else if(saw_true) {true}
+                else {false}
+            } else {true, false}
+            // TODO: There might be a way to refine this for some non-enumeratable sets...
+        }, 
+    }
+)
+
+// types behave as sets that contain all values of that type
+`implement(
+    trait=`Set,
+    on=`type,
+    impl={
+        belongs=(self: `type, v) => `same(`typeof(v), self);
+
+        // belongs always resolve to true or false, so undecided doesn't need to show up
+        belongs_range=(self: `type, candidates: `Set) => do {
+            let ts = `types_in_set(candidates);
+
+            if(`same(ts, {self})) {true}
+            else if(!(self ∈ ts)) {false}
+            else {true, false}
+        }
+    }
+)
+
+
+// ------------------ Computation, part 2 ------------------ //
+
+// The core computation primitive.
+let pub `lambda = `typeof((args) => true);
+
+// N.B. The interpreter has specific expectations as far as this interface is concerned
+// So the cleaner stipulation here would be let pub `Callable = `make_trait(`import("traits.callable.interface", "__chirp_boot" ));
+// However, we instead inline an equivalent struct for legibility reasons
+let pub `Callable = `make_trait(struct {
+    param_space: `pure_fn ∩ (self)-> `struct_type,
+    result_space: `pure_fn ∩ (self, params: `Set)->`Set,
+
+    // IMPORTANT:
+    // if args ∈ param_space(self), then
+    // invoke(self, args) ∈ result_space(self, {args})
+    invoke: (self, params)->`any,
 });
 
-// N.B. registering "callable_trait" will take care of assigning the lambda, struct, etc. types to it, as binding them 
-// here would be recursively akward (we've been calling functions already...)
-register("callable_trait", `Callable);
+// Make sure lambdas are formally callables.
+`implement(
+    trait=`Callable,
+    on=`lambda,
+    impl={
+        param_space = (self: `lambda) => lambda_param_space(self),
+        result_space = (self: `lambda, params) => lambda_result_space(self, params),
+        invoke= (self: `lambda, params) => `invoke(self, params)
+    }
+);
 
-let pub `Dereferenceable = `trait(struct {
-    deref: `function
-});
-register("dereferenceable_trait", `Dereferenceable);
+let construction_args = `import("types.construction_args", "__chirp_boot");
+let construct = `import("types.construct", "__chirp_boot");
 
-let pub `DereferenceableMut = `trait(struct {
-    deref_assign: `function
-});
-register("dereferenceable_mut_trait", `DereferenceableMut);
+// Make types constructors (very important for structs)
+`implement(
+    trait=`Callable,
+    on=`type,
+    impl={
+        param_space = (self: `type) => construction_args(self),
+
+        // self is a type, and types implement Set as the set of their instances.
+        // Therefore, the result space of invoking a type is the type itself.
+        result_space = (self: `type, params) => self,
+        invoke= (self: `type, params) => construct(self, params)
+    }
+);
+
+// This will *replace* the interpreter's definition of what's eligible for call syntax.
+// Up until this point, it's hardcoded to only accept lambdas.
+register("traits.callable", `Callable);
 
