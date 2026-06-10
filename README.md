@@ -70,9 +70,6 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 Fully support all of Chirp's semantics in the interpreter's VM. The core syntax is there, but there are still some important pieces missing:
 
-- structs
-- references/pointers
-- modules
 - C-ABI FFI
 
 ### Roadmap

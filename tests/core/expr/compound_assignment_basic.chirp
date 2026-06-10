@@ -1,0 +1,18 @@
+`expect_exit(0);
+
+let mut x = 10;
+
+x += 5;
+`expect(x == 15);
+
+x -= 3;
+`expect(x == 12);
+
+x *= 2;
+`expect(x == 24);
+
+x /= 4;
+`expect(x == 6);
+
+x %= 4;
+`expect(x == 2);

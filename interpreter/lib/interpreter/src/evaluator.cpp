@@ -2820,26 +2820,20 @@ private:
                 case token_type::equal:
                     break;
                 case token_type::plus_equal:
-                    value = Value::make_int(as_int(current_val, stmt.op) + as_int(value, stmt.op));
+                    value = value_arithmetic(current_val, value, BinaryOp::Add, stmt.op);
                     break;
                 case token_type::minus_equal:
-                    value = Value::make_int(as_int(current_val, stmt.op) - as_int(value, stmt.op));
+                    value = value_arithmetic(current_val, value, BinaryOp::Sub, stmt.op);
                     break;
                 case token_type::star_equal:
-                    value = Value::make_int(as_int(current_val, stmt.op) * as_int(value, stmt.op));
+                    value = value_arithmetic(current_val, value, BinaryOp::Mul, stmt.op);
                     break;
-                case token_type::slash_equal: {
-                    BigInt rhs = as_int(value, stmt.op);
-                    if (rhs == BigInt(0)) fail(stmt.op, "Division by zero");
-                    value = Value::make_int(as_int(current_val, stmt.op) / rhs);
+                case token_type::slash_equal:
+                    value = value_arithmetic(current_val, value, BinaryOp::Div, stmt.op);
                     break;
-                }
-                case token_type::percent_equal: {
-                    BigInt rhs = as_int(value, stmt.op);
-                    if (rhs == BigInt(0)) fail(stmt.op, "Modulo by zero");
-                    value = Value::make_int(as_int(current_val, stmt.op) % rhs);
+                case token_type::percent_equal:
+                    value = value_arithmetic(current_val, value, BinaryOp::Mod, stmt.op);
                     break;
-                }
                 default:
                     fail(stmt.op, "Unsupported assignment operator");
             }
