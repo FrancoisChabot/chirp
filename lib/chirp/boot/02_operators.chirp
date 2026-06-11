@@ -22,6 +22,11 @@
 //   comparison result is a semantic fact, not something that may vary with
 //   operand order or dispatch strategy.
 //
+// - Bootstrap v1 restriction:
+//   user-defined operator dispatch is only defined for operands of the same
+//   runtime type. Mixed-type operator semantics are intentionally out of scope
+//   for now.
+//
 // - The concrete operators derive from compare(a, b) like this:
 //
 //     a == b  <=> compare(a, b) == `equal
@@ -49,6 +54,10 @@ let pub `greater = ComparisonResult.Greater;
 let pub `unordered = ComparisonResult.Unordered;
 
 let pub final `Comparable = `make_trait(struct {
+    // Semantic contract:
+    // - compare is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
     compare: (self, other) -> ComparisonResult
 });
 register("operators.comparable", `Comparable);
@@ -57,13 +66,13 @@ register("operators.comparable.equal_val", `equal);
 register("operators.comparable.greater_val", `greater);
 register("operators.comparable.unordered_val", `unordered);
 
-// ---------- Additive ----------
+// ---------- Arthmetic ----------
 //
-// Additive protocol assumptions:
+// Arthmetic protocol assumptions:
 //
 // - For any ordered pair (a, b) that the interpreter accepts for `a + b`, the
 //   result is a semantic fact, not something that may vary with dispatch
-//   strategy.
+//   strategy. The same goes for multiplication.
 //
 // - Valid Additive implementations are expected to model an abelian additive
 //   structure. In particular:
@@ -73,44 +82,50 @@ register("operators.comparable.unordered_val", `unordered);
 //     -(-a)       <=> a
 //     -(a + b)    <=> (-a) + (-b)
 //
-// - Subtraction is not a primitive semantic fact. It is derived as:
-//
-//     a - b <=> a + (-b)
-//
-// - Therefore:
-//
-//     a + (-b) <=> a - b
+// TODO: Formally specify that the rest of expectex abelian semantics hold.
+// e.g. 
+//     a - b       <=> a + -b
+//     a * (b+c)   <=> a*b + a*c
+//     0 * a       <=> 0
+//     etc...
 let pub final `Additive = `make_trait(struct {
+    // Semantic contract:
+    // - add is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
     add: (self, other) -> `any,
+});
+let pub final `Subtractive = `make_trait(struct {
+    // Semantic contract:
+    // - sub is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
+    sub: (self, other) -> `any,
+});
+let pub final `Negatable = `make_trait(struct {
+    // Semantic contract:
+    // - neg is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
     neg: (self) -> `any
 });
-register("operators.additive", `Additive);
-
-// ---------- Multiplicative ----------
-//
-// Multiplicative protocol assumptions:
-//
-// - For any ordered pair (a, b) that the interpreter accepts for `a * b`, the
-//   result is a semantic fact, not something that may vary with dispatch
-//   strategy.
-//
-// - Valid Multiplicative implementations are expected to model lawful
-//   multiplication. In particular:
-//
-//     (a * b) * c <=> a * (b * c)
-//
-// - Commutativity is NOT implied here.
-//
-// - Operations that are culturally "multiplication-shaped" but do not fit this
-//   semantic contract should be ordinary functions rather than implementations
-//   of the `* operator.
 let pub final `Multiplicative = `make_trait(struct {
-    mul: (self, other) -> `any
+    // Semantic contract:
+    // - mul is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
+    mul: (self, other) -> `any,
 });
+
+register("operators.additive", `Additive);
+register("operators.subtractive", `Subtractive);
+register("operators.negatable", `Negatable);
 register("operators.multiplicative", `Multiplicative);
+
 
 // ---------- Divisible ----------
 //
+// - Divisible is separate from the other arithmetic traits because of ambiguities around 0
 // - For any ordered pair (a, b) that the interpreter accepts for `a / b`, the
 //   result is a semantic fact, not something that may vary with dispatch
 //   strategy.
@@ -120,6 +135,43 @@ register("operators.multiplicative", `Multiplicative);
 // - This trait does not imply the existence of a reciprocal operation, nor that
 //   division is reducible to multiplication by an inverse.
 let pub final `Divisible = `make_trait(struct {
+    // Semantic contract:
+    // - div is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
     div: (self, other) -> `any
 });
 register("operators.divisible", `Divisible);
+
+// ---------- Indexing and slicing ----------
+//
+// - Index syntax follows the same ordered-struct model as call syntax.
+//   v[x, y, z] conceptually passes an ordered index-argument struct to the
+//   relevant trait methods.
+//
+// - Individual index positions may later accept either scalar index values or
+//   slice descriptors. That remains intentionally orthogonal to this protocol.
+//
+// - Iteration is intentionally separate from indexing and is not specified here.
+let pub final `Indexable = `make_trait(struct {
+    // Semantic contract:
+    // - index_space/result_space are expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
+    index_space: `pure_fn ∩ (self) -> `struct_type,
+    result_space: `pure_fn ∩ (self, at: `Set) -> `Set,
+    read: (self, at) -> `any
+});
+
+let pub final `IndexAssignable = `make_trait(struct {
+    // Semantic contract:
+    // - index_space/value_space are expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the
+    //   interpreter can reliably reject.
+    index_space: `pure_fn ∩ (self) -> `struct_type,
+    value_space: `pure_fn ∩ (self, at: `Set) -> `Set,
+    write: (self, at, value) -> void
+});
+
+register("operators.indexable", `Indexable);
+register("operators.index_assignable", `IndexAssignable);

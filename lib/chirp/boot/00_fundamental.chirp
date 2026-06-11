@@ -40,18 +40,18 @@ let pub `same = `import("values.same_func", "__chirp_boot");
 
 // Get the type of a value
 // - Types implements the Set trait such that all of its values belong to it.
-let pub `typeof = `import("types.typeof_func", "__chirp_boot");
+let pub `type_of = `import("types.type_of_func", "__chirp_boot");
 
 // Lock down base types/values
-let pub final int = `typeof(1);
-let pub final char = `typeof('a');
-let pub final string = `typeof("");
-let pub final symbol = `typeof(#foo);
+let pub final int = `type_of(1);
+let pub final char = `type_of('a');
+let pub final string = `type_of("");
+let pub final symbol = `type_of(#foo);
 let pub final void = do {};
 
 let pub final true = `same(0, 0)
 let pub final false = `same(0, 1)
-let pub final bool = `typeof(true);
+let pub final bool = `type_of(true);
 
 // Creates a new type with n distinct values and returns a struct with two members:
 // type: `type
@@ -67,6 +67,9 @@ let pub `is_struct_type = `import("types.is_struct_type_func", "__chirp_boot");
 
 // Creates a trait (taking the trait interface in the form of a struct type as parameter)
 let pub `make_trait = `import("traits.make_func", "__chirp_boot");
+
+// Reclaims the interface of a trait
+let pub `interface_of = `import("traits.interface", "__chirp_boot");
 
 // Implements a trait for a type.
 let pub `implement = `import("traits.implement_func", "__chirp_boot");
@@ -84,14 +87,14 @@ let pub `implementation = `import("traits.implementation_func", "__chirp_boot");
 let pub final undecided = `mint_finite(1).values[0];
 register("undecided_val", undecided);
 
-let pub final `type = `typeof(bool);
+let pub final `type = `type_of(bool);
 
 let pub `struct_type = {v: `type | `is_struct_type(v)};
 
 // ------------------ Computation, part 1 ------------------ //
 
 // The core computation primitive.
-let pub `lambda = `typeof((args) => true);
+let pub `lambda = `type_of((args) => true);
 
 // Invoke a lambda with a struct as argument list
 let pub `invoke = `import("compute.invoke_func", "__chirp_boot");
@@ -127,10 +130,18 @@ let pub `coextensive = `import("sets.coextensive_func", "__chirp_boot");
 // However, we instead inline an equivalent struct for legibility reasons
 let pub `Set = `make_trait(struct {
     // Checks if a value v belongs to this set.
+    // Semantic contract:
+    // - belongs is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the interpreter
+    //   can reliably reject (for example with heap-backed abstractions).
     // - belongs() returning a value that was not in belongs_range() is UB
     belongs: `pure_fn ∩ (self, v) -> {true, false, undecided},
 
     // Takes a set of candidate values, and returns the set of possible results.
+    // Semantic contract:
+    // - belongs_range is expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the interpreter
+    //   can reliably reject.
     belongs_range: `pure_fn ∩ (self, candidates: `Set) -> {
         {true}, 
         {false}, 
@@ -152,7 +163,7 @@ let pub final `empty = `mint_finite(1).values[0];
 
 `implement(
     trait=`Set,
-    on=`typeof(`any),
+    on=`type_of(`any),
     impl={
         belongs = (this, v) => true,
         belongs_range = (this, candidates) => {true}
@@ -161,7 +172,7 @@ let pub final `empty = `mint_finite(1).values[0];
 
 `implement(
     trait=`Set,
-    on=`typeof(`empty),
+    on=`type_of(`empty),
     impl={
         belongs = (this, v) => false,
         belongs_range = (this, candidates) => {false}
@@ -170,14 +181,14 @@ let pub final `empty = `mint_finite(1).values[0];
 
 // --------- Define trait and type setness ---------
 
-let pub `trait = `typeof(`Set);
+let pub `trait = `type_of(`Set);
 
 // traits behave as sets that contain all values whose type implements that trait
 `implement(
     trait=`Set,
     on=`trait,
     impl={
-        belongs=(self: `trait, v) => `implements(self, `typeof(v))
+        belongs=(self: `trait, v) => `implements(self, `type_of(v))
 
         // belongs always resolve to true or false, so undecided doesn't need to show up
         belongs_range=(self: `trait, candidates: `Set) => do {
@@ -209,7 +220,7 @@ let pub `trait = `typeof(`Set);
     trait=`Set,
     on=`type,
     impl={
-        belongs=(self: `type, v) => `same(`typeof(v), self);
+        belongs=(self: `type, v) => `same(`type_of(v), self);
 
         // belongs always resolve to true or false, so undecided doesn't need to show up
         belongs_range=(self: `type, candidates: `Set) => do {
@@ -233,6 +244,11 @@ let pub `Callable = `make_trait(struct {
     // The set of argument structs that the callable accepts 
     // The definition order of the struct's members drive the semantics of positional invocations.
     // e.g. given foo(struct {x: int, y:int}), foo(1, 2) -> foo(x=1, y=2)
+    //
+    // Semantic contract:
+    // - param_space/result_space are expected to be semantically pure.
+    // - For now, violating that contract is UB rather than something the interpreter
+    //   can reliably reject.
     param_space: `pure_fn ∩ (self)-> `struct_type,
     
     // returns the set of possible results given a set of possible arguments
@@ -278,4 +294,3 @@ let construct = `import("types.construct", "__chirp_boot");
 // This will *replace* the interpreter's definition of what's eligible for call syntax.
 // Up until this point, it's hardcoded to only accept lambdas.
 register("traits.callable", `Callable);
-
