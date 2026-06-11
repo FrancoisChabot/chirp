@@ -18,7 +18,7 @@ TEST(LexerTest, BasicTokens) {
 }
 
 TEST(LexerTest, UnicodeOperatorsAndColumns) {
-    auto tokens = tokenize("x ∈ int && y ⊆ z");
+    auto tokens = tokenize("x ∈ int && y ∪ z");
     ASSERT_EQ(tokens.size(), 8); 
     
     EXPECT_EQ(tokens[0].lexeme, "x");
@@ -31,7 +31,7 @@ TEST(LexerTest, UnicodeOperatorsAndColumns) {
     EXPECT_EQ(tokens[2].column, 5); // ∈ is 1 char wide, so space at 4, int at 5
 
     EXPECT_EQ(tokens[3].type, token_type::and_and);
-    EXPECT_EQ(tokens[5].type, token_type::subset_op);
+    EXPECT_EQ(tokens[5].type, token_type::union_op);
 }
 
 TEST(LexerTest, Intrinsics) {
@@ -148,8 +148,8 @@ TEST(LexerTest, LocationsAndComments) {
 }
 
 TEST(LexerTest, FormatText) {
-    std::string source = "let a = b `intersection c;\nlet d = e `union f;\nlet g = h `subset i;\nlet j = k `in l;";
-    std::string expected = "let a = b ∩ c;\nlet d = e ∪ f;\nlet g = h ⊆ i;\nlet j = k ∈ l;";
+    std::string source = "let a = b `intersection c;\nlet d = e `union f;\nlet j = k `in l;";
+    std::string expected = "let a = b ∩ c;\nlet d = e ∪ f;\nlet j = k ∈ l;";
     EXPECT_EQ(format_text(source), expected);
     
     // Verify it doesn't touch already formatted or unrelated stuff

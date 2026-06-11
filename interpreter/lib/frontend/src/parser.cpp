@@ -70,12 +70,6 @@ class Parser {
             case token_type::or_or: return BinaryOp::Or;
             case token_type::in_op: return BinaryOp::In;
             case token_type::not_in_op: return BinaryOp::NotIn;
-            case token_type::subset_op: return BinaryOp::Subset;
-            case token_type::proper_subset_op: return BinaryOp::ProperSubset;
-            case token_type::not_subset_op: return BinaryOp::NotSubset;
-            case token_type::superset_op: return BinaryOp::Superset;
-            case token_type::proper_superset_op: return BinaryOp::ProperSuperset;
-            case token_type::not_superset_op: return BinaryOp::NotSuperset;
             case token_type::union_op: return BinaryOp::Union;
             case token_type::intersection_op: return BinaryOp::Intersection;
             case token_type::dot_dot: return BinaryOp::Range;
@@ -382,8 +376,7 @@ private:
     std::unique_ptr<Expr> comparison() {
         auto expr = range();
         while (match(token_type::greater, token_type::greater_equal, token_type::less, token_type::less_equal, 
-                     token_type::in_op, token_type::not_in_op, token_type::subset_op, token_type::proper_subset_op, 
-                     token_type::not_subset_op, token_type::superset_op, token_type::proper_superset_op, token_type::not_superset_op)) {
+                     token_type::in_op, token_type::not_in_op)) {
             token op_tok = previous();
             auto right = range();
             expr = std::make_unique<BinaryExpr>(std::move(expr), get_binary_op(op_tok.type), std::move(right), op_tok);

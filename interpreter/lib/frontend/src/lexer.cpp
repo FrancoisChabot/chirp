@@ -275,7 +275,6 @@ class Lexer {
             if (text == "`in") add_token(token_type::in_op);
             else if (text == "`union") add_token(token_type::union_op);
             else if (text == "`intersection") add_token(token_type::intersection_op);
-            else if (text == "`subset") add_token(token_type::subset_op);
             else add_token(token_type::intrinsic);
         }
     }
@@ -370,12 +369,7 @@ class Lexer {
 
         if (match_str("∈")) { add_token(token_type::in_op); return; }
         if (match_str("∉")) { add_token(token_type::not_in_op); return; }
-        if (match_str("⊆")) { add_token(token_type::subset_op); return; }
-        if (match_str("⊂")) { add_token(token_type::proper_subset_op); return; }
-        if (match_str("⊄")) { add_token(token_type::not_subset_op); return; }
-        if (match_str("⊇")) { add_token(token_type::superset_op); return; }
-        if (match_str("⊃")) { add_token(token_type::proper_superset_op); return; }
-        if (match_str("⊅")) { add_token(token_type::not_superset_op); return; }
+
         if (match_str("∪")) { add_token(token_type::union_op); return; }
         if (match_str("∩")) { add_token(token_type::intersection_op); return; }
         if (match_str("..=")) { add_token(token_type::dot_dot_equal); return; }
@@ -517,8 +511,6 @@ std::string format_text(std::string_view source) {
             out.append("∪");
         } else if (t.type == token_type::intersection_op && t.lexeme == "`intersection") {
             out.append("∩");
-        } else if (t.type == token_type::subset_op && t.lexeme == "`subset") {
-            out.append("⊆");
         } else {
             out.append(t.lexeme);
         }

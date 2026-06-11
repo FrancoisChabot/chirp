@@ -123,7 +123,7 @@ The following character sequences are recognized as operators or punctuation:
 | **`∈`**          | **`` `in` ``**         | `#belonging`         | Set belonging test (or loop) |
 | **`∪`**          | **`` `union` ``**      | `#union`             | Set union |
 | **`∩`**          | **`` `intersection` ``**| `#intersection`     | Set intersection |
-| **`⊆`**          | **`` `subset` ``**     | `#subset`            | Set subset test |
+
 
 ---
 

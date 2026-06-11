@@ -33,12 +33,7 @@ enum class token_type {
     // Unicode tokens
     in_op,      // ∈
     not_in_op,  // ∉
-    subset_op,  // ⊆
-    proper_subset_op, // ⊂
-    not_subset_op, // ⊄
-    superset_op, // ⊇
-    proper_superset_op, // ⊃
-    not_superset_op, // ⊅
+
     union_op,   // ∪
     intersection_op, // ∩
     tilde,      // ~
@@ -104,8 +99,7 @@ enum class BinaryOp {
     Eq, Neq, Lt, Lte, Gt, Gte,
     And, Or,
     In, NotIn,
-    Subset, ProperSubset, NotSubset,
-    Superset, ProperSuperset, NotSuperset,
+
     Union, Intersection,
     Range, RangeInclusiveEnd, RangeInclusiveStart, RangeInclusiveBoth,
     Dot

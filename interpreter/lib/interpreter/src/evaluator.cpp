@@ -1426,17 +1426,7 @@ private:
         return Value::make_composite_set(left, right, Value::CompositeSetOp::Intersection);
     }
 
-    bool is_subset(const Value& left, const Value& right, const token& diag) {
-        require_set_operand(left, diag);
-        require_set_operand(right, diag);
 
-        for (const auto& element : finite_elements(left, diag)) {
-            if (!as_bool(belongs_to(right, element, diag), diag)) {
-                return false;
-            }
-        }
-        return true;
-    }
 
     void enforce_constraint(const Value& constraint, const Value& value, const token& diag) {
         if (constraint.isVoid()) {
@@ -2864,28 +2854,7 @@ private:
             case BinaryOp::Intersection:
                 result_ = set_intersection(left, right, expr.diagnostic_token);
                 return;
-            case BinaryOp::Subset:
-                result_ = Value::make_bool(is_subset(left, right, expr.diagnostic_token));
-                return;
-            case BinaryOp::ProperSubset:
-                result_ = Value::make_bool(
-                    is_subset(left, right, expr.diagnostic_token) &&
-                    !is_subset(right, left, expr.diagnostic_token));
-                return;
-            case BinaryOp::NotSubset:
-                result_ = Value::make_bool(!is_subset(left, right, expr.diagnostic_token));
-                return;
-            case BinaryOp::Superset:
-                result_ = Value::make_bool(is_subset(right, left, expr.diagnostic_token));
-                return;
-            case BinaryOp::ProperSuperset:
-                result_ = Value::make_bool(
-                    is_subset(right, left, expr.diagnostic_token) &&
-                    !is_subset(left, right, expr.diagnostic_token));
-                return;
-            case BinaryOp::NotSuperset:
-                result_ = Value::make_bool(!is_subset(right, left, expr.diagnostic_token));
-                return;
+
             default:
                 fail(expr.diagnostic_token, "Unsupported binary operator");
         }

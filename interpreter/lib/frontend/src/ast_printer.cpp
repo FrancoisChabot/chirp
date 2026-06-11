@@ -26,12 +26,7 @@ public:
             case BinaryOp::Or: result += "||"; break;
             case BinaryOp::In: result += "in"; break;
             case BinaryOp::NotIn: result += "not in"; break;
-            case BinaryOp::Subset: result += "subset"; break;
-            case BinaryOp::ProperSubset: result += "proper_subset"; break;
-            case BinaryOp::NotSubset: result += "not_subset"; break;
-            case BinaryOp::Superset: result += "superset"; break;
-            case BinaryOp::ProperSuperset: result += "proper_superset"; break;
-            case BinaryOp::NotSuperset: result += "not_superset"; break;
+
             case BinaryOp::Union: result += "union"; break;
             case BinaryOp::Intersection: result += "intersection"; break;
             case BinaryOp::Range: result += ".."; break;
