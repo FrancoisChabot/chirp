@@ -13,6 +13,7 @@
 namespace chirp::frontend {
 class ConstructedSetExpr;
 class LambdaExpr;
+class SignatureExpr;
 }
 
 namespace chirp::interpreter {
@@ -65,6 +66,14 @@ public:
         std::shared_ptr<const RuntimeScopeChain> captured_scopes;
         bool operator==(const LambdaTag& other) const {
             return lambda == other.lambda && captured_scopes == other.captured_scopes;
+        }
+    };
+
+    struct SignatureTag {
+        const frontend::SignatureExpr* expr;
+        std::shared_ptr<const RuntimeScopeChain> captured_scopes;
+        bool operator==(const SignatureTag& other) const {
+            return expr == other.expr && captured_scopes == other.captured_scopes;
         }
     };
 
@@ -192,6 +201,7 @@ public:
     static Value make_range(Value start, Value end, bool inclusive_end);
     static Value make_constructed_set(const frontend::ConstructedSetExpr& set, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
     static Value make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
+    static Value make_signature(const frontend::SignatureExpr& expr, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
     static Value make_host_function(HostFunction fn);
     static Value make_composite_set(Value left, Value right, CompositeSetOp op);
     static Value make_symbol(std::string name);
@@ -251,6 +261,9 @@ public:
     const frontend::LambdaExpr& asLambda() const;
     const LambdaTag& asLambdaTag() const;
 
+    bool isSignature() const;
+    const SignatureTag& asSignatureTag() const;
+
     bool isHostFunction() const;
     HostFunction asHostFunction() const;
 
@@ -284,7 +297,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag, SignatureTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

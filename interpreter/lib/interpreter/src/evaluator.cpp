@@ -2976,8 +2976,7 @@ private:
     }
 
     void visit(const SignatureExpr& expr) override {
-        auto type = std::make_shared<SignatureType>(expr.parameters.size());
-        result_ = Value::make_type(std::move(type));
+        result_ = Value::make_signature(expr, capture_scopes());
     }
 
     void visit(const BlockExpr& expr) override {

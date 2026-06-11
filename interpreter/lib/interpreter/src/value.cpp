@@ -47,6 +47,11 @@ std::shared_ptr<const Type> getConstructedSetType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getSignatureType() {
+    static auto instance = std::make_shared<SignatureType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getCompositeSetType() {
     static auto instance = std::make_shared<CompositeSetType>();
     return instance;
@@ -212,6 +217,10 @@ Value Value::make_composite_set(Value left, Value right, CompositeSetOp op) {
 
 Value Value::make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
     return Value(getFunctionType(), LambdaTag{&lambda, std::move(captured_scopes)});
+}
+
+Value Value::make_signature(const frontend::SignatureExpr& expr, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
+    return Value(getSignatureType(), SignatureTag{&expr, std::move(captured_scopes)});
 }
 
 Value Value::make_host_function(HostFunction fn) {
@@ -419,6 +428,17 @@ const Value::LambdaTag& Value::asLambdaTag() const {
         throw std::runtime_error("Value is not a Function");
     }
     return std::get<LambdaTag>(payload_);
+}
+
+bool Value::isSignature() const {
+    return std::holds_alternative<SignatureTag>(payload_);
+}
+
+const Value::SignatureTag& Value::asSignatureTag() const {
+    if (!isSignature()) {
+        throw std::runtime_error("Value is not a Signature");
+    }
+    return std::get<SignatureTag>(payload_);
 }
 
 bool Value::isHostFunction() const {
@@ -856,12 +876,14 @@ Value TraitType::belongs_approx(const Value& S, const Value& lc) const {
 }
 
 Value SignatureType::belongs(const Value& S, const Value& v) const {
+    if (!S.isSignature()) throw std::runtime_error("SignatureType::belongs requires a Signature value");
+    size_t parameter_count = S.asSignatureTag().expr->parameters.size();
     if (v.getType() == getFunctionType()) {
         return Value::make_bool(true);
     }
     if (v.isLambda()) {
         size_t v_size = v.asLambdaTag().lambda->parameters.size();
-        return Value::make_bool(v_size == parameter_count_);
+        return Value::make_bool(v_size == parameter_count);
     }
     if (v.isHostFunction() || v.isStructInstance()) {
         return Value::make_bool(true);

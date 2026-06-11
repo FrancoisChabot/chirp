@@ -105,12 +105,9 @@ public:
 };
 
 class SignatureType : public Type {
-    size_t parameter_count_;
 public:
-    explicit SignatureType(size_t parameter_count) : parameter_count_(parameter_count) {}
     std::string_view name() const override { return "Signature"; }
     bool hasSetness() const override { return true; }
-    size_t getParameterCount() const { return parameter_count_; }
     Value belongs(const Value& S, const Value& v) const override;
     Value belongs_approx(const Value& S, const Value& lc) const override;
 };

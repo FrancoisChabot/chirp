@@ -215,11 +215,23 @@ let pub `trait = `type_of(`Set);
     }
 );
 
-// Staged bootstrap note:
-// Keep the interpreter's intrinsic meta-type set semantics for now.
-// Re-registering `type` here will need richer type-category handling so that
-// signature-like and other specialized type values keep their custom set
-// behavior instead of collapsing to plain type equality.
+`implement(
+    trait=`Set,
+    on=`type,
+    impl={
+        belongs=(self: `type, v) => `same(`type_of(v), self),
+
+        // belongs always resolve to true or false, so undecided doesn't need to show up
+        belongs_range=(self: `type, candidates: `Set) => do {
+            let ts = `types_in_set(candidates);
+
+            if(self ∈ ts)
+                if(`coextensive(ts, {self})) {true}
+                else {true, false}
+            else {false}
+        }
+    }
+);
 
 
 // ------------------ Computation, part 2 ------------------ //
