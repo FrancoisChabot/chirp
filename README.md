@@ -61,9 +61,11 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 - The syntax and grammar are quite stable at this point. They aren't formally locked down yet though.
 - The semantics are "mostly" stable, but there's a few points that are still a bit shaky
-  - Set enumerability, finiteness and coextensiveness are likely to udergo tweaking.
+  - Set enumerability, finiteness and coextensiveness are likely to undergo tweaking.
   - Call signature checks are still a bit too loose for my liking.
-  - supersets and subsets are intentionally not dealt with right now, but we need to reckon with them eventually.
+  - Supersets and subsets are intentionally not dealt with right now, but we need to reckon with them eventually.
+  - Function purity is not enforced quite as hard as it should be yet.
+  - Mixed-typed binary operators are currently not supported, but will be.
 - The standard library is not to be trusted at all for the time being.
 
 ### Current objectives
