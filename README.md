@@ -57,6 +57,15 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 ## State of the project
 
+### How stable is Chirp?
+
+- The syntax and grammar are quite stable at this point. They aren't formally locked down yet though.
+- The semantics are "mostly" stable, but there's a few points that are still a bit shaky
+  - Set enumerability, finiteness and coextensiveness are likely to udergo tweaking.
+  - Call signature checks are still a bit too loose for my liking.
+  - supersets and subsets are intentionally not dealt with right now, but we need to reckon with them eventually.
+- The standard library is not to be trusted at all for the time being.
+
 ### Current objectives
 
 - Bring the documentation back in sync with the implementation. It has fallen behind.
