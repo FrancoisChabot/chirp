@@ -14,8 +14,40 @@ let pub `Dereferenceable = `make_trait(struct {
     deref: (self) -> `any
 });
 register("dereferenceable_trait", `Dereferenceable);
+register(
+    "reference_dereferenceable_impl",
+    `interface_of(`Dereferenceable)(
+        deref = (self) => *self
+    )
+);
 
 let pub `DereferenceableMut = `make_trait(struct {
     deref_assign: (self, value) -> void
 });
 register("dereferenceable_mut_trait", `DereferenceableMut);
+register(
+    "reference_dereferenceable_mut_impl",
+    `interface_of(`DereferenceableMut)(
+        deref_assign = (self, value) => do { *self = value; }
+    )
+);
+
+let ReferenceSet = struct {
+    target: `Set,
+    mutable: bool
+};
+register("reference_set_type", ReferenceSet);
+
+`implement(
+    trait=`Set,
+    on=ReferenceSet,
+    impl={
+        belongs = (self, v) => do {
+            let t = `type_of(v);
+            if (!`implements(`Dereferenceable, t)) false
+            else if (self.mutable && !`implements(`DereferenceableMut, t)) false
+            else *v ∈ self.target
+        },
+        belongs_range = (self, candidates) => {true, false, undecided}
+    }
+);

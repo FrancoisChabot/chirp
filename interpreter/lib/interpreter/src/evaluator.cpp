@@ -301,6 +301,12 @@ private:
         size_t depth;
         std::shared_ptr<Binding> binding;
     };
+
+    struct TerminalValue {
+        Value value;
+        std::shared_ptr<Binding> handoff_binding;
+    };
+
     std::optional<TerminalHandoff> terminal_handoff_;
     std::optional<std::filesystem::path> chirp_root_;
     std::unordered_map<std::string, ModuleCacheEntry> module_cache_;
@@ -308,6 +314,7 @@ private:
     std::vector<std::string> source_stack_;
     std::vector<std::map<std::string, std::shared_ptr<Binding>>*> module_export_stack_;
     std::unordered_map<const frontend::LambdaExpr*, std::shared_ptr<const RuntimeStructType>> lambda_param_struct_types_;
+    std::unordered_map<const Type*, std::shared_ptr<const RuntimeStructType>> construction_arg_struct_types_;
 
     struct Implementation {
         Value trait;
@@ -580,6 +587,72 @@ private:
         return result_;
     }
 
+    Value evaluate_terminal_expression_impl(const Expr& expr) {
+        if (const auto* identifier = dynamic_cast<const IdentifierExpr*>(&expr)) {
+            auto [binding, depth] = lookup_binding_with_depth(identifier->name, identifier->diagnostic_token);
+            if (depth == scopes_.size() - 1 &&
+                binding->ownsCV() &&
+                (is_uncopyable(binding->getCV().getType()) ||
+                    is_shared_heap_allocation_type(binding->getCV().getType()))) {
+                terminal_handoff_ = TerminalHandoff{depth, binding};
+            }
+            return builtin_identifier(identifier->name, identifier->diagnostic_token);
+        }
+
+        if (const auto* grouping = dynamic_cast<const GroupingExpr*>(&expr)) {
+            return evaluate_terminal_expression_impl(*grouping->expression);
+        }
+
+        if (const auto* if_expr = dynamic_cast<const IfExpr*>(&expr)) {
+            if (as_bool(evaluate(*if_expr->condition), if_expr->diagnostic_token)) {
+                return evaluate_terminal_expression_impl(*if_expr->then_branch);
+            }
+            return evaluate_terminal_expression_impl(*if_expr->else_branch);
+        }
+
+        if (const auto* match_expr = dynamic_cast<const MatchExpr*>(&expr)) {
+            Value subject = evaluate(*match_expr->subject);
+
+            for (const auto& arm : match_expr->arms) {
+                Value pattern = evaluate(*arm.pattern);
+
+                bool matched = false;
+                if (has_setness(pattern)) {
+                    Value result = belongs_to(pattern, subject, match_expr->diagnostic_token);
+                    matched = as_bool(result, match_expr->diagnostic_token);
+                } else {
+                    matched = (subject == pattern);
+                }
+
+                if (matched) {
+                    return evaluate_terminal_expression_impl(*arm.body);
+                }
+            }
+
+            fail(match_expr->diagnostic_token, "Non-exhaustive match: no arm matched value " + display_string(subject));
+        }
+
+        return evaluate(expr);
+    }
+
+    TerminalValue evaluate_terminal_expression(const Expr& expr) {
+        auto previous_handoff = terminal_handoff_;
+        terminal_handoff_.reset();
+
+        try {
+            Value value = evaluate_terminal_expression_impl(expr);
+            std::shared_ptr<Binding> handoff_binding;
+            if (terminal_handoff_.has_value()) {
+                handoff_binding = terminal_handoff_->binding;
+            }
+            terminal_handoff_ = previous_handoff;
+            return TerminalValue{std::move(value), std::move(handoff_binding)};
+        } catch (...) {
+            terminal_handoff_ = previous_handoff;
+            throw;
+        }
+    }
+
     void execute_stmt(const Stmt& stmt) {
         stmt.accept(*this);
     }
@@ -663,7 +736,45 @@ private:
         return value.asInt();
     }
 
+    static const ReferenceType* as_reference_type(const std::shared_ptr<const Type>& type) {
+        return dynamic_cast<const ReferenceType*>(type.get());
+    }
+
+    bool is_reference_type(const std::shared_ptr<const Type>& type) const {
+        return as_reference_type(type) != nullptr;
+    }
+
+    bool is_mutable_reference_type(const std::shared_ptr<const Type>& type) const {
+        if (const auto* reference_type = as_reference_type(type)) {
+            return reference_type->is_mut();
+        }
+        return false;
+    }
+
+    const Value* builtin_reference_impl_for(const Value& trait, const std::shared_ptr<const Type>& dispatch_target) const {
+        if (!is_reference_type(dispatch_target)) {
+            return nullptr;
+        }
+
+        if (const Value* dereferenceable_trait = get_registered_item("dereferenceable_trait")) {
+            if (trait == *dereferenceable_trait) {
+                return get_registered_item("reference_dereferenceable_impl");
+            }
+        }
+
+        if (const Value* dereferenceable_mut_trait = get_registered_item("dereferenceable_mut_trait")) {
+            if (trait == *dereferenceable_mut_trait && is_mutable_reference_type(dispatch_target)) {
+                return get_registered_item("reference_dereferenceable_mut_impl");
+            }
+        }
+
+        return nullptr;
+    }
+
     const Value* registered_impl_for(const Value& trait, const std::shared_ptr<const Type>& dispatch_target) const {
+        if (const Value* builtin_impl = builtin_reference_impl_for(trait, dispatch_target)) {
+            return builtin_impl;
+        }
         for (const auto& implementation : implementations_) {
             if (implementation.trait == trait && implementation.on == dispatch_target) {
                 return &implementation.impl;
@@ -1798,8 +1909,9 @@ private:
                     fail(diag, "`make_trait expects one positional argument");
                 }
                 Value interface = evaluate(*args.front().value);
-                if (!interface.isType() || !is_struct_type(interface.asType())) {
-                    fail(diag, "`make_trait expects a struct type");
+                if (!interface.isVoid() &&
+                    (!interface.isType() || !is_struct_type(interface.asType()))) {
+                    fail(diag, "`make_trait expects either void or a struct type");
                 }
                 return Value::make_trait(next_trait_id_++, std::move(interface));
             }
@@ -1895,10 +2007,14 @@ private:
                 }
 
                 Value interface = trait.asTraitInterface();
-                if (!interface.isType() || !is_struct_type(interface.asType())) {
-                    fail(*trait_arg->name, "`implement trait interface must be a struct type");
+                if (!interface.isVoid() &&
+                    (!interface.isType() || !is_struct_type(interface.asType()))) {
+                    fail(*trait_arg->name, "`implement trait interface must be either void or a struct type");
                 }
                 Value impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
+                if (interface.isVoid() && !impl.isVoid()) {
+                    fail(*impl_arg->name, "Marker trait implementations must be void");
+                }
                 enforce_constraint(interface, impl, *impl_arg->name);
 
                 if (registered_impl_for(trait, on.asType()) != nullptr) {
@@ -2021,7 +2137,7 @@ private:
                 if (!value.isType() || !is_struct_type(value.asType())) {
                     fail(diag, "`construction_args expects a struct type");
                 }
-                return value;
+                return Value::make_type(construction_arg_struct_type(value.asType(), diag));
             }
             case Value::HostFunction::Construct: {
                 if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
@@ -2218,10 +2334,17 @@ private:
             }
 
             Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : VoidVal();
-            Value return_value = evaluate_with_expected_type(*lambda.body, return_constraint, lambda.diagnostic_token);
+            TerminalValue return_result = dynamic_cast<const AnonymousStructLiteralExpr*>(lambda.body.get()) != nullptr
+                ? TerminalValue{evaluate_with_expected_type(*lambda.body, return_constraint, lambda.diagnostic_token), nullptr}
+                : evaluate_terminal_expression(*lambda.body);
+            Value return_value = std::move(return_result.value);
             enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
 
-            leave_scope(nullptr, lambda.diagnostic_token);
+            if (return_result.handoff_binding) {
+                disown_shared_heap_allocation_without_destroy(return_result.handoff_binding->getCV(), lambda.diagnostic_token);
+                return_result.handoff_binding->setOwnsCV(false);
+            }
+            leave_scope(return_result.handoff_binding, lambda.diagnostic_token);
             scopes_ = std::move(saved_scopes);
             return return_value;
         } catch (...) {
@@ -2452,6 +2575,20 @@ private:
         return type_ptr;
     }
 
+    std::shared_ptr<const RuntimeStructType> construction_arg_struct_type(
+        const std::shared_ptr<const Type>& type_ptr,
+        const token& diag) {
+        auto found = construction_arg_struct_types_.find(type_ptr.get());
+        if (found != construction_arg_struct_types_.end()) {
+            return found->second;
+        }
+
+        std::vector<OrderedStructFieldSpec> fields = ordered_struct_fields(type_ptr, diag);
+        auto arg_type = std::make_shared<RuntimeStructType>(std::move(fields));
+        construction_arg_struct_types_.emplace(type_ptr.get(), arg_type);
+        return arg_type;
+    }
+
     Value any_set_value(const token& diag) const {
         if (auto binding = lookup_binding_optional("`any")) {
             return binding->getCV();
@@ -2466,6 +2603,24 @@ private:
         }
         fail(diag, "Bootstrap value `type is not available");
         return Value();
+    }
+
+    std::shared_ptr<const Type> reference_set_type(const token& diag) const {
+        if (const Value* set_type = get_registered_item("reference_set_type")) {
+            if (set_type->isType() && is_struct_type(set_type->asType())) {
+                return set_type->asType();
+            }
+            fail(diag, "Registered item 'reference_set_type' must be a struct type");
+        }
+        fail(diag, "Bootstrap reference set type is not available");
+        return nullptr;
+    }
+
+    Value make_reference_set(Value target, bool is_mut, const token& diag) {
+        std::map<std::string, Value> fields;
+        fields.emplace("target", std::move(target));
+        fields.emplace("mutable", Value::make_bool(is_mut));
+        return construct_struct_from_fields(reference_set_type(diag), fields, diag);
     }
 
     Value lambda_result_space(const Value::LambdaTag& lambda_tag, const token& diag) {
@@ -2787,8 +2942,7 @@ private:
             case UnaryOp::MutablePointerType: {
                 bool is_mut = (expr.op == UnaryOp::MutablePointerType);
                 Value target_type = evaluate(*expr.right);
-                auto ref_type = std::make_shared<ReferenceType>(std::move(target_type), is_mut);
-                result_ = Value::make_type(std::move(ref_type));
+                result_ = make_reference_set(std::move(target_type), is_mut, expr.diagnostic_token);
                 return;
             }
             case UnaryOp::Deref: {
@@ -3184,36 +3338,16 @@ private:
     }
 
     void visit(const BreakStmt& stmt) override {
-        std::optional<TerminalHandoff> handoff;
-        if (stmt.value) {
-            if (auto* identifier = dynamic_cast<const IdentifierExpr*>(stmt.value.get())) {
-                auto [binding, depth] = lookup_binding_with_depth(identifier->name, identifier->diagnostic_token);
-                if (depth == scopes_.size() - 1 &&
-                    (is_uncopyable(binding->getCV().getType()) ||
-                        is_shared_heap_allocation_type(binding->getCV().getType()))) {
-                    handoff = TerminalHandoff{depth, binding};
-                }
-            }
+        TerminalValue terminal_value = stmt.value
+            ? evaluate_terminal_expression(*stmt.value)
+            : TerminalValue{VoidVal(), nullptr};
+
+        if (terminal_value.handoff_binding) {
+            disown_shared_heap_allocation_without_destroy(terminal_value.handoff_binding->getCV(), stmt.diagnostic_token);
+            terminal_value.handoff_binding->setOwnsCV(false);
         }
 
-        auto prev_terminal = terminal_handoff_;
-        terminal_handoff_ = handoff;
-        Value value;
-        try {
-            value = stmt.value ? evaluate(*stmt.value) : VoidVal();
-            terminal_handoff_ = prev_terminal;
-        } catch (...) {
-            terminal_handoff_ = prev_terminal;
-            throw;
-        }
-
-        std::shared_ptr<Binding> handoff_binding;
-        if (handoff.has_value()) {
-            handoff_binding = handoff->binding;
-            disown_shared_heap_allocation_without_destroy(handoff_binding->getCV(), stmt.diagnostic_token);
-            handoff_binding->setOwnsCV(false);
-        }
-        throw BreakSignal{std::move(value), std::move(handoff_binding)};
+        throw BreakSignal{std::move(terminal_value.value), std::move(terminal_value.handoff_binding)};
     }
 
     void visit(const AssignStmt& stmt) override {

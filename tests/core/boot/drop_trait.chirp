@@ -1,6 +1,6 @@
 `expect_exit(0);
 
-`expect(`interface(`Drop) == `interface(`Drop));
+`expect(`interface_of(`Drop) == `interface_of(`Drop));
 
 let Token = struct {};
 
@@ -9,7 +9,7 @@ let Token = struct {};
 `implement(
     trait=`Drop,
     on=Token,
-    impl=`interface(`Drop)(drop=(this) => void)
+    impl=`interface_of(`Drop)(drop=(this) => void)
 );
 
 `expect(Token() ∈ `Drop);

@@ -8,4 +8,4 @@
 
 // The trait itself isn't a unique value
 `expect(`Unique ∉ `Unique);
-`expect(`Unique ∈ `typeof(`Unique));
+`expect(`Unique ∈ `type_of(`Unique));

@@ -1,5 +1,5 @@
 // Types are sets of their instances. Using a type like `int` as a match
-// pattern tests `subject ∈ int`, i.e. `typeof(subject) == int`.
+// pattern tests `subject ∈ int`, i.e. `type_of(subject) == int`.
 `expect_exit(0);
 
 let describe(v) = match v {

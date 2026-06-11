@@ -45,4 +45,11 @@ install(DIRECTORY "${CHIRP_REPO_ROOT}/lib/chirp/std"
 )
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME chirp_e2e_tests COMMAND Python3::Interpreter "${ChirpInterpreter_SOURCE_DIR}/../scripts/test_conformance.py" -j auto $<TARGET_FILE:chirp>)
+add_test(
+  NAME chirp_e2e_tests
+  COMMAND Python3::Interpreter
+    "${ChirpInterpreter_SOURCE_DIR}/../scripts/test_conformance.py"
+    -j auto
+    --suite "${ChirpInterpreter_SOURCE_DIR}/../tests/core"
+    $<TARGET_FILE:chirp>
+)

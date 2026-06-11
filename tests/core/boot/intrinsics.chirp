@@ -2,14 +2,14 @@
 
 `expect_stdout("--- Type Identities ---\n");
 `print("--- Type Identities ---");
-`expect(`typeof(true) == bool);
-`expect(`typeof(false) == bool);
-`expect(`typeof(1) == int);
-`expect(`typeof("") == string);
-`expect(`typeof(bool) == `type);
-`expect(`typeof(int) == `type);
-`expect(`typeof(string) == `type);
-`expect(`typeof(`type) == `type);
+`expect(`type_of(true) == bool);
+`expect(`type_of(false) == bool);
+`expect(`type_of(1) == int);
+`expect(`type_of("") == string);
+`expect(`type_of(bool) == `type);
+`expect(`type_of(int) == `type);
+`expect(`type_of(string) == `type);
+`expect(`type_of(`type) == `type);
 
 `expect_stdout("--- Membership Relations ---\n");
 `print("--- Membership Relations ---");

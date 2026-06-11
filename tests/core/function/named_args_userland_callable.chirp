@@ -1,14 +1,14 @@
 `expect_exit(0);
 
-let Token = `mint();
+let Token = `mint_finite(1).values[0];
 
 `implement(
     trait=`Callable,
-    on=`typeof(Token),
+    on=`type_of(Token),
     impl={
-        param_space = (this) => `any,
-        result_space = (this, params) => `any,
-        invoke = (this, x, y) => x - y
+        param_space = (this) => struct {x: int, y: int},
+        result_space = (this, params) => int,
+        invoke = (this, args) => args.x - args.y
     }
 );
 

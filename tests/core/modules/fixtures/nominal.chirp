@@ -1,1 +1,1 @@
-let pub token = `mint();
+let pub token = `mint_finite(1).values[0];

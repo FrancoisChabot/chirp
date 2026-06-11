@@ -3,12 +3,30 @@
 let Complex = struct { r: int, i: int };
 
 `implement(
-    trait=`Arithmetic,
+    trait=`Additive,
     on=Complex,
     impl={
-        add = (this, other) => Complex(this.r + other.r, this.i + other.i),
-        sub = (this, other) => Complex(this.r - other.r, this.i - other.i),
-        mul = (this, other) => Complex(this.r * other.r - this.i * other.i, this.r * other.i + this.i * other.r),
+        add = (this, other) => Complex(this.r + other.r, this.i + other.i)
+    }
+);
+`implement(
+    trait=`Subtractive,
+    on=Complex,
+    impl={
+        sub = (this, other) => Complex(this.r - other.r, this.i - other.i)
+    }
+);
+`implement(
+    trait=`Multiplicative,
+    on=Complex,
+    impl={
+        mul = (this, other) => Complex(this.r * other.r - this.i * other.i, this.r * other.i + this.i * other.r)
+    }
+);
+`implement(
+    trait=`Divisible,
+    on=Complex,
+    impl={
         div = (this, other) => do {
             let denom = other.r * other.r + other.i * other.i;
             Complex(

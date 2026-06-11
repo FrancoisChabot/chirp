@@ -2,7 +2,7 @@
 
 `implement(
     trait=`Set,
-    on=`typeof(`any),
+    on=`type_of(`any),
     impl={
         bp = (this, v) => true,
         br = (this, lc) => {true}
