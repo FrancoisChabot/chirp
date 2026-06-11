@@ -6,8 +6,6 @@
 // If you are not familiar with chirp: `final` means `unshadowable`, it's what makes `true` effectively a keyword for 
 // all intents and purposes without having to special-case it in the interpreter.
 
-// It might also be worth keeping in mind that chirp is a meta-programming language.
-
 // IMPORTANT:
 //                This
 //                 |
@@ -48,11 +46,11 @@ let pub `typeof = `import("types.typeof_func", "__chirp_boot");
 // type: `type
 // values: type[]
 // The order of the values in the array doesn't mean anything.
-// mint_finite(0) is valid and returns a type for which no value exist
+// mint_finite(0) is valid and returns a type for which no value exists
 let pub `mint_finite = `import("types.mint_func", "__chirp_boot");
 
 // Checks if a type is a struct (TODO: Maybe introduce the notion of "type categories" if we ever need more of these)
-let pub `is_struct = `import("types.is_struct_func", "__chirp_boot");
+let pub `is_struct_type = `import("types.is_struct_type_func", "__chirp_boot");
 
 // ------------------ Traits ------------------ //
 
@@ -85,16 +83,15 @@ register("undecided_val", undecided);
 
 let pub final `type = `typeof(bool);
 
-let pub `struct_type = {v: `type | `is_struct(v)};
+let pub `struct_type = {v: `type | `is_struct_type(v)};
 
 // ------------------ Computation, part 1 ------------------ //
 
+// The core computation primitive.
+let pub `lambda = `typeof((args) => true);
+
 // Invoke a lambda with a struct as argument list
 let pub `invoke = `import("compute.invoke_func", "__chirp_boot");
-
-// N.B. These are only needed during bootstraping. Users can and should get those via the Callable trait
-let lambda_param_space = `import("compute.lambda_param_space", "__chirp_boot");
-let lambda_result_space = `import("compute.lambda_result_space", "__chirp_boot");
 
 // Interpreter-assisted verification that a callable has no side-effects 
 let pub `is_pure = `import("compute.is_pure_func", "__chirp_boot");
@@ -112,6 +109,8 @@ let pub `types_in_set = `import("set.types_in_set_func", "__chirp_boot");
 // Returns wether a set is enumerable or not.
 let pub `is_enumerable = `import("set.enumerable_func", "__chirp_boot");
 
+// Returns wether a set is enumerable or not.
+let pub `cardinality = `import("set.cardinality", "__chirp_boot");
 
 // N.B. The interpreter has specific expectations as far as this interface is concerned
 // So the cleaner stipulation here would be let pub `Set = `make_trait(`import("traits.set.interface", "__chirp_boot" ));
@@ -122,9 +121,7 @@ let pub `Set = `make_trait(struct {
     belongs: `pure_fn ∩ (self, v) -> {true, false, undecided},
 
     // Takes a set of candidate values, and returns the set of possible results.
-    // N.B. Set literals will be assigned this trait as soon as it's registered
-    // So this is fine, as long as we register the trait before implementing it anywhere.
-    belongs_range: `pure_fn ∩ (self, candidates: `Set) -> {
+    belongs_range: `pure_fn ∩ (self, candidates) -> {
         {true}, 
         {false}, 
         {undecided},
@@ -148,7 +145,7 @@ let pub final `empty = `mint_finite(1).values[0];
     on=`typeof(`any),
     impl={
         belongs = (this, v) => true,
-        belongs_range = (this, candidates: `Set) => {true}
+        belongs_range = (this, candidates) => {true}
     }
 );
 
@@ -157,7 +154,7 @@ let pub final `empty = `mint_finite(1).values[0];
     on=`typeof(`empty),
     impl={
         belongs = (this, v) => false,
-        belongs_range = (this, candidates: `Set) => {false}
+        belongs_range = (this, candidates) => {false}
     }
 );
 
@@ -208,9 +205,10 @@ let pub `trait = `typeof(`Set);
         belongs_range=(self: `type, candidates: `Set) => do {
             let ts = `types_in_set(candidates);
 
-            if(`same(ts, {self})) {true}
-            else if(!(self ∈ ts)) {false}
-            else {true, false}
+            if(self ∈ candidates)
+                if(same(`cardinality(candidates), 1)) {true}
+                else {true, false}
+            else {false}
         }
     }
 )
@@ -218,14 +216,14 @@ let pub `trait = `typeof(`Set);
 
 // ------------------ Computation, part 2 ------------------ //
 
-// The core computation primitive.
-let pub `lambda = `typeof((args) => true);
-
 // N.B. The interpreter has specific expectations as far as this interface is concerned
 // So the cleaner stipulation here would be let pub `Callable = `make_trait(`import("traits.callable.interface", "__chirp_boot" ));
 // However, we instead inline an equivalent struct for legibility reasons
 let pub `Callable = `make_trait(struct {
+    // The set of argument structs that the callable accepts 
     param_space: `pure_fn ∩ (self)-> `struct_type,
+    
+    // returns the set of possible results given a set of possible arguments
     result_space: `pure_fn ∩ (self, params: `Set)->`Set,
 
     // IMPORTANT:
@@ -233,6 +231,9 @@ let pub `Callable = `make_trait(struct {
     // invoke(self, args) ∈ result_space(self, {args})
     invoke: (self, params)->`any,
 });
+
+let lambda_param_space = `import("compute.lambda_param_space", "__chirp_boot");
+let lambda_result_space = `import("compute.lambda_result_space", "__chirp_boot");
 
 // Make sure lambdas are formally callables.
 `implement(
@@ -248,7 +249,7 @@ let pub `Callable = `make_trait(struct {
 let construction_args = `import("types.construction_args", "__chirp_boot");
 let construct = `import("types.construct", "__chirp_boot");
 
-// Make types constructors (very important for structs)
+// Make types constructors (structs need this)
 `implement(
     trait=`Callable,
     on=`type,
@@ -258,7 +259,7 @@ let construct = `import("types.construct", "__chirp_boot");
         // self is a type, and types implement Set as the set of their instances.
         // Therefore, the result space of invoking a type is the type itself.
         result_space = (self: `type, params) => self,
-        invoke= (self: `type, params) => construct(self, params)
+        invoke=(self: `type, params) => construct(self, params)
     }
 );
 
