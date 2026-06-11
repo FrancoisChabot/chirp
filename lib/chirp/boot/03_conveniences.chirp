@@ -32,10 +32,10 @@ let final make_type_a_self_set(t) = do {
         trait=`Set,
         on=t,
         impl={
-            belongs = (this, v) => v == this,
-            belongs_approx = (this, lc) =>
+            belongs = (this, v) => `same(v, this),
+            belongs_range = (this, lc) =>
                 if (this ∉ lc) {false}
-                else if ({this} == lc) {true}
+                else if (`same({this}, lc)) {true}
                 else {true, false}
         }
     );

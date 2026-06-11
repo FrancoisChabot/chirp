@@ -4,20 +4,20 @@
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
 // ---------- Equality ----------
-let pub final `Equality = `trait(struct { 
+let pub final `Equality = `make_trait(struct {
     equals: (self, other) -> bool
 });
 register("eq_trait", `Equality);
 
 // ---------- Ordering ----------
 // TODO: Should probably become a proper spaceship check.
-let pub final `Orderable = `trait(struct { 
+let pub final `Orderable = `make_trait(struct {
     less: (self, other) -> bool
 });
 register("order_trait", `Orderable);
 
 // ---------- Arithmetic ----------
-let pub final `Arithmetic = `trait(struct {
+let pub final `Arithmetic = `make_trait(struct {
     add: (self, other) -> `any,
     sub: (self, other) -> `any,
     mul: (self, other) -> `any,

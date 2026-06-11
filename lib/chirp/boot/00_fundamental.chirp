@@ -42,11 +42,16 @@ let pub `same = `import("values.same_func", "__chirp_boot");
 // - Types implements the Set trait such that all of its values belong to it.
 let pub `typeof = `import("types.typeof_func", "__chirp_boot");
 
+// Lock down base types
 let pub final int = `typeof(1);
 let pub final char = `typeof('a');
 let pub final string = `typeof("");
 let pub final symbol = `typeof(#foo);
 let pub final void = typeof(do {}); // N.B. type or value here? ...
+
+let pub final true = `same(0, 0)
+let pub final false = `same(0, 1)
+let pub final bool = `typeof(true);
 
 // Creates a new type with n distinct values and returns a struct with two members:
 // type: `type
@@ -76,15 +81,10 @@ let pub `implementation = `import("traits.implementation_func", "__chirp_boot");
 // N.B. `undecided` is deliberately NOT a bool.
 // It participates in belonging heuristics, not ordinary boolean control flow.
 
-let bool_mint = `mint_finite(2);
-let pub final true = bool_mint.values[0];
-let pub final false = bool_mint.values[1];
-let pub final bool = bool_mint.type;
+
 
 let pub final undecided = `mint_finite(1).values[0];
 
-register("true_val", true);
-register("false_val", false);
 register("undecided_val", undecided);
 
 let pub final `type = `typeof(bool);
