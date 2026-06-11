@@ -50,6 +50,6 @@ add_test(
   COMMAND Python3::Interpreter
     "${ChirpInterpreter_SOURCE_DIR}/../scripts/test_conformance.py"
     -j auto
-    --suite "${ChirpInterpreter_SOURCE_DIR}/../tests/core"
+    --suite "${ChirpInterpreter_SOURCE_DIR}/../tests"
     $<TARGET_FILE:chirp>
 )

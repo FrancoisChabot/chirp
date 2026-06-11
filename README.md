@@ -1,12 +1,14 @@
 # Chirp
 
-Chirp reads like TypeScript-annotated Zig, and it does so with an absurdly small semantic surface. Really.
+Chirp is being built as a systems programming language. Two things make its design unusual:
 
-If you want to see what that looks like, check out [`examples/lexer.chirp`](examples/lexer.chirp).
+- Chirp code is a *script* that defines the program to be compiled, using the same machinery for metaprogramming as the code being built. 
+- It uses a powerful and extensible set-theoretic constraint system in which guarantees are garden-variety values.
 
-If you are curious how in the blazes that is supposed to work, start at [`docs/spec/00_introduction.md`](docs/spec/00_introduction.md).
+These two things play off of each other to create an unusually expressive and (I think) harmonious way to define compiled programs using surprisingly few building blocks.
 
-This repo is all content, little guidance for the time being, but you are still more than welcome to poke around.
+> [!NOTE]
+> Chirp is very much a work-in-progress. As of today, it's a perfectly workable scripting language. Albeit one with a very limited standard library.
 
 ## Getting started
 
@@ -40,17 +42,6 @@ for (v ∈ 1..100) do {
 > [!NOTE]
 > Don't let the Unicode `∈` scare you. You can write `` `in `` instead and use `chirp --format` to swap it out for you. I have it hooked up as my format-on-save in VSCode. 
 
-
-### Running the test suite
-
-The [`tests/`](tests/) directory contains a bunch of chirp-written tests,
-
-It's hooked up to run automatically when invoking on ctest. But you can also run it manually, passing it the chirp executable as parameter.  
-
-```bash
-python scripts/test_conformance.py -j auto path/to/chirp
-```
-
 ### Misleading intuition warning
 
 If you are a seasoned developer and, as I suspect will likely be the case, you go have a look at some code samples before reading the spec, you will find yourself in *almost* familiar territory, and there's a real risk of misinterpreting what's going on.
@@ -66,11 +57,11 @@ Is NOT the variable's type in Chirp. Thinking about it this way is not the end o
 
 ## State of the project
 
-### Current objective
+### Current objectives
 
-Fully support all of Chirp's semantics in the interpreter's VM. The core syntax is there, but there are still some important pieces missing:
-
-- C-ABI FFI
+- Bring the documentation back in sync with the implementation. It has fallen behind.
+- Develop an IR-based interpreter, so that the static solver has something to manipulate.
+- Start populating the standard library.
 
 ### Roadmap
 
@@ -80,12 +71,13 @@ Because of this, the roadmap is split up in two:
 
 #### Part 1: Dynamic Chirp
 
-1. Fully support all of Chirp's semantics in the interpreter's VM (IN PROGRESS)
+1. Fully support all of Chirp's semantics in the interpreter's VM (COMPLETE)
+2. Get the repo to a publishable state. (IN PROGRESS)
 
 MILESTONE: Start publishing Dynamic Chirp v0.1
 
-2. Populate the standard library
-3. Perform an optimization pass on the interpreter
+3. Populate the standard library
+4. Perform an optimization pass on the interpreter
 
 MILESTONE: Evaluate the road to a Dynamic Chirp v1.0
 
@@ -107,7 +99,7 @@ How far we can take it from there is unclear. I am reasonably confident that it 
 
 [`lib/chirp/boot`](lib/chirp/boot) : Chirp tries to define itself via its own language as much as possible. This is the Chirp-specified bridge between the raw interpreter and user code.
 
-[`lib/chirp/std`](lib/chirp/std) : This is where the standard library will live.
+[`lib/chirp/std`](lib/chirp/std) : This is where the standard library lives.
 
 [`docs/spec/`](docs/spec/) : It's not trying to be a legalese-style spec at the moment. Formalism will happen once the dust settles a bit.
 
@@ -116,3 +108,17 @@ How far we can take it from there is unclear. I am reasonably confident that it 
 [`scripts/`](scripts/) : Developer utilities, including the conformance test runner.
 
 [`tests/`](tests/) : A chirp-based test/conformance suite. Run via `scripts/test_conformance.py`.
+
+## Contributing
+
+If you are looking at contributing to chirp itself, here's a few things to know.
+
+### Running the test suite
+
+The [`tests/`](tests/) directory contains a bunch of chirp-written tests.
+
+It's hooked up to run automatically when invoking ctest. But you can also run it manually, passing it the chirp executable as a parameter.  
+
+```bash
+python scripts/test_conformance.py -j auto path/to/chirp
+```
