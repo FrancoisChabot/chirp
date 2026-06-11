@@ -121,8 +121,9 @@ The following character sequences are recognized as operators or punctuation:
 | `(`              | N/A              | `#open_paren`        | Start of parameters / grouping |
 | `)`              | N/A              | `#close_paren`       | End of parameters / grouping |
 | **`∈`**          | **`` `in` ``**         | `#belonging`         | Set belonging test (or loop) |
-| **`∪`**          | **`` `union` ``**      | `#union`             | Set union |
-| **`∩`**          | **`` `intersection` ``**| `#intersection`     | Set intersection |
+| **`∉`**          | **`` `notin` ``**      | `#not_in`            | Set not belonging test |
+| **`∪`**          | **`` `or` ``**         | `#union`             | Set union |
+| **`∩`**          | **`` `and` ``**        | `#intersection`     | Set intersection |
 
 
 ---
@@ -134,7 +135,7 @@ The following character sequences are recognized as operators or punctuation:
 * **Namespace Isolation via Backticks:** 
   By reserving the backtick `` ` `` prefix for compiler intrinsics, Chirp ensures that user-defined code can never accidentally conflict with compiler-provided functions or type definitions. Even if the compiler introduces a new intrinsic in a future release, it will be namespaced behind `` ` ``, guaranteeing absolute backward compatibility for user identifiers.
 * **Ergonomic ASCII Equivalents:** 
-  While mathematical notation like `∈` and `∪` looks gorgeous in specifications and documentation, they can be tedious to type on standard QWERTY keyboards. By utilizing the Intrinsics namespace (e.g., `` `in` `` or `` `union` ``), developers can type ASCII equivalents that parse to the exact same AST representation. This also allows the `chirp --format` tool to automatically perform in-place replacement of these ASCII fallbacks into their proper Unicode forms, upgrading the code aesthetics without polluting the user namespace.
+  While mathematical notation like `∈` and `∪` looks gorgeous in specifications and documentation, they can be tedious to type on standard QWERTY keyboards. By utilizing the Intrinsics namespace (e.g., `` `in` `` or `` `or` ``), developers can type ASCII equivalents that parse to the exact same AST representation. This also allows the `chirp --format` tool to automatically perform in-place replacement of these ASCII fallbacks into their proper Unicode forms, upgrading the code aesthetics without polluting the user namespace.
 
 ---
 

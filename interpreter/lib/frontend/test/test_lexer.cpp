@@ -148,8 +148,8 @@ TEST(LexerTest, LocationsAndComments) {
 }
 
 TEST(LexerTest, FormatText) {
-    std::string source = "let a = b `intersection c;\nlet d = e `union f;\nlet j = k `in l;";
-    std::string expected = "let a = b ∩ c;\nlet d = e ∪ f;\nlet j = k ∈ l;";
+    std::string source = "let a = b `and c;\nlet d = e `or f;\nlet j = k `in l;\nlet m = n `notin o;";
+    std::string expected = "let a = b ∩ c;\nlet d = e ∪ f;\nlet j = k ∈ l;\nlet m = n ∉ o;";
     EXPECT_EQ(format_text(source), expected);
     
     // Verify it doesn't touch already formatted or unrelated stuff

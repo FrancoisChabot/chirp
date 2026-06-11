@@ -273,8 +273,9 @@ class Lexer {
         } else {
             std::string_view text = source.substr(start, current - start);
             if (text == "`in") add_token(token_type::in_op);
-            else if (text == "`union") add_token(token_type::union_op);
-            else if (text == "`intersection") add_token(token_type::intersection_op);
+            else if (text == "`notin") add_token(token_type::not_in_op);
+            else if (text == "`or") add_token(token_type::union_op);
+            else if (text == "`and") add_token(token_type::intersection_op);
             else add_token(token_type::intrinsic);
         }
     }
@@ -507,9 +508,11 @@ std::string format_text(std::string_view source) {
         
         if (t.type == token_type::in_op && t.lexeme == "`in") {
             out.append("∈");
-        } else if (t.type == token_type::union_op && t.lexeme == "`union") {
+        } else if (t.type == token_type::not_in_op && t.lexeme == "`notin") {
+            out.append("∉");
+        } else if (t.type == token_type::union_op && t.lexeme == "`or") {
             out.append("∪");
-        } else if (t.type == token_type::intersection_op && t.lexeme == "`intersection") {
+        } else if (t.type == token_type::intersection_op && t.lexeme == "`and") {
             out.append("∩");
         } else {
             out.append(t.lexeme);
