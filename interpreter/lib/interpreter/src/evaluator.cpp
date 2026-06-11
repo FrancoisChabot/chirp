@@ -756,15 +756,15 @@ private:
             return nullptr;
         }
 
-        if (const Value* dereferenceable_trait = get_registered_item("dereferenceable_trait")) {
+        if (const Value* dereferenceable_trait = get_registered_item("traits.dereferenceable")) {
             if (trait == *dereferenceable_trait) {
-                return get_registered_item("reference_dereferenceable_impl");
+                return get_registered_item("traits.dereferenceable.reference_impl");
             }
         }
 
-        if (const Value* dereferenceable_mut_trait = get_registered_item("dereferenceable_mut_trait")) {
+        if (const Value* dereferenceable_mut_trait = get_registered_item("traits.dereferenceable_mut")) {
             if (trait == *dereferenceable_mut_trait && is_mutable_reference_type(dispatch_target)) {
-                return get_registered_item("reference_dereferenceable_mut_impl");
+                return get_registered_item("traits.dereferenceable_mut.reference_impl");
             }
         }
 
@@ -803,7 +803,7 @@ private:
     }
 
     const Value* unique_trait_value() const {
-        return get_registered_item("unique_trait");
+        return get_registered_item("traits.unique");
     }
 
     const Value* registered_unique_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
@@ -815,7 +815,7 @@ private:
     }
 
     const Value* drop_trait_value() const {
-        return get_registered_item("drop_trait");
+        return get_registered_item("traits.drop");
     }
 
     const Value* registered_drop_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
@@ -962,7 +962,7 @@ private:
     bool value_equality(const Value& left, const Value& right, const token& diag) {
         if (left.getType() == right.getType()) {
             if (auto compare_result = call_comparable(left, right, diag)) {
-                return comparison_result_is(*compare_result, "operators.comparable.equal_val", diag);
+                return comparison_result_is(*compare_result, "operators.comparable.equal", diag);
             }
             return left == right;
         }
@@ -987,7 +987,7 @@ private:
         }
         if (left.getType() == right.getType()) {
             if (auto compare_result = call_comparable(left, right, diag)) {
-                return comparison_result_is(*compare_result, "operators.comparable.less_val", diag);
+                return comparison_result_is(*compare_result, "operators.comparable.less", diag);
             }
         }
         fail(diag, "Cannot compare values of types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
@@ -1012,8 +1012,8 @@ private:
         }
         if (left.getType() == right.getType()) {
             if (auto compare_result = call_comparable(left, right, diag)) {
-                return comparison_result_is(*compare_result, "operators.comparable.less_val", diag) ||
-                    comparison_result_is(*compare_result, "operators.comparable.equal_val", diag);
+                return comparison_result_is(*compare_result, "operators.comparable.less", diag) ||
+                    comparison_result_is(*compare_result, "operators.comparable.equal", diag);
             }
             if (left == right) {
                 return true;
@@ -1488,50 +1488,50 @@ private:
     }
 
     Value boot_bind(std::string_view name, const token& diag) const {
-        if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
-        if (is_name(name, "write_func")) return Value::make_host_function(Value::HostFunction::Write);
-        if (is_name(name, "input_func")) return Value::make_host_function(Value::HostFunction::Input);
-        if (is_name(name, "inject_stdin_func")) return Value::make_host_function(Value::HostFunction::InjectStdin);
-        if (is_name(name, "compute.invoke_func")) return Value::make_host_function(Value::HostFunction::Invoke);
-        if (is_name(name, "function_args_func")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
-        if (is_name(name, "types.type_of_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
-        if (is_name(name, "values.same_func")) return Value::make_host_function(Value::HostFunction::Same);
-        if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
+        if (is_name(name, "io.print")) return Value::make_host_function(Value::HostFunction::Print);
+        if (is_name(name, "io.write")) return Value::make_host_function(Value::HostFunction::Write);
+        if (is_name(name, "io.input")) return Value::make_host_function(Value::HostFunction::Input);
+        if (is_name(name, "testing.inject_stdin")) return Value::make_host_function(Value::HostFunction::InjectStdin);
+        if (is_name(name, "compute.invoke")) return Value::make_host_function(Value::HostFunction::Invoke);
+        if (is_name(name, "compute.function_args")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
+        if (is_name(name, "types.type_of")) return Value::make_host_function(Value::HostFunction::TypeOf);
+        if (is_name(name, "values.same")) return Value::make_host_function(Value::HostFunction::Same);
+        if (is_name(name, "system.exit")) return Value::make_host_function(Value::HostFunction::Exit);
 
-        if (is_name(name, "types.mint_func")) return Value::make_host_function(Value::HostFunction::MintFinite);
-        if (is_name(name, "types.is_struct_type_func")) return Value::make_host_function(Value::HostFunction::IsStructType);
+        if (is_name(name, "types.mint_finite")) return Value::make_host_function(Value::HostFunction::MintFinite);
+        if (is_name(name, "types.is_struct_type")) return Value::make_host_function(Value::HostFunction::IsStructType);
 
-        if (is_name(name, "traits.make_func")) return Value::make_host_function(Value::HostFunction::MakeTrait);
+        if (is_name(name, "traits.make")) return Value::make_host_function(Value::HostFunction::MakeTrait);
         if (is_name(name, "traits.interface")) return Value::make_host_function(Value::HostFunction::Interface);
-        if (is_name(name, "traits.implements_func")) return Value::make_host_function(Value::HostFunction::Implements);
-        if (is_name(name, "traits.implementation_func")) return Value::make_host_function(Value::HostFunction::Implementation);
-        if (is_name(name, "traits.implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
-        if (is_name(name, "expect_func")) return Value::make_host_function(Value::HostFunction::Expect);
-        if (is_name(name, "expect_stdout_func")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
-        if (is_name(name, "expect_stderr_func")) return Value::make_host_function(Value::HostFunction::ExpectStderr);
-        if (is_name(name, "expect_exit_func")) return Value::make_host_function(Value::HostFunction::ExpectExit);
-        if (is_name(name, "expect_test_failure_func")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
+        if (is_name(name, "traits.implements")) return Value::make_host_function(Value::HostFunction::Implements);
+        if (is_name(name, "traits.implementation")) return Value::make_host_function(Value::HostFunction::Implementation);
+        if (is_name(name, "traits.implement")) return Value::make_host_function(Value::HostFunction::Implement);
+        if (is_name(name, "testing.expect")) return Value::make_host_function(Value::HostFunction::Expect);
+        if (is_name(name, "testing.expect_stdout")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
+        if (is_name(name, "testing.expect_stderr")) return Value::make_host_function(Value::HostFunction::ExpectStderr);
+        if (is_name(name, "testing.expect_exit")) return Value::make_host_function(Value::HostFunction::ExpectExit);
+        if (is_name(name, "testing.expect_test_failure")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
 
-        if (is_name(name, "undecided_val")) {
-            if (const Value* v = get_registered_item("undecided_val")) return *v;
+        if (is_name(name, "values.undecided")) {
+            if (const Value* v = get_registered_item("values.undecided")) return *v;
             fail(diag, "undecided_val intrinsic used before registry initialization");
         }
-        if (is_name(name, "register_func")) return Value::make_host_function(Value::HostFunction::Register);
-        if (is_name(name, "heap_allocation_type")) return Value::make_type(getHeapAllocationType());
-        if (is_name(name, "heap_create_func")) return Value::make_host_function(Value::HostFunction::HeapCreate);
-        if (is_name(name, "heap_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
-        if (is_name(name, "heap_shared_allocation_type")) return Value::make_type(getHeapSharedAllocationType());
-        if (is_name(name, "heap_shared_create_func")) return Value::make_host_function(Value::HostFunction::HeapSharedCreate);
-        if (is_name(name, "heap_shared_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapSharedDestroy);
-        if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
-        if (is_name(name, "compute.is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
+        if (is_name(name, "system.register")) return Value::make_host_function(Value::HostFunction::Register);
+        if (is_name(name, "memory.heap_allocation")) return Value::make_type(getHeapAllocationType());
+        if (is_name(name, "memory.heap_create")) return Value::make_host_function(Value::HostFunction::HeapCreate);
+        if (is_name(name, "memory.heap_destroy")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
+        if (is_name(name, "memory.heap_shared_allocation")) return Value::make_type(getHeapSharedAllocationType());
+        if (is_name(name, "memory.heap_shared_create")) return Value::make_host_function(Value::HostFunction::HeapSharedCreate);
+        if (is_name(name, "memory.heap_shared_destroy")) return Value::make_host_function(Value::HostFunction::HeapSharedDestroy);
+        if (is_name(name, "testing.enabled")) return Value::make_bool(testing_enabled_);
+        if (is_name(name, "compute.is_pure")) return Value::make_host_function(Value::HostFunction::IsPure);
         if (is_name(name, "compute.lambda_param_space")) return Value::make_host_function(Value::HostFunction::LambdaParamSpace);
         if (is_name(name, "compute.lambda_result_space")) return Value::make_host_function(Value::HostFunction::LambdaResultSpace);
         if (is_name(name, "types.construction_args")) return Value::make_host_function(Value::HostFunction::ConstructionArgs);
         if (is_name(name, "types.construct")) return Value::make_host_function(Value::HostFunction::Construct);
-        if (is_name(name, "set.types_in_set_func")) return Value::make_host_function(Value::HostFunction::TypesInSet);
-        if (is_name(name, "set.enumerable_func")) return Value::make_host_function(Value::HostFunction::IsEnumerable);
-        if (is_name(name, "sets.coextensive_func")) return Value::make_host_function(Value::HostFunction::Coextensive);
+        if (is_name(name, "sets.types_in_set")) return Value::make_host_function(Value::HostFunction::TypesInSet);
+        if (is_name(name, "sets.enumerable")) return Value::make_host_function(Value::HostFunction::IsEnumerable);
+        if (is_name(name, "sets.coextensive")) return Value::make_host_function(Value::HostFunction::Coextensive);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
 
@@ -2601,7 +2601,7 @@ private:
     }
 
     std::shared_ptr<const Type> reference_set_type(const token& diag) const {
-        if (const Value* set_type = get_registered_item("reference_set_type")) {
+        if (const Value* set_type = get_registered_item("types.reference_set")) {
             if (set_type->isType() && is_struct_type(set_type->asType())) {
                 return set_type->asType();
             }
@@ -2931,7 +2931,7 @@ private:
                     }
                     result_ = cv;
                 } else {
-                    if (const Value* deref_trait = get_registered_item("dereferenceable_trait")) {
+                    if (const Value* deref_trait = get_registered_item("traits.dereferenceable")) {
                         if (const Value* impl = registered_impl_for(*deref_trait, right.getType())) {
                             if (impl->isStructInstance()) {
                                 const auto& fields = *impl->asStructInstance().fields;
@@ -3378,7 +3378,7 @@ private:
                     }
                     binding = ref_val.asBinding();
                 } else {
-                    if (const Value* deref_mut_trait = get_registered_item("dereferenceable_mut_trait")) {
+                    if (const Value* deref_mut_trait = get_registered_item("traits.dereferenceable_mut")) {
                         if (const Value* impl = registered_impl_for(*deref_mut_trait, ref_val.getType())) {
                             if (impl->isStructInstance()) {
                                 const auto& fields = *impl->asStructInstance().fields;
@@ -3414,7 +3414,7 @@ private:
                 } else if (is_index_assignment) {
                     current_val = evaluate(*stmt.target);
                 } else if (trait_deref_assign_lambda) {
-                    if (const Value* deref_trait = get_registered_item("dereferenceable_trait")) {
+                    if (const Value* deref_trait = get_registered_item("traits.dereferenceable")) {
                         if (const Value* read_impl = registered_impl_for(*deref_trait, trait_ref_val.getType())) {
                             if (read_impl->isStructInstance()) {
                                 const auto& read_fields = *read_impl->asStructInstance().fields;

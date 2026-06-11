@@ -61,10 +61,10 @@ let pub final `Comparable = `make_trait(struct {
     compare: (self, other) -> ComparisonResult
 });
 register("operators.comparable", `Comparable);
-register("operators.comparable.less_val", `less);
-register("operators.comparable.equal_val", `equal);
-register("operators.comparable.greater_val", `greater);
-register("operators.comparable.unordered_val", `unordered);
+register("operators.comparable.less", `less);
+register("operators.comparable.equal", `equal);
+register("operators.comparable.greater", `greater);
+register("operators.comparable.unordered", `unordered);
 
 // ---------- Arthmetic ----------
 //

@@ -10,9 +10,9 @@
 let pub final `Drop = `make_trait(struct {
     drop: (self)->void
 });
-register("drop_trait", `Drop);
+register("traits.drop", `Drop);
 
 // A marker trait indicating that a type opts out of default copyability.
 // Assignments of unique types are restricted to Terminal Move Semantics.
 let pub final `Unique = `make_trait(void);
-register("unique_trait", `Unique);
+register("traits.unique", `Unique);

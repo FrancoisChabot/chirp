@@ -3,19 +3,19 @@
 // - backtick-prefixed identifiers can be defined here. Normal scripts can only use them, not define them. This guarantees backwards-compatibility when we introduce new stuff.
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
-let pub final `heap_allocation = `import("heap_allocation_type", "__chirp_boot");
-let pub final `heap_create = `import("heap_create_func", "__chirp_boot");
-let pub final `heap_destroy = `import("heap_destroy_func", "__chirp_boot");
-let pub final `heap_shared_allocation = `import("heap_shared_allocation_type", "__chirp_boot");
-let pub final `heap_shared_create = `import("heap_shared_create_func", "__chirp_boot");
-let pub final `heap_shared_destroy = `import("heap_shared_destroy_func", "__chirp_boot");
+let pub final `heap_allocation = `import("memory.heap_allocation", "__chirp_boot");
+let pub final `heap_create = `import("memory.heap_create", "__chirp_boot");
+let pub final `heap_destroy = `import("memory.heap_destroy", "__chirp_boot");
+let pub final `heap_shared_allocation = `import("memory.heap_shared_allocation", "__chirp_boot");
+let pub final `heap_shared_create = `import("memory.heap_shared_create", "__chirp_boot");
+let pub final `heap_shared_destroy = `import("memory.heap_shared_destroy", "__chirp_boot");
 
 let pub `Dereferenceable = `make_trait(struct {
     deref: (self) -> `any
 });
-register("dereferenceable_trait", `Dereferenceable);
+register("traits.dereferenceable", `Dereferenceable);
 register(
-    "reference_dereferenceable_impl",
+    "traits.dereferenceable.reference_impl",
     `interface_of(`Dereferenceable)(
         deref = (self) => *self
     )
@@ -24,9 +24,9 @@ register(
 let pub `DereferenceableMut = `make_trait(struct {
     deref_assign: (self, value) -> void
 });
-register("dereferenceable_mut_trait", `DereferenceableMut);
+register("traits.dereferenceable_mut", `DereferenceableMut);
 register(
-    "reference_dereferenceable_mut_impl",
+    "traits.dereferenceable_mut.reference_impl",
     `interface_of(`DereferenceableMut)(
         deref_assign = (self, value) => do { *self = value; }
     )
@@ -36,7 +36,7 @@ let ReferenceSet = struct {
     target: `Set,
     mutable: bool
 };
-register("reference_set_type", ReferenceSet);
+register("types.reference_set", ReferenceSet);
 
 `implement(
     trait=`Set,

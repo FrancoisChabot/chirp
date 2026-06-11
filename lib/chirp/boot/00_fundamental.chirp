@@ -30,17 +30,17 @@
 // let pub `import : (key: string, format: string = "chirp") = HARDCODED;
 
 // Only needed during bootstrap, this is used to register primitives in the interpreter
-let register = `import("register_func", "__chirp_boot");
+let register = `import("system.register", "__chirp_boot");
 
 // ------------------ Values ------------------ //
 // Checks if two values are the same.
-let pub `same = `import("values.same_func", "__chirp_boot");
+let pub `same = `import("values.same", "__chirp_boot");
 
 // ------------------ Typing ------------------ //
 
 // Get the type of a value
 // - Types implements the Set trait such that all of its values belong to it.
-let pub `type_of = `import("types.type_of_func", "__chirp_boot");
+let pub `type_of = `import("types.type_of", "__chirp_boot");
 
 // Lock down base types/values
 let pub final int = `type_of(1);
@@ -58,34 +58,34 @@ let pub final bool = `type_of(true);
 // values: type[]
 // The order of the values in the array doesn't mean anything.
 // mint_finite(0) is valid and returns a type for which no value exists
-let pub `mint_finite = `import("types.mint_func", "__chirp_boot");
+let pub `mint_finite = `import("types.mint_finite", "__chirp_boot");
 
 // Checks if a type is a struct (TODO: Maybe introduce the notion of "type categories" if we ever need more of these)
-let pub `is_struct_type = `import("types.is_struct_type_func", "__chirp_boot");
+let pub `is_struct_type = `import("types.is_struct_type", "__chirp_boot");
 
 // ------------------ Traits ------------------ //
 
 // Creates a trait (taking the trait interface in the form of a struct type as parameter)
-let pub `make_trait = `import("traits.make_func", "__chirp_boot");
+let pub `make_trait = `import("traits.make", "__chirp_boot");
 
 // Reclaims the interface of a trait
 let pub `interface_of = `import("traits.interface", "__chirp_boot");
 
 // Implements a trait for a type.
-let pub `implement = `import("traits.implement_func", "__chirp_boot");
+let pub `implement = `import("traits.implement", "__chirp_boot");
 
 // Checks if a trait has a registered implementation for a given type
-let pub `implements = `import("traits.implements_func", "__chirp_boot");
+let pub `implements = `import("traits.implements", "__chirp_boot");
 
 // Gets the implementation of a trait for a given type
-let pub `implementation = `import("traits.implementation_func", "__chirp_boot");
+let pub `implementation = `import("traits.implementation", "__chirp_boot");
 
 // ------------------ Fundamental values ------------------ //
 // N.B. `undecided` is deliberately NOT a bool.
 // It participates in belonging heuristics, not ordinary boolean control flow.
 
 let pub final undecided = `mint_finite(1).values[0];
-register("undecided_val", undecided);
+register("values.undecided", undecided);
 
 let pub final `type = `type_of(bool);
 
@@ -97,10 +97,10 @@ let pub `struct_type = {v: `type | `is_struct_type(v)};
 let pub `lambda = `type_of((args) => true);
 
 // Invoke a lambda with a struct as argument list
-let pub `invoke = `import("compute.invoke_func", "__chirp_boot");
+let pub `invoke = `import("compute.invoke", "__chirp_boot");
 
 // Interpreter-assisted verification that a callable has no side-effects 
-let pub `is_pure = `import("compute.is_pure_func", "__chirp_boot");
+let pub `is_pure = `import("compute.is_pure", "__chirp_boot");
 let pub `pure_fn = { v | `is_pure(v) };
 
 // ------------------ Sets ------------------ //
@@ -110,10 +110,10 @@ let pub `pure_fn = { v | `is_pure(v) };
 // - It never omits possible types, but it may overestimate.
 // - The resulting set is not necessarily enumerable.
 // - The resulting set is always a subset of `type`.
-let pub `types_in_set = `import("set.types_in_set_func", "__chirp_boot");
+let pub `types_in_set = `import("sets.types_in_set", "__chirp_boot");
 
 // Returns wether a set is enumerable or not.
-let pub `is_enumerable = `import("set.enumerable_func", "__chirp_boot");
+let pub `is_enumerable = `import("sets.enumerable", "__chirp_boot");
 
 // Checks if two sets contain the same values
 //  - coextensive(A, B) is defined when at least one of A or B is known finite.
@@ -122,7 +122,7 @@ let pub `is_enumerable = `import("set.enumerable_func", "__chirp_boot");
 //      - if the other operand is also finite and has no extra members, the result is true
 //      - otherwise the result is false
 
-let pub `coextensive = `import("sets.coextensive_func", "__chirp_boot");
+let pub `coextensive = `import("sets.coextensive", "__chirp_boot");
 
 
 // N.B. The interpreter has specific expectations as far as this interface is concerned

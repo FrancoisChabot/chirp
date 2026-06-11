@@ -52,4 +52,4 @@ make_type_a_self_set(`type_of(undecided));
 
 // We could just force returning from main. But being able to bail out is nice and easy to implement, 
 // and it's not like it adds much complexity.
-let pub final `exit = `import("exit_func", "__chirp_boot");
+let pub final `exit = `import("system.exit", "__chirp_boot");
