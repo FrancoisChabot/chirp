@@ -112,7 +112,7 @@ let pub `pure_fn = { v | `is_pure(v) };
 // - The resulting set is always a subset of `type`.
 let pub `types_in_set = `import("sets.types_in_set", "__chirp_boot");
 
-// Returns wether a set is enumerable or not.
+// Returns whether a set is enumerable or not.
 let pub `is_enumerable = `import("sets.enumerable", "__chirp_boot");
 
 // Checks if two sets contain the same values

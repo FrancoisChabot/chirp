@@ -66,9 +66,9 @@ register("operators.comparable.equal", `equal);
 register("operators.comparable.greater", `greater);
 register("operators.comparable.unordered", `unordered);
 
-// ---------- Arthmetic ----------
+// ---------- Arithmetic ----------
 //
-// Arthmetic protocol assumptions:
+// Artihmetic protocol assumptions:
 //
 // - For any ordered pair (a, b) that the interpreter accepts for `a + b`, the
 //   result is a semantic fact, not something that may vary with dispatch
@@ -82,7 +82,7 @@ register("operators.comparable.unordered", `unordered);
 //     -(-a)       <=> a
 //     -(a + b)    <=> (-a) + (-b)
 //
-// TODO: Formally specify that the rest of expectex abelian semantics hold.
+// TODO: Formally specify that the rest of expected abelian semantics hold.
 // e.g. 
 //     a - b       <=> a + -b
 //     a * (b+c)   <=> a*b + a*c
