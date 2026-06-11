@@ -42,6 +42,12 @@ let pub `same = `import("values.same_func", "__chirp_boot");
 // - Types implements the Set trait such that all of its values belong to it.
 let pub `typeof = `import("types.typeof_func", "__chirp_boot");
 
+let pub final int = `typeof(1);
+let pub final char = `typeof('a');
+let pub final string = `typeof("");
+let pub final symbol = `typeof(#foo);
+let pub final void = typeof(do {}); // N.B. type or value here? ...
+
 // Creates a new type with n distinct values and returns a struct with two members:
 // type: `type
 // values: type[]

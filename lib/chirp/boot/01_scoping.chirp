@@ -17,24 +17,3 @@ register("drop_trait", `Drop);
 let pub final `Unique = `trait(struct {});
 register("unique_trait", `Unique);
 
-// ---------- Equality ----------
-let pub final `Equality = `trait(struct { 
-    equals: (self, other) -> bool
-});
-register("eq_trait", `Equality);
-
-// ---------- Ordering ----------
-// TODO: Should probably become a proper spaceship check.
-let pub final `Orderable = `trait(struct { 
-    less: (self, other) -> bool
-});
-register("order_trait", `Orderable);
-
-// ---------- Arithmetic ----------
-let pub final `Arithmetic = `trait(struct {
-    add: (self, other) -> `any,
-    sub: (self, other) -> `any,
-    mul: (self, other) -> `any,
-    div: (self, other) -> `any
-});
-register("arithmetic_trait", `Arithmetic);
