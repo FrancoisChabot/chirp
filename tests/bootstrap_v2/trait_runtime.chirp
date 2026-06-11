@@ -1,0 +1,14 @@
+`expect_exit(0);
+
+let Marker = `make_trait(struct { tag: bool });
+let Token = `mint_finite(1).values[0];
+
+`implement(
+    trait=Marker,
+    on=`type_of(Token),
+    impl={tag=true}
+);
+
+`expect(`implements(Marker, `type_of(Token)));
+`expect(Token ∈ Marker);
+`expect(`implementation(Marker, `type_of(Token)).tag == true);

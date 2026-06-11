@@ -1,0 +1,8 @@
+`expect_exit(0);
+
+let ts = `types_in_set({true, 1});
+
+`expect(bool ∈ ts);
+`expect(int ∈ ts);
+`expect(`is_enumerable(ts));
+`expect(`coextensive(ts, {bool, int}));

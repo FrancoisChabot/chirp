@@ -7,6 +7,7 @@
 #include "value.h"
 
 namespace chirp::frontend {
+class Expr;
 class StructExpr;
 }
 
@@ -143,7 +144,6 @@ public:
 class TraitType : public Type {
 public:
     std::string_view name() const override { return "Trait"; }
-    bool hasSetness() const override { return true; }
     Value belongs(const Value& S, const Value& v) const override;
     Value belongs_approx(const Value& S, const Value& lc) const override;
 };
@@ -186,6 +186,30 @@ public:
     const frontend::StructExpr* expr() const { return expr_; }
 private:
     const frontend::StructExpr* expr_;
+};
+
+struct OrderedStructFieldSpec {
+    std::string name;
+    bool is_mut = false;
+    bool is_final = false;
+    const frontend::Expr* type_bound = nullptr;
+    const frontend::Expr* initializer = nullptr;
+};
+
+class RuntimeStructType : public Type {
+public:
+    explicit RuntimeStructType(std::vector<OrderedStructFieldSpec> fields)
+        : fields_(std::move(fields)) {}
+
+    std::string_view name() const override { return "Struct"; }
+    bool hasSetness() const override { return true; }
+    Value belongs(const Value& S, const Value& v) const override;
+    Value belongs_approx(const Value& S, const Value& lc) const override;
+
+    const std::vector<OrderedStructFieldSpec>& fields() const { return fields_; }
+
+private:
+    std::vector<OrderedStructFieldSpec> fields_;
 };
 
 class EnumFamilyType : public Type {

@@ -856,6 +856,9 @@ Value TraitType::belongs_approx(const Value& S, const Value& lc) const {
 }
 
 Value SignatureType::belongs(const Value& S, const Value& v) const {
+    if (v.getType() == getFunctionType()) {
+        return Value::make_bool(true);
+    }
     if (v.isLambda()) {
         size_t v_size = v.asLambdaTag().lambda->parameters.size();
         return Value::make_bool(v_size == parameter_count_);
@@ -876,6 +879,15 @@ Value StructType::belongs(const Value& S, const Value& v) const {
 }
 
 Value StructType::belongs_approx(const Value& S, const Value& lc) const {
+    throw std::runtime_error("Range operations on struct types are not supported");
+}
+
+Value RuntimeStructType::belongs(const Value& S, const Value& v) const {
+    if (!v.isStructInstance()) return Value::make_bool(false);
+    return Value::make_bool(v.getType() == S.asType());
+}
+
+Value RuntimeStructType::belongs_approx(const Value& S, const Value& lc) const {
     throw std::runtime_error("Range operations on struct types are not supported");
 }
 

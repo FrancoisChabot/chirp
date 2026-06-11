@@ -72,10 +72,16 @@ public:
         Print,
         Write,
         TypeOf,
+        Same,
         Exit,
         Mint,
+        MintFinite,
+        IsStructType,
         Trait,
+        MakeTrait,
         Interface,
+        Implements,
+        Implementation,
         Implement,
         Register,
         Expect,
@@ -91,7 +97,14 @@ public:
         Input,
         InjectStdin,
         Invoke,
-        FunctionArgs
+        FunctionArgs,
+        LambdaParamSpace,
+        LambdaResultSpace,
+        ConstructionArgs,
+        Construct,
+        TypesInSet,
+        IsEnumerable,
+        Coextensive
     };
     struct HostFunctionTag {
         HostFunction fn;

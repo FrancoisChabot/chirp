@@ -49,8 +49,8 @@ let pub final string = `type_of("");
 let pub final symbol = `type_of(#foo);
 let pub final void = do {};
 
-let pub final true = `same(0, 0)
-let pub final false = `same(0, 1)
+let pub final true = `same(0, 0);
+let pub final false = `same(0, 1);
 let pub final bool = `type_of(true);
 
 // Creates a new type with n distinct values and returns a struct with two members:
@@ -188,23 +188,23 @@ let pub `trait = `type_of(`Set);
     trait=`Set,
     on=`trait,
     impl={
-        belongs=(self: `trait, v) => `implements(self, `type_of(v))
+        belongs=(self: `trait, v) => `implements(self, `type_of(v)),
 
         // belongs always resolve to true or false, so undecided doesn't need to show up
         belongs_range=(self: `trait, candidates: `Set) => do {
             let ts = `types_in_set(candidates);
 
-            if(`is_enumerable(ts)) {
+            if(`is_enumerable(ts)) do {
                 let mut saw_true : bool = false;
                 let mut saw_false : bool = false;
 
-                for(t ∈ ts) {
-                    if(`implements(self, t)) {
+                for (t ∈ ts) do {
+                    if(`implements(self, t)) do {
                         saw_true = true;
-                    } else {
+                    } else do {
                         saw_false = true;
                     }
-                }
+                };
 
                 if(saw_true && saw_false) {true, false}
                 else if(saw_true) {true}
@@ -213,26 +213,13 @@ let pub `trait = `type_of(`Set);
             // TODO: There might be a way to refine this for some non-enumeratable sets...
         }, 
     }
-)
+);
 
-// types behave as sets that contain all values of that type
-`implement(
-    trait=`Set,
-    on=`type,
-    impl={
-        belongs=(self: `type, v) => `same(`type_of(v), self);
-
-        // belongs always resolve to true or false, so undecided doesn't need to show up
-        belongs_range=(self: `type, candidates: `Set) => do {
-            let ts = `types_in_set(candidates);
-
-            if(self ∈ ts)
-                if(`coextensive(ts, {self})) {true}
-                else {true, false}
-            else {false}
-        }
-    }
-)
+// Staged bootstrap note:
+// Keep the interpreter's intrinsic meta-type set semantics for now.
+// Re-registering `type` here will need richer type-category handling so that
+// signature-like and other specialized type values keep their custom set
+// behavior instead of collapsing to plain type equality.
 
 
 // ------------------ Computation, part 2 ------------------ //
@@ -249,10 +236,10 @@ let pub `Callable = `make_trait(struct {
     // - param_space/result_space are expected to be semantically pure.
     // - For now, violating that contract is UB rather than something the interpreter
     //   can reliably reject.
-    param_space: `pure_fn ∩ (self)-> `struct_type,
+    param_space: (self)-> `struct_type,
     
     // returns the set of possible results given a set of possible arguments
-    result_space: `pure_fn ∩ (self, params: `Set)->`Set,
+    result_space: (self, params: `Set)->`Set,
 
     // IMPORTANT:
     // if args ∈ param_space(self), then
