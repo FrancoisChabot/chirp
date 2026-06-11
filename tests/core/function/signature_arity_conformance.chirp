@@ -1,0 +1,6 @@
+`expect_exit(0);
+
+let sig = (a: int, b: int) -> int;
+let func = (x: int) : int => x;
+
+`expect(func ∉ sig);

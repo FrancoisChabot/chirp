@@ -865,9 +865,7 @@ Value TraitType::belongs_approx(const Value& S, const Value& lc) const {
 Value SignatureType::belongs(const Value& S, const Value& v) const {
     if (!S.isSignature()) throw std::runtime_error("SignatureType::belongs requires a Signature value");
     size_t parameter_count = S.asSignatureTag().expr->parameters.size();
-    if (v.getType() == getFunctionType()) {
-        return Value::make_bool(true);
-    }
+
     if (v.isLambda()) {
         size_t v_size = v.asLambdaTag().lambda->parameters.size();
         return Value::make_bool(v_size == parameter_count);
