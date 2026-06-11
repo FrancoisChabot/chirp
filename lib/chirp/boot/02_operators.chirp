@@ -143,6 +143,12 @@ let pub final `Divisible = `make_trait(struct {
 });
 register("operators.divisible", `Divisible);
 
+// ---------- Modulable ----------
+let pub final `Modulable = `make_trait(struct {
+    mod: (self, other) -> `any
+});
+register("operators.modulable", `Modulable);
+
 // ---------- Indexing and slicing ----------
 //
 // - Index syntax follows the same ordered-struct model as call syntax.

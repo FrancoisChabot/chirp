@@ -120,10 +120,10 @@ class GroupingExpr;
 class NumberExpr;
 class StringExpr;
 class CharExpr;
-class BoolExpr;
+
 class IdentifierExpr;
 class IntrinsicExpr;
-class UndecidedExpr;
+
 class SymbolicConstantExpr;
 class EnumeratedSetExpr;
 class ConstructedSetExpr;
@@ -159,10 +159,10 @@ public:
     virtual void visit(const NumberExpr& expr) = 0;
     virtual void visit(const StringExpr& expr) = 0;
     virtual void visit(const CharExpr& expr) = 0;
-    virtual void visit(const BoolExpr& expr) = 0;
+
     virtual void visit(const IdentifierExpr& expr) = 0;
     virtual void visit(const IntrinsicExpr& expr) = 0;
-    virtual void visit(const UndecidedExpr& expr) = 0;
+
     virtual void visit(const SymbolicConstantExpr& expr) = 0;
     virtual void visit(const EnumeratedSetExpr& expr) = 0;
     virtual void visit(const ConstructedSetExpr& expr) = 0;
@@ -306,16 +306,7 @@ public:
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };
 
-class BoolExpr : public Expr {
-public:
-    bool value;
-    token diagnostic_token;
 
-    BoolExpr(bool value, token diag) 
-        : value(value), diagnostic_token(std::move(diag)) {}
-
-    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
-};
 
 class IdentifierExpr : public Expr {
 public:
@@ -339,15 +330,7 @@ public:
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };
 
-class UndecidedExpr : public Expr {
-public:
-    token diagnostic_token;
 
-    explicit UndecidedExpr(token diag) 
-        : diagnostic_token(std::move(diag)) {}
-
-    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
-};
 
 class SymbolicConstantExpr : public Expr {
 public:

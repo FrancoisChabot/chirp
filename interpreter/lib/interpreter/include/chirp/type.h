@@ -47,10 +47,7 @@ public:
     std::string_view name() const override { return "bool"; }
 };
 
-class UndecidedType : public Type {
-public:
-    std::string_view name() const override { return "Undecided"; }
-};
+
 
 
 

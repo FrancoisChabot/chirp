@@ -521,8 +521,8 @@ private:
             for (const auto& part : expr.parts) part->accept(*this);
         }
         void visit(const frontend::CharExpr&) override {}
-        void visit(const frontend::BoolExpr&) override {}
-        void visit(const frontend::UndecidedExpr&) override {}
+
+
         void visit(const frontend::SymbolicConstantExpr&) override {}
         void visit(const frontend::EnumExpr&) override {}
         void visit(const frontend::EnumeratedSetExpr& expr) override {
@@ -836,6 +836,7 @@ private:
     const Value* negatable_trait_value() const { return get_registered_item("operators.negatable"); }
     const Value* multiplicative_trait_value() const { return get_registered_item("operators.multiplicative"); }
     const Value* divisible_trait_value() const { return get_registered_item("operators.divisible"); }
+    const Value* modulable_trait_value() const { return get_registered_item("operators.modulable"); }
     const Value* indexable_trait_value() const { return get_registered_item("operators.indexable"); }
     const Value* index_assignable_trait_value() const { return get_registered_item("operators.index_assignable"); }
 
@@ -880,6 +881,7 @@ private:
             case BinaryOp::Sub: return subtractive_trait_value();
             case BinaryOp::Mul: return multiplicative_trait_value();
             case BinaryOp::Div: return divisible_trait_value();
+            case BinaryOp::Mod: return modulable_trait_value();
             default: return nullptr;
         }
     }
@@ -890,6 +892,7 @@ private:
             case BinaryOp::Sub: return "sub";
             case BinaryOp::Mul: return "mul";
             case BinaryOp::Div: return "div";
+            case BinaryOp::Mod: return "mod";
             default: return nullptr;
         }
     }
@@ -898,7 +901,7 @@ private:
         if (left.isInt() && right.isInt()) {
             return Value::make_int(binary_int(left, right, op, diag));
         }
-        if (left.getType() == right.getType() && op != BinaryOp::Mod) {
+        if (left.getType() == right.getType()) {
             const Value* trait = arithmetic_trait_for(op);
             const char* method_name = arithmetic_method_for(op);
             if (trait != nullptr && method_name != nullptr) {
@@ -1403,7 +1406,7 @@ private:
             }
         }
 
-        if (set.isBool() || set.isInt() || set.isString() || set.isSymbol() || set.getType() == getUndecidedType()) {
+        if (set.isBool() || set.isInt() || set.isString() || set.isSymbol() || set.isMinted()) {
             return {set};
         }
 
@@ -1489,28 +1492,30 @@ private:
         if (is_name(name, "write_func")) return Value::make_host_function(Value::HostFunction::Write);
         if (is_name(name, "input_func")) return Value::make_host_function(Value::HostFunction::Input);
         if (is_name(name, "inject_stdin_func")) return Value::make_host_function(Value::HostFunction::InjectStdin);
-        if (is_name(name, "invoke_func") || is_name(name, "compute.invoke_func")) return Value::make_host_function(Value::HostFunction::Invoke);
+        if (is_name(name, "compute.invoke_func")) return Value::make_host_function(Value::HostFunction::Invoke);
         if (is_name(name, "function_args_func")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
-        if (is_name(name, "typeof_func") || is_name(name, "types.type_of_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
+        if (is_name(name, "types.type_of_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "values.same_func")) return Value::make_host_function(Value::HostFunction::Same);
         if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
-        if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
+
         if (is_name(name, "types.mint_func")) return Value::make_host_function(Value::HostFunction::MintFinite);
         if (is_name(name, "types.is_struct_type_func")) return Value::make_host_function(Value::HostFunction::IsStructType);
-        if (is_name(name, "trait_func")) return Value::make_host_function(Value::HostFunction::Trait);
+
         if (is_name(name, "traits.make_func")) return Value::make_host_function(Value::HostFunction::MakeTrait);
-        if (is_name(name, "interface_func") || is_name(name, "traits.interface")) return Value::make_host_function(Value::HostFunction::Interface);
+        if (is_name(name, "traits.interface")) return Value::make_host_function(Value::HostFunction::Interface);
         if (is_name(name, "traits.implements_func")) return Value::make_host_function(Value::HostFunction::Implements);
         if (is_name(name, "traits.implementation_func")) return Value::make_host_function(Value::HostFunction::Implementation);
-        if (is_name(name, "implement_func") || is_name(name, "traits.implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
+        if (is_name(name, "traits.implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
         if (is_name(name, "expect_func")) return Value::make_host_function(Value::HostFunction::Expect);
         if (is_name(name, "expect_stdout_func")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
         if (is_name(name, "expect_stderr_func")) return Value::make_host_function(Value::HostFunction::ExpectStderr);
         if (is_name(name, "expect_exit_func")) return Value::make_host_function(Value::HostFunction::ExpectExit);
         if (is_name(name, "expect_test_failure_func")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
-        if (is_name(name, "true_val")) return True();
-        if (is_name(name, "false_val")) return False();
-        if (is_name(name, "undecided_val")) return UndecidedVal();
+
+        if (is_name(name, "undecided_val")) {
+            if (const Value* v = get_registered_item("undecided_val")) return *v;
+            fail(diag, "undecided_val intrinsic used before registry initialization");
+        }
         if (is_name(name, "register_func")) return Value::make_host_function(Value::HostFunction::Register);
         if (is_name(name, "heap_allocation_type")) return Value::make_type(getHeapAllocationType());
         if (is_name(name, "heap_create_func")) return Value::make_host_function(Value::HostFunction::HeapCreate);
@@ -1519,7 +1524,7 @@ private:
         if (is_name(name, "heap_shared_create_func")) return Value::make_host_function(Value::HostFunction::HeapSharedCreate);
         if (is_name(name, "heap_shared_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapSharedDestroy);
         if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
-        if (is_name(name, "is_pure_func") || is_name(name, "compute.is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
+        if (is_name(name, "compute.is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
         if (is_name(name, "compute.lambda_param_space")) return Value::make_host_function(Value::HostFunction::LambdaParamSpace);
         if (is_name(name, "compute.lambda_result_space")) return Value::make_host_function(Value::HostFunction::LambdaResultSpace);
         if (is_name(name, "types.construction_args")) return Value::make_host_function(Value::HostFunction::ConstructionArgs);
@@ -2985,9 +2990,7 @@ private:
         result_ = Value::make_char(codepoint);
     }
 
-    void visit(const BoolExpr& expr) override {
-        result_ = Value::make_bool(expr.value);
-    }
+
 
     void visit(const IdentifierExpr& expr) override {
         result_ = builtin_identifier(expr.name, expr.diagnostic_token);
@@ -2997,9 +3000,7 @@ private:
         result_ = builtin_intrinsic(expr.name, expr.diagnostic_token);
     }
 
-    void visit(const UndecidedExpr& expr) override {
-        result_ = UndecidedVal();
-    }
+
 
     void visit(const SymbolicConstantExpr& expr) override {
         result_ = Value::make_symbol(std::string(expr.value));

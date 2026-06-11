@@ -71,10 +71,10 @@ public:
         result += ")";
     }
     void visit(const CharExpr& expr) override { result += expr.value; }
-    void visit(const BoolExpr& expr) override { result += (expr.value ? "true" : "false"); }
+
     void visit(const IdentifierExpr& expr) override { result += expr.name; }
     void visit(const IntrinsicExpr& expr) override { result += expr.name; }
-    void visit(const UndecidedExpr& expr) override { result += "undecided"; }
+
     void visit(const SymbolicConstantExpr& expr) override { result += expr.value; }
     
     void visit(const EnumeratedSetExpr& expr) override {

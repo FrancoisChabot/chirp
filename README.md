@@ -40,7 +40,7 @@ for (v ∈ 1..100) do {
 ```
 
 > [!NOTE]
-> Don't let the Unicode `∈` and `∩` scare you. You can write `` `in `` and `` `or `` instead and use `chirp --format` to swap it out for you. I have it hooked up as my format-on-save in VSCode. 
+> Don't let the Unicode `∈` and `∩` scare you. You can write `` `in `` and `` `and `` instead and use `chirp --format` to swap it out for you. I have it hooked up as my format-on-save in VSCode. 
 
 ### Misleading intuition warning
 

@@ -20,10 +20,7 @@ std::shared_ptr<const Type> getBoolType() {
     return instance;
 }
 
-std::shared_ptr<const Type> getUndecidedType() {
-    static auto instance = std::make_shared<UndecidedType>();
-    return instance;
-}
+
 
 
 
@@ -140,15 +137,7 @@ const Value& False() {
     return instance;
 }
 
-const Value& Undecided() {
-    static Value instance = Value::make_type(getUndecidedType());
-    return instance;
-}
 
-const Value& UndecidedVal() {
-    static Value instance = Value(getUndecidedType(), std::monostate{});
-    return instance;
-}
 
 const Value& TypeVal() {
     static Value instance = Value::make_type(getMetaType());
@@ -726,9 +715,7 @@ std::string Value::toString() const {
         }
         return "<heap allocation " + std::to_string(state->id) + ">";
     }
-    if (type_ == getUndecidedType()) {
-        return "undecided";
-    }
+
     return "Value(type=" + std::string(type_->name()) + ")";
 }
 
