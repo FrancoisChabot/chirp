@@ -32,10 +32,10 @@ let final make_type_a_self_set(t) = do {
         trait=`Set,
         on=t,
         impl={
-            belongs = (this, v) => `same(v, this),
-            belongs_range = (this, lc) =>
-                if (this ∉ lc) {false}
-                else if (`same({this}, lc)) {true}
+            belongs = (self, v) => `same(v, self),
+            belongs_range = (self, lc) =>
+                if (self ∉ lc) {false}
+                else if (`coextensive(lc, {self})) {true}
                 else {true, false}
         }
     );
@@ -46,6 +46,7 @@ make_type_a_self_set(int);
 make_type_a_self_set(char);
 make_type_a_self_set(string);
 make_type_a_self_set(symbol);
+make_type_a_self_set(`typeof(void));
 make_type_a_self_set(`typeof(undecided));
 
 

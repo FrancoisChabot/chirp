@@ -3,24 +3,123 @@
 // - backtick-prefixed identifiers can be defined here. Normal scripts can only use them, not define them. This guarantees backwards-compatibility when we introduce new stuff.
 // - Public identifiers defined here appear in the global namespace. Private top-level identifiers stay in boot scope.
 
-// ---------- Equality ----------
-let pub final `Equality = `make_trait(struct {
-    equals: (self, other) -> bool
-});
-register("eq_trait", `Equality);
+// ---------- Comparison ----------
 
-// ---------- Ordering ----------
-// TODO: Should probably become a proper spaceship check.
-let pub final `Orderable = `make_trait(struct {
-    less: (self, other) -> bool
-});
-register("order_trait", `Orderable);
+// Comparison protocol assumptions:
+//
+// - The comparison relation is allowed to be consumed by the interpreter in any
+//   evaluation order. Evaluation order is an implementation detail, not part of
+//   the language semantics.
+//
+// - Therefore, valid Comparable implementations must satisfy these semantic laws:
+//
+//     compare(a, b) == `equal     iff compare(b, a) == `equal
+//     compare(a, b) == `less      iff compare(b, a) == `greater
+//     compare(a, b) == `greater   iff compare(b, a) == `less
+//     compare(a, b) == `unordered iff compare(b, a) == `unordered
+//
+// - For any pair of values that the interpreter accepts as comparable, the
+//   comparison result is a semantic fact, not something that may vary with
+//   operand order or dispatch strategy.
+//
+// - The concrete operators derive from compare(a, b) like this:
+//
+//     a == b  <=> compare(a, b) == `equal
+//     a != b  <=> compare(a, b) != `equal
+//     a <  b  <=> compare(a, b) == `less
+//     a <= b  <=> compare(a, b) == `less || compare(a, b) == `equal
+//     a >  b  <=> compare(a, b) == `greater
+//     a >= b  <=> compare(a, b) == `greater || compare(a, b) == `equal
+//
+// - `unordered means:
+//   - a == b is false
+//   - a <  b is false
+//   - a <= b is false
+//   - a >  b is false
+//   - a >= b is false
+//   - a != b is true
+//
+// - Unless a type explicitly models self-unordered values, compare(a, a) should
+//   evaluate to `equal.
+let ComparisonResult = enum { Less, Equal, Greater, Unordered };
 
-// ---------- Arithmetic ----------
-let pub final `Arithmetic = `make_trait(struct {
+let pub `less = ComparisonResult.Less;
+let pub `equal = ComparisonResult.Equal;
+let pub `greater = ComparisonResult.Greater;
+let pub `unordered = ComparisonResult.Unordered;
+
+let pub final `Comparable = `make_trait(struct {
+    compare: (self, other) -> ComparisonResult
+});
+register("operators.comparable", `Comparable);
+register("operators.comparable.less_val", `less);
+register("operators.comparable.equal_val", `equal);
+register("operators.comparable.greater_val", `greater);
+register("operators.comparable.unordered_val", `unordered);
+
+// ---------- Additive ----------
+//
+// Additive protocol assumptions:
+//
+// - For any ordered pair (a, b) that the interpreter accepts for `a + b`, the
+//   result is a semantic fact, not something that may vary with dispatch
+//   strategy.
+//
+// - Valid Additive implementations are expected to model an abelian additive
+//   structure. In particular:
+//
+//     a + b       <=> b + a
+//     (a + b) + c <=> a + (b + c)
+//     -(-a)       <=> a
+//     -(a + b)    <=> (-a) + (-b)
+//
+// - Subtraction is not a primitive semantic fact. It is derived as:
+//
+//     a - b <=> a + (-b)
+//
+// - Therefore:
+//
+//     a + (-b) <=> a - b
+let pub final `Additive = `make_trait(struct {
     add: (self, other) -> `any,
-    sub: (self, other) -> `any,
-    mul: (self, other) -> `any,
+    neg: (self) -> `any
+});
+register("operators.additive", `Additive);
+
+// ---------- Multiplicative ----------
+//
+// Multiplicative protocol assumptions:
+//
+// - For any ordered pair (a, b) that the interpreter accepts for `a * b`, the
+//   result is a semantic fact, not something that may vary with dispatch
+//   strategy.
+//
+// - Valid Multiplicative implementations are expected to model lawful
+//   multiplication. In particular:
+//
+//     (a * b) * c <=> a * (b * c)
+//
+// - Commutativity is NOT implied here.
+//
+// - Operations that are culturally "multiplication-shaped" but do not fit this
+//   semantic contract should be ordinary functions rather than implementations
+//   of the `* operator.
+let pub final `Multiplicative = `make_trait(struct {
+    mul: (self, other) -> `any
+});
+register("operators.multiplicative", `Multiplicative);
+
+// ---------- Divisible ----------
+//
+// - For any ordered pair (a, b) that the interpreter accepts for `a / b`, the
+//   result is a semantic fact, not something that may vary with dispatch
+//   strategy.
+//
+// - Division is intentionally weaker semantically than `+ or `*.
+//
+// - This trait does not imply the existence of a reciprocal operation, nor that
+//   division is reducible to multiplication by an inverse.
+let pub final `Divisible = `make_trait(struct {
     div: (self, other) -> `any
 });
-register("arithmetic_trait", `Arithmetic);
+register("operators.divisible", `Divisible);

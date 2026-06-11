@@ -42,12 +42,12 @@ let pub `same = `import("values.same_func", "__chirp_boot");
 // - Types implements the Set trait such that all of its values belong to it.
 let pub `typeof = `import("types.typeof_func", "__chirp_boot");
 
-// Lock down base types
+// Lock down base types/values
 let pub final int = `typeof(1);
 let pub final char = `typeof('a');
 let pub final string = `typeof("");
 let pub final symbol = `typeof(#foo);
-let pub final void = typeof(do {}); // N.B. type or value here? ...
+let pub final void = do {};
 
 let pub final true = `same(0, 0)
 let pub final false = `same(0, 1)
@@ -81,10 +81,7 @@ let pub `implementation = `import("traits.implementation_func", "__chirp_boot");
 // N.B. `undecided` is deliberately NOT a bool.
 // It participates in belonging heuristics, not ordinary boolean control flow.
 
-
-
 let pub final undecided = `mint_finite(1).values[0];
-
 register("undecided_val", undecided);
 
 let pub final `type = `typeof(bool);
@@ -115,8 +112,15 @@ let pub `types_in_set = `import("set.types_in_set_func", "__chirp_boot");
 // Returns wether a set is enumerable or not.
 let pub `is_enumerable = `import("set.enumerable_func", "__chirp_boot");
 
-// Returns wether a set is enumerable or not.
-let pub `cardinality = `import("set.cardinality", "__chirp_boot");
+// Checks if two sets contain the same values
+//  - coextensive(A, B) is defined when at least one of A or B is known finite.
+//  - If the finite operand has a member not in the other set, the result is false.
+//  - If every member of the finite operand is in the other set, then:
+//      - if the other operand is also finite and has no extra members, the result is true
+//      - otherwise the result is false
+
+let pub `coextensive = `import("sets.coextensive_func", "__chirp_boot");
+
 
 // N.B. The interpreter has specific expectations as far as this interface is concerned
 // So the cleaner stipulation here would be let pub `Set = `make_trait(`import("traits.set.interface", "__chirp_boot" ));
@@ -127,7 +131,7 @@ let pub `Set = `make_trait(struct {
     belongs: `pure_fn ∩ (self, v) -> {true, false, undecided},
 
     // Takes a set of candidate values, and returns the set of possible results.
-    belongs_range: `pure_fn ∩ (self, candidates) -> {
+    belongs_range: `pure_fn ∩ (self, candidates: `Set) -> {
         {true}, 
         {false}, 
         {undecided},
@@ -211,8 +215,8 @@ let pub `trait = `typeof(`Set);
         belongs_range=(self: `type, candidates: `Set) => do {
             let ts = `types_in_set(candidates);
 
-            if(self ∈ candidates)
-                if(same(`cardinality(candidates), 1)) {true}
+            if(self ∈ ts)
+                if(`coextensive(ts, {self})) {true}
                 else {true, false}
             else {false}
         }
@@ -227,6 +231,8 @@ let pub `trait = `typeof(`Set);
 // However, we instead inline an equivalent struct for legibility reasons
 let pub `Callable = `make_trait(struct {
     // The set of argument structs that the callable accepts 
+    // The definition order of the struct's members drive the semantics of positional invocations.
+    // e.g. given foo(struct {x: int, y:int}), foo(1, 2) -> foo(x=1, y=2)
     param_space: `pure_fn ∩ (self)-> `struct_type,
     
     // returns the set of possible results given a set of possible arguments
