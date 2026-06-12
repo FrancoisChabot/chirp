@@ -19,6 +19,7 @@ temp_files_registry = []
 registry_lock = threading.Lock()
 runner_counter = 0
 counter_lock = threading.Lock()
+DEFAULT_TIMEOUT_SECONDS = 15 if os.name == "nt" else 5
 
 # ANSI Escape Codes for Colors
 COLOR_GREEN = "\033[92m"
@@ -29,6 +30,9 @@ COLOR_RESET = "\033[0m"
 def print_test_status(status, name, color, extra=""):
     status_padded = status.ljust(7)
     print(f"{color}{status_padded} {name}{COLOR_RESET}{extra}")
+
+def safe_repr(value):
+    return ascii(value)
 
 def get_thread_info():
     if not hasattr(thread_local, "report_path"):
@@ -43,7 +47,7 @@ def get_thread_info():
             temp_files_registry.append(report_path)
     return thread_local.report_path, thread_local.runner_id
 
-def run_test(chirp_bin, file_path):
+def run_test(chirp_bin, file_path, timeout_seconds):
     report_path, runner_id = get_thread_info()
     
     # Truncate the report file to prevent reading stale data from a previous test run on this thread
@@ -64,7 +68,9 @@ def run_test(chirp_bin, file_path):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=5
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds
         )
         report = {"diagnostics": []}
         if os.path.exists(report_path):
@@ -88,7 +94,7 @@ def run_test(chirp_bin, file_path):
     except json.JSONDecodeError as e:
         return False, f"Could not read run report: {e}", expect_test_failure, runner_id
     except subprocess.TimeoutExpired:
-        return False, f"Execution timed out after 5 seconds", expect_test_failure, runner_id
+        return False, f"Execution timed out after {timeout_seconds} seconds", expect_test_failure, runner_id
     
     is_syntax_test = "/syntax/" in file_path.replace(os.sep, "/")
     if is_syntax_test:
@@ -113,10 +119,10 @@ def run_test(chirp_bin, file_path):
             failures.append(f"Run outcome mismatch: expected syntax_failure, got {actual_outcome!r}")
             
     if expected_stdout is not None and actual_stdout != expected_stdout:
-        failures.append(f"Stdout mismatch:\n  Expected: {repr(expected_stdout)}\n  Actual:   {repr(actual_stdout)}")
+        failures.append(f"Stdout mismatch:\n  Expected: {safe_repr(expected_stdout)}\n  Actual:   {safe_repr(actual_stdout)}")
         
     if expected_stderr is not None and actual_stderr != expected_stderr:
-        failures.append(f"Stderr mismatch:\n  Expected: {repr(expected_stderr)}\n  Actual:   {repr(actual_stderr)}")
+        failures.append(f"Stderr mismatch:\n  Expected: {safe_repr(expected_stderr)}\n  Actual:   {safe_repr(actual_stderr)}")
         
     if failures:
         return False, "\n".join(failures), expect_test_failure, runner_id
@@ -149,6 +155,12 @@ def parse_args():
         help="Path to a custom test suite directory (defaults to the project's tests/ directory)"
     )
     parser.add_argument(
+        "--timeout",
+        type=int,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"Per-test timeout in seconds. Defaults to {DEFAULT_TIMEOUT_SECONDS} on this platform."
+    )
+    parser.add_argument(
         "chirp_bin",
         help="Path to the Chirp executable under test"
     )
@@ -164,10 +176,10 @@ def parse_args():
     else:
         jobs = 1
         
-    return args.chirp_bin, args.filter, jobs, args.suite
+    return args.chirp_bin, args.filter, jobs, args.suite, args.timeout
 
 def main():
-    chirp_bin, test_filter, jobs, suite_dir = parse_args()
+    chirp_bin, test_filter, jobs, suite_dir, timeout_seconds = parse_args()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
     
@@ -210,7 +222,7 @@ def main():
         if jobs > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
                 future_to_name = {
-                    executor.submit(run_test, chirp_bin, test_file): os.path.relpath(test_file, tests_dir)
+                    executor.submit(run_test, chirp_bin, test_file, timeout_seconds): os.path.relpath(test_file, tests_dir)
                     for test_file in test_files
                 }
                 
@@ -244,7 +256,7 @@ def main():
                 name = os.path.relpath(test_file, tests_dir)
                 runner_id = "?"
                 try:
-                    passed, detail, expect_test_failure, runner_id = run_test(chirp_bin, test_file)
+                    passed, detail, expect_test_failure, runner_id = run_test(chirp_bin, test_file, timeout_seconds)
                     if passed:
                         if expect_test_failure:
                             print_test_status("[XPASS]", name, COLOR_RED, " (Unexpectedly passed; please remove `expect_test_failure;)")

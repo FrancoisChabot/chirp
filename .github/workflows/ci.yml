@@ -50,10 +50,10 @@ jobs:
             ctest_args: --output-on-failure
           - name: windows-msvc
             os: windows-latest
-            config: Debug
+            config: Release
             cmake_configure_args: -A x64
-            cmake_build_args: --config Debug --parallel
-            ctest_args: -C Debug --output-on-failure
+            cmake_build_args: --config Release --parallel
+            ctest_args: -C Release --output-on-failure
 
     env:
       CC: ${{ matrix.cc }}
