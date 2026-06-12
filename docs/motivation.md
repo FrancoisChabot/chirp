@@ -1,8 +1,8 @@
-# Deriving Chirp’s Core Model
+# Why Chirp
 
 ## Preamble
 
-Do not take anything in here to the letter. The goal of this chapter is to contextualize the Chirp spec.
+Do not take anything in here to the letter. The goal of this is to contextualize Chirp.
 
 I am also going to rebuild some familiar ideas from first principles and intentionally avoid jargon for two reasons:
 
@@ -153,9 +153,6 @@ From here, we can plausibly satisfy contraint #1:
 
 "If the set of values a Binding can hold just happens to be of a single type, then the compiler can treat it the same way C treats a variable."
 
-**Note to self:**
-`fc` `lc` and `cv` are "properties of bindings". We could *technically* generalize the idea and give bindings an open-ended set of properties, but this is where we are hitting diminishing abstraction returns. We've already seen mutability can emerge from the three we have so far, so I say let's pin that and revisit it if/when a motivating example can be found.
-
 ## Where do values come from?
 
 I still need to figure out how actual code that *computes* things sits on top of that, but as long as I can express it in terms of everything we have so far, and as long as it can be done sanely with those building blocks, I'm good. It becomes an acceptance criterion. SPOILERS: It's feasible, but messy. Going over it here would just muddy the waters.
@@ -196,7 +193,7 @@ Finally, it's pretty subtle so it's worth pointing out: In practice, a `bp` will
 
 Now set-ness looks more like: "The **Belonging Predicate** of a set returns an element of its **Belonging Range**" (`bp(S, b) ∈ br(S, b.lc)`). This way, we can ensure that users will be dealing with garden variety booleans in most scenarios, and will have to face ternary logic only when doing something suspect.
 
-What does that mean in practice? if you write `if (v ∈ S)`, and the `br` of `S` against `v` contains `undecided`, that triggers an immediate error by simple virtue of the fact that `undecided` is not a boolean so `if` can only operate on those, forcing you to do something along the lines of:
+What does that mean in practice? if you write `if (v ∈ S)`, and the `br` of `S` against `v` contains `undecided`, that triggers an immediate error by simple virtue of the fact that `undecided` is not a boolean. `if` can only operate on those, forcing you to do something along the lines of:
 
 ```
 match (v ∈ S) {
@@ -206,11 +203,9 @@ match (v ∈ S) {
 }
 ```
 
-But if the `br` of `S` against `v` is just `{true, false}`, then all is good and your code will "just work".
-
 ### A concrete example
 
-To better understand how profound the implications of this are, let's have a glance at [00_intrinsics.chirp](../../lib/chirp/boot/02_conveniences.chirp), which is a file that the chirp interpreter loads before anything else.
+To better understand what the implications of this are, let's have a glance at [04_conveniences.chirp](../../lib/chirp/boot/04_conveniences.chirp), which is a file that the chirp interpreter loads before anything else.
 
 The role of the portion we are going to look at is to imbue the `int`, `bool`, and `string` types with set-ness so that we can use their values directly in places like match arms:
 ```chirp
@@ -223,29 +218,29 @@ let str = match v {
 
 ```chirp
 //...
-   let make_type_a_self_set(t) = do {
-        `implement(
-            trait=`set,
-            on=t,
-            impl={
-                bp = (this, v) => v == this,
-                br = (this, lc) =>
-                    if (this ∉ lc) {false}
-                    else if ({this} == lc) {true}
-                    else {true, false}
-            }
-        );
-    };
+let final make_type_a_self_set(t) = do {
+    `implement(
+        trait=`Set,
+        on=t,
+        impl={
+            belongs = (self, v) => `same(v, self),
+            belongs_range = (self, lc) =>
+                if (self ∉ lc) {false}
+                else if (`coextensive(lc, {self})) {true}
+                else {true, false}
+        }
+    );
+};
 
-    make_type_a_self_set(bool);
-    make_type_a_self_set(int);
-    make_type_a_self_set(string);
+make_type_a_self_set(bool);
+make_type_a_self_set(int);
+make_type_a_self_set(string);
 ```
 
-If you zero-in on the `br` (Belonging Range) portion, notice what it calculates:
-- **Static Unreachability**: If `this ∉ lc`, the range of possible answers is `{false}`. Since `true` is not in this range, the compiler has static proof that membership is impossible. This allows the compiler to **eliminate the branch as dead code** at compile time.
-- **Static Certainty**: If `{this} == lc`, the range of possible answers is `{true}`. The compiler now has static proof that membership is guaranteed. It can optimize away the runtime check, run the branch body unconditionally, and prune any subsequent match arms.
-- Otherwise, it returns `{true, false}`, signaling that a runtime check is necessary.
+If you zero-in on the `br` portion: `belongs_range`:
+- If `self ∉ lc`, the range of possible answers is `{false}`. So the branch can be ignored.
+- If `{this} == lc` (which is what coextensive checks), the range of possible answers is `{true}`. So the brach is guaranteed
+- Otherwise, it returns `{true, false}`, which will lead to a runtime check.
 
 How cool is that? The compiler still needs the ordinary machinery to remove unreachable code, but the proof that a branch is unreachable does not have to be hardcoded into pattern matching. It falls out of the set’s own user-defined abstract heuristic.
 
@@ -282,5 +277,3 @@ Putting all of that together, we end up with an architecture that looks like thi
 That's a **lot** of circular dependencies, but I have yet to find a way to break it. This could really use a proper proof, but I'm not really a theorem kind of guy. If the language works, I'm sure some grad student will be delighted to make a paper out of doing it for me :) . 
 
 Computation is its own can of worms and may eventually get a similar companion reasoning file. But you should now be equipped with all of the intuition you need to go through the rest of the spec.
-
-Next up: [The Core](02_core.md), where we'll see a more tightly formalized version of this architecture.

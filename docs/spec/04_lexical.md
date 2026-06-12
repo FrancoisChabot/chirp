@@ -10,23 +10,17 @@ Every Chirp program starts as a stream of raw Unicode characters, which the lexi
 
 Chirp source files are expected to be encoded in **UTF-8**. 
 
-Chirp fully embraces Unicode to support clean, expressive mathematical set operators (like `∈` and `∪`) in source code. However, to ensure maximum developer ergonomics across different terminal and editor setups, every Unicode operator has a corresponding, standard ASCII equivalent.
-
 ---
 
 ## Whitespace and Comments
 
 ### Whitespace
-Whitespace separates tokens and is otherwise discarded by the core parser, except within string literals.
-* Standard whitespace characters are: space (`' '`), horizontal tab (`'\t'`), carriage return (`'\r'`), and newline (`'\n'`).
-* Newlines increment the source compiler's internal line tracker for diagnostics and error reporting.
-* *Tooling Note:* For the sake of the `--format` tool and future language servers, the lexer may retain whitespace and comments as "Trivia" attached to structural tokens, allowing for lossless source reconstruction.
+
+` `, `\t`, `\r`, `\n`
 
 ### Comments
-Chirp supports single-line comments starting with double slashes `//`. 
-* When the scanner encounters `//`, it discards all characters up to the end of the line (`'\n'`).
 
----
+Single-line comments starting with double slashes `//`. 
 
 ## Identifiers and Keywords
 
@@ -34,6 +28,9 @@ Chirp supports single-line comments starting with double slashes `//`.
 Identifiers are user-defined names for bindings, types, and fields.
 * **Lexical Rule:** An identifier must begin with an alphabetic character (`a..z`, `A..Z`) or an underscore `_`. Subsequent characters can be alphabetic, numeric (`0..9`), or underscores.
 * Examples: `x`, `my_cool_thing`, `Point2D`, `_internal_value`.
+
+#### Intrinsics (`` `identifier ``)
+A backtick `` ` `` followed directly by an identifier. The only thing distinguishing those from regular identifiers is that they cannot be defined in user code.
 
 ### Keywords
 Keywords are reserved identifiers that have special meaning in the language grammar. They dictate control flow and structural declarations, and cannot be used as standard identifier names.
@@ -44,11 +41,10 @@ let    struct    if    for    else    while    match    break    do
 ```
 
 `pub`, `mut`, and `final` are contextual declaration/binding modifiers, not reserved keywords. They
-remain ordinary identifiers outside binding-modifier position. `true` and
-`false` are ordinary identifiers bound by the boot prelude as final core values.
-`undecided` is also a final boot binding.
+remain ordinary identifiers outside binding-modifier position.
 
----
+> [!NOTE]
+> There are some other identifiers that are defined in the global scope during bootstrapping. `int`, `bool`, `string`, `void`, `true`, `false`, `undecided`. Those are NOT keywords from a lexical pov, just identifiers that happen to have the final property.
 
 ## Literals
 
@@ -68,27 +64,11 @@ A sequence of characters enclosed in double quotes.
 * **Lexical Rule:** `"` followed by zero or more characters (including escape sequences) followed by `"`.
 * Examples: `"hello"`, `"Line 1\nLine 2"`.
 
----
-
-## First-Class Symbol and Intrinsic Namespaces
-
-To keep the parser lightweight and prevent namespace collision, Chirp utilizes two distinct, prefix-reserved lexical namespaces:
-
 ### Symbols (`#identifier`)
 A hash symbol `#` followed directly by an identifier.
 * **Lexical Rule:** `#` followed by a sequence of alphanumeric characters/underscores.
 * Symbols are unique, first-class constants whose value is their own identity (equivalent to atoms in Erlang/Elixir or symbols in Ruby).
 * Examples: `#eof`, `#identifier`, `#error`, `#pending`.
-
-### Intrinsics (`` `identifier ``)
-A backtick `` ` `` followed directly by an identifier.
-* **Lexical Rule:** `` ` `` followed by a sequence of alphanumeric characters/underscores.
-* **The Formalism:** If a compiler-reserved keyword acts syntactically as an identifier (i.e., a primary expression that evaluates to a value), it must be given the backtick prefix. This creates an open namespace allowing the compiler to introduce new built-ins (like `` `import `` or `` `type ``) without ever shadowing user code. Standard keywords (like `if` or `match`) dictate grammar and do not receive backticks.
-* **Boot Constants:** The core constants `true`, `false`, and `undecided` are final boot bindings. They keep ordinary literal-like ergonomics without needing lexer keyword special cases.
-* **Boot Definitions:** Bootstrap sources may define backtick-prefixed bindings. User code may reference those bindings, but may not introduce new ones.
-* Examples: `` `print ``, `` `import ``, `` `type ``.
-
----
 
 ## Operators and Punctuation
 
@@ -124,23 +104,3 @@ The following character sequences are recognized as operators or punctuation:
 | **`∉`**          | **`` `notin` ``**      | `#not_in`            | Set not belonging test |
 | **`∪`**          | **`` `or` ``**         | `#union`             | Set union |
 | **`∩`**          | **`` `and` ``**        | `#intersection`     | Set intersection |
-
-
----
-
-## Auxiliary Notes
-
-* **Why First-Class Symbols?** 
-  In C-like languages, developers frequently use `enum` constants (which require declaring a new type and namespace) or preprocessor macros (which lack type-safety). Chirp symbols `#symbol_name` require no declaration and map directly to efficient integer constants under the hood. They are incredibly useful for pattern matching, parsing stages, and error states without structural overhead.
-* **Namespace Isolation via Backticks:** 
-  By reserving the backtick `` ` `` prefix for compiler intrinsics, Chirp ensures that user-defined code can never accidentally conflict with compiler-provided functions or type definitions. Even if the compiler introduces a new intrinsic in a future release, it will be namespaced behind `` ` ``, guaranteeing absolute backward compatibility for user identifiers.
-* **Ergonomic ASCII Equivalents:** 
-  While mathematical notation like `∈` and `∪` looks gorgeous in specifications and documentation, they can be tedious to type on standard QWERTY keyboards. By utilizing the Intrinsics namespace (e.g., `` `in` `` or `` `or` ``), developers can type ASCII equivalents that parse to the exact same AST representation. This also allows the `chirp --format` tool to automatically perform in-place replacement of these ASCII fallbacks into their proper Unicode forms, upgrading the code aesthetics without polluting the user namespace.
-
----
-
-## Next Steps
-
-Having laid out the concrete characters and tokens that make up Chirp source code, we can now explore how user-defined types are endowed with custom behaviors.
-
-Next up: [Grammar](05_grammar.md), it's the grammar!

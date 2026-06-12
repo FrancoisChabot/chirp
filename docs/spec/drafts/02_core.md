@@ -1,12 +1,10 @@
 # The Chirp Specification
 ## The Core
 
-The introduction stated the five laws at the beating heart of Chirp's semantics. By the time you are done reading this chapter, it should be clear if not obvious why they matter. However it does take a few steps to build the right mindframe to properly appreciate their implications and how elegantly they interact with one-another. There's only 4 concepts we need to go over. Everything else sits on top.
-
 > [!IMPORTANT]
 > The word "set" has a very specific meaning from this point on. Unless it is explicitly called out as a "mathematical set", the word always refers to the definition laid out in the **Sets** section below.
 
-### Bindings: The Primary Primitives
+### Bindings:
 
 A **Binding** is the fundamental slot in which all computation and state in Chirp is staged.
 
@@ -24,9 +22,7 @@ To achieve this, every Binding exists across **three distinct domains**:
    * Represented by the **Current Value** (`cv`)
    * It is the value assigned to the bind. There is always one.
 
-#### The Laws of Semantic Physics
-
-The relationship between these three domains is governed by two simple, unbreakable invariants that mediate compile-time proof and runtime execution:
+#### Rules
 
 - **The Space-to-Structure Law**:
    `lc ⊆ fc`
@@ -49,7 +45,6 @@ let foo = (param: {1,2,3}) => {};
 
 `set_expr` is not a special kind of expression, by the way. It's just any ordinary expression, evaluated the same way as in any other context, that yields a set. Speaking of which...
 
----
 
 ### Sets: The Constraints
 
@@ -89,30 +84,9 @@ let test_result = 2 ∈ constraint;
 let x : constraint = 2;
 ```
 
----
-
 ### Values
 
 A **Value** is an immutable package of data that can occupy the temporal domain (`cv`) of a Binding. 
-
-Every value has one and only one intrinsic type associated with it, denoted `typeof(v)`.
-
-The following **values** are predefined as part of the core:
-- `Bool`      - The type of the boolean constants
-- `true`      - boolean truth constant
-- `false`     - boolean falsehood constant
-- `undecided` - an undecided belonging result
-- `Type`      - the type of all types
-- `any`       - the set of all values (defined dynamically via bootstrap)
-- `empty`     - the empty set (contains no values, defined dynamically via bootstrap)
-- `set`       - the set of values whose type has set-ness
-- `SetType`   - the type of `set`
-- `Void`      - The type of the void value
-- `` `void `` - the single value of type `Void` representing no returned data
-
-**Auxiliary notes:** In earlier designs, `any` and `empty` had their own built-in compiler types (`AnyType` and `EmptyType`) to support custom belonging predicates. With the bootstrap capabilities, they are now dynamically minted as separate types in bootstrap prelude, and their custom set capabilities are registered via the `` `set `` trait on their respective minted types. This allows the compiler to remain completely agnostic of these sets and handle them through standard trait dispatch. The same trait dispatch logic applies to `set` with `SetType`.
-
----
 
 ### Types
 
@@ -179,8 +153,6 @@ Type.bp = (type_instance, v) => typeof(v) == type_instance;
 
 This means "types as sets" requires absolutely zero special casing in the compiler. A type acts as a set of its own instances strictly as a natural consequence of the universal `v ∈ S` dispatch rule.
 
----
-
 ### Binding Semantics 
 
 With the foundations laid out, we can return to Bindings to explore their more advanced properties and behaviors within the language.
@@ -213,20 +185,6 @@ Evaluating an identifier `x` normally evaluates to the *current value* (`cv`) he
 
 - `` `binding(identifier) `` is a *special intrinsic* that yields a value representing the current state of the binding associated with that identifier.
 
-#### Calcification
-
-While calcification is an entirely emergent property of this system, it is one of the most important patterns that is leveraged all over the place, so it's worth calling out:
-
-```chirp
-let calcified_x : {x} = x;
-```
-
-You might be thinking "ok, that's a const without needing the keyword, neat I guess". But the implications are much deeper than this. 
-
-Let's say that you create a binding that establishes a mapping between types and functions, and that binding's constraint allows for any number of types to be matched. You can keep adding new `type => function` pairs to that mapping as you like during the interpretation phase. Calcify that mapping (by constraining a new binding to exactly the value of the final mapping) and the list becomes fixed. Congratulations, you've just implemented a runtime trait that compiles to a fixed-size dispatch table.
-
----
-
 ### Behold, Chirp, revisited
 
 The [introduction](00_introduction.md) opened with this equation:
@@ -243,8 +201,6 @@ We can now finally unpack it.
 - `⊆ {true, false, undecided}` : This says that the `br` preflight check must return a subset of `{true, false, undecided}`.
 
 And at the end of the day, that *IS* what chirp is all about.
-
----
 
 ## Next steps
 
