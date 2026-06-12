@@ -85,13 +85,10 @@ Because of this, the roadmap is split up in two:
 
 #### Part 1: Dynamic Chirp
 
-1. Fully support all of Chirp's semantics in the interpreter's VM (COMPLETE)
-2. Get the repo to a publishable state. (Al... MOST... DONE...)
+MILESTONE: Start publishing Dynamic Chirp v0.1 (DONE!)
 
-MILESTONE: Start publishing Dynamic Chirp v0.1
-
-3. Populate the standard library
-4. Perform an optimization pass on the interpreter
+1. Populate the standard library
+2. Implement the IR-based interpreter
 
 MILESTONE: Evaluate the road to a Dynamic Chirp v1.0
 
