@@ -1,6 +1,6 @@
 # Chirp - User guide
 
-If you're finding it hard to wrap your ehad around the language, reading the [motivation](../motivation.md) document might help provide context.
+If you're finding it hard to wrap your head around the language, reading the [motivation](../motivation.md) document might help provide context.
 
 This guide is intentionally small and to the point. We'll be adding details around areas that people find confusing as 
 we discover them.

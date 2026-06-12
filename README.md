@@ -53,7 +53,9 @@ If you are a seasoned developer and, as I suspect will likely be the case, you g
 let some_var : int64 = 3;
 ```
 
-Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [`docs/spec/`](docs/spec/). The first two chapters are approachable, so don't be shy.
+Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [motivation](docs/motivation.md) file.
+
+After that, the [user guide](docs/user_guide/) will cover the basics.
 
 ## State of the project
 
