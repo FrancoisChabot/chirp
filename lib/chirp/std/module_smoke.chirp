@@ -1,3 +1,0 @@
-let hidden = 40;
-
-let pub answer = hidden + 2;
