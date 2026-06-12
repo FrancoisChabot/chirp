@@ -1,0 +1,13 @@
+`expect_exit(0);
+
+let not_small = ~{1, 2, 3};
+`expect(4 ∈ not_small);
+`expect(!(2 ∈ not_small));
+`expect(2 ∉ not_small);
+
+let selected = (~{2, 4}) ∩ {1, 2, 3, 4, 5};
+`expect(1 ∈ selected);
+`expect(3 ∈ selected);
+`expect(5 ∈ selected);
+`expect(!(2 ∈ selected));
+`expect(!(4 ∈ selected));

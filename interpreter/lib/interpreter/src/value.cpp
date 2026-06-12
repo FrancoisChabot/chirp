@@ -54,6 +54,11 @@ std::shared_ptr<const Type> getCompositeSetType() {
     return instance;
 }
 
+std::shared_ptr<const Type> getComplementSetType() {
+    static auto instance = std::make_shared<ComplementSetType>();
+    return instance;
+}
+
 std::shared_ptr<const Type> getBindingType() {
     static auto instance = std::make_shared<BindingType>();
     return instance;
@@ -202,6 +207,10 @@ Value Value::make_constructed_set(const frontend::ConstructedSetExpr& set, std::
 
 Value Value::make_composite_set(Value left, Value right, CompositeSetOp op) {
     return Value(getCompositeSetType(), CompositeSetTag{std::make_shared<Value>(std::move(left)), std::make_shared<Value>(std::move(right)), op});
+}
+
+Value Value::make_complement_set(Value operand) {
+    return Value(getComplementSetType(), ComplementSetTag{std::make_shared<Value>(std::move(operand))});
 }
 
 Value Value::make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
@@ -452,6 +461,17 @@ const Value::CompositeSetTag& Value::asCompositeSet() const {
     return std::get<CompositeSetTag>(payload_);
 }
 
+bool Value::isComplementSet() const {
+    return std::holds_alternative<ComplementSetTag>(payload_);
+}
+
+const Value::ComplementSetTag& Value::asComplementSet() const {
+    if (!isComplementSet()) {
+        throw std::runtime_error("Value is not a ComplementSet");
+    }
+    return std::get<ComplementSetTag>(payload_);
+}
+
 bool Value::isMinted() const {
     return std::holds_alternative<MintedTag>(payload_);
 }
@@ -692,6 +712,13 @@ std::string Value::toString() const {
     if (isConstructedSet()) {
         return "<constructed-set>";
     }
+    if (isComplementSet()) {
+        const auto& operand = asComplementSet().operand;
+        if (!operand) {
+            return "~<invalid-set>";
+        }
+        return "~" + operand->toString();
+    }
     if (isLambda()) {
         return "<function>";
     }
@@ -849,6 +876,25 @@ Value CompositeSetType::belongs(const Value& S, const Value& v) const {
 }
 
 Value CompositeSetType::belongs_approx(const Value& S, const Value& lc) const {
+    return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
+}
+
+Value ComplementSetType::belongs(const Value& S, const Value& v) const {
+    if (!S.isComplementSet()) {
+        throw std::runtime_error("ComplementSetType::bp: S must be a ComplementSet value");
+    }
+    const auto& operand = S.asComplementSet().operand;
+    if (!operand) {
+        throw std::runtime_error("ComplementSetType::bp: complement operand is missing");
+    }
+    Value result = belongsTo(*operand, v);
+    if (!result.isBool()) {
+        throw std::runtime_error("Complement operand did not return Bool for belonging");
+    }
+    return Value::make_bool(!result.asBool());
+}
+
+Value ComplementSetType::belongs_approx(const Value& S, const Value& lc) const {
     return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
 }
 

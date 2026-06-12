@@ -2,7 +2,7 @@
 
 ## Preamble
 
-Do not take anything in here to the letter. The goal of this is to contextualize Chirp.
+Do not take anything in here to the exact letter. The goal of this is to contextualize Chirp.
 
 I am also going to rebuild some familiar ideas from first principles and intentionally avoid jargon for two reasons:
 

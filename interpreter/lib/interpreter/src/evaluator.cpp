@@ -1224,6 +1224,18 @@ private:
             }
         }
 
+        if (set.isComplementSet()) {
+            const auto& operand = set.asComplementSet().operand;
+            if (!operand) {
+                fail(diag, "Complement set operand is missing");
+            }
+            Value result = belongs_to(*operand, value, diag);
+            if (!result.isBool()) {
+                fail(diag, "Complement operand did not return Bool for belonging");
+            }
+            return Value::make_bool(!result.asBool());
+        }
+
         if (set.isRange()) {
             auto range = set.asRange();
             if (value.getType() != range.start->getType()) {
@@ -1383,21 +1395,35 @@ private:
 
         if (set.isCompositeSet()) {
             const auto& comp = set.asCompositeSet();
-            std::vector<Value> elements = finite_elements(*comp.left, diag);
             if (comp.op == Value::CompositeSetOp::Union) {
+                std::vector<Value> elements = finite_elements(*comp.left, diag);
                 for (const auto& element : finite_elements(*comp.right, diag)) {
                     append_unique(elements, element);
                 }
+                return elements;
             } else { // Intersection
+                std::vector<Value> base_elements;
+                const Value* other = nullptr;
+                try {
+                    base_elements = finite_elements(*comp.left, diag);
+                    other = comp.right.get();
+                } catch (const std::exception&) {
+                    base_elements = finite_elements(*comp.right, diag);
+                    other = comp.left.get();
+                }
+
                 std::vector<Value> intersected;
-                for (const auto& element : elements) {
-                    if (as_bool(belongs_to(*comp.right, element, diag), diag)) {
+                for (const auto& element : base_elements) {
+                    if (as_bool(belongs_to(*other, element, diag), diag)) {
                         append_unique(intersected, element);
                     }
                 }
                 return intersected;
             }
-            return elements;
+        }
+
+        if (set.isComplementSet()) {
+            fail(diag, "Set operator requires a finite enumerable set");
         }
 
         if (auto b = lookup_binding_optional("`empty")) {
@@ -1427,6 +1453,11 @@ private:
         require_set_operand(left, diag);
         require_set_operand(right, diag);
         return Value::make_composite_set(left, right, Value::CompositeSetOp::Intersection);
+    }
+
+    Value set_complement(const Value& operand, const token& diag) {
+        require_set_operand(operand, diag);
+        return Value::make_complement_set(operand);
     }
 
 
@@ -2945,6 +2976,11 @@ private:
                     }
                     fail(expr.diagnostic_token, "Cannot dereference non-pointer value");
                 }
+                return;
+            }
+            case UnaryOp::Complement: {
+                Value right = evaluate(*expr.right);
+                result_ = set_complement(right, expr.diagnostic_token);
                 return;
             }
             default:

@@ -90,6 +90,14 @@ public:
     Value belongs_approx(const Value& S, const Value& lc) const override;
 };
 
+class ComplementSetType : public Type {
+public:
+    std::string_view name() const override { return "ComplementSet"; }
+    bool hasSetness() const override { return true; }
+    Value belongs(const Value& S, const Value& v) const override;
+    Value belongs_approx(const Value& S, const Value& lc) const override;
+};
+
 // Subclass for BindingType
 class BindingType : public Type {
 public:

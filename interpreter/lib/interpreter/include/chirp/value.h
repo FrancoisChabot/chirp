@@ -129,6 +129,12 @@ public:
             return left == other.left && right == other.right && op == other.op;
         }
     };
+    struct ComplementSetTag {
+        std::shared_ptr<Value> operand;
+        bool operator==(const ComplementSetTag& other) const {
+            return operand == other.operand;
+        }
+    };
     struct SymbolTag {
         std::string name;
         bool operator==(const SymbolTag& other) const { return name == other.name; }
@@ -204,6 +210,7 @@ public:
     static Value make_signature(const frontend::SignatureExpr& expr, std::shared_ptr<const RuntimeScopeChain> captured_scopes = nullptr);
     static Value make_host_function(HostFunction fn);
     static Value make_composite_set(Value left, Value right, CompositeSetOp op);
+    static Value make_complement_set(Value operand);
     static Value make_symbol(std::string name);
     static Value make_list(std::vector<Value> elements);
     static Value make_minted(std::shared_ptr<const Type> type, uint64_t id);
@@ -270,6 +277,9 @@ public:
     bool isCompositeSet() const;
     const CompositeSetTag& asCompositeSet() const;
 
+    bool isComplementSet() const;
+    const ComplementSetTag& asComplementSet() const;
+
     bool isMinted() const;
     uint64_t asMintedId() const;
 
@@ -297,7 +307,7 @@ public:
     std::string toString() const;
 
     // Constructor with explicit type and variant payload
-    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag, SignatureTag>;
+    using Payload = std::variant<std::monostate, bool, BigInt, std::string, TypeTag, BindingTag, EnumeratedSetTag, RangeTag, ConstructedSetTag, LambdaTag, HostFunctionTag, CompositeSetTag, ComplementSetTag, SymbolTag, CharTag, ListTag, MintedTag, TraitTag, StructInstanceTag, ModuleTag, HeapAllocationTag, EnumFamilyTag, EnumVariantTag, SignatureTag>;
 
 
     Value(std::shared_ptr<const Type> type, Payload payload)

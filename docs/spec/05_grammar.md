@@ -1,230 +1,254 @@
-# Chirp Grammar Draft
+# Chirp Grammar
 
-> **Parser artifact note:** This grammar describes surface-level syntax for the
-> bootstrap parser. The resulting AST is a transient artifact used to populate
-> interpreter IR; it is not the structure the interpreter is expected to execute
-> directly. Syntactic acceptance does not imply semantic validity: the AST may
-> contain constructs that are guaranteed to be rejected later, such as
-> `(1 + 3) = 5;`.
+This document describes the implemented surface grammar in the bootstrap
+frontend at `interpreter/lib/frontend`, with a few semantic notes where the
+interpreter materially narrows what the parser accepts.
 
-This file describes the parser behavior in the current C++ bootstrap frontend at `interpreter/lib/frontend`. It is not a complete language grammar for every draft idea in this repository.
+> Parser artifact note: the frontend AST is a parse artifact, not the language's
+> semantic authority. Some syntactically accepted forms are rejected later, such
+> as invalid assignment targets or non-identifier member access on `.`.
 
 ## Lexical Notes
 
-The bootstrap lexer recognizes UTF-8 source text, skips standard whitespace, and supports `//` line comments.
+See [04_lexical.md](./04_lexical.md) for tokenization details. The most relevant
+grammar-facing facts are:
 
-```ebnf
-Identifier       = (Alpha | "_") { Alpha | Digit | "_" } ;
-Intrinsic        = "`" Identifier ;
-SymbolicConstant = "#" Identifier ;
-Number           = Digit { Digit } [ "." Digit { Digit } ] ;
-String           = '"' { StringChar } '"' ;
-StringChar       = SourceCharExceptDoubleQuote | "\" SourceChar ;
-Character        = "'" ( Utf8Codepoint | Escape | UnicodeEscape ) "'" ;
-Escape           = "\" ( "\" | "'" | '"' | "n" | "r" | "t" | "0" ) ;
-UnicodeEscape    = "\u" HexDigit HexDigit HexDigit HexDigit ;
-```
-
-`-` is always tokenized as an operator. Negative numeric values are parsed as unary negation applied to a number expression, such as `-1`.
-
-Character literals contain exactly one Unicode scalar value. Raw character literals spell that scalar value directly as UTF-8 source text. Escaped literals may use the common one-character escapes listed above or `\uXXXX`; surrogate code units in `\uD800` through `\uDFFF`, empty character literals, multi-codepoint literals, and malformed escapes are lexical errors.
-
-The POC currently recognizes Unicode set operators directly: `∈`, `∉`, `∪`, and `∩`. ASCII aliases such as `in` or `or` are out of scope for the current parser.
-
-The range operator family is tokenized by longest match:
-
-| Token | Meaning |
-| --- | --- |
-| `..` | inclusive start, exclusive end |
-| `..=` | inclusive start, inclusive end |
+- `mut`, `final`, and `pub` are contextual identifiers, not reserved keywords.
+- `∈`, `∉`, `∪`, and `∩` may also be written as `` `in ``, `` `notin ``,
+  `` `or ``, and `` `and ``.
+- `-` is never part of a numeric token.
+- Numbers may lex with a fractional part, but the interpreter still rejects
+  floating-point values.
+- Format strings are lexed as dedicated f-string token sequences and become a
+  single expression node.
 
 ## Program And Statements
 
 ```ebnf
-Program      = { Statement } EOF ;
-Statement    = LetStmt | BreakStmt | IfStmt | AssignmentStmt | ExprStmt ;
+Program   = { Statement } EOF ;
+Statement = LetStmt | BreakStmt | DebugStmt | IfStmt | ExprOrAssignStmt ;
 
-LetStmt      = [ "pub" ] "let" BindingWithInitializer ";" ;
-BreakStmt    = "break" [ Expr ] ";" ;
-IfStmt       = "if" "(" Expr ")" IfBranch [ "else" IfBranch ] [ ";" ] ;
-ExprStmt     = Expr ";" ;
-AssignmentStmt = Expr AssignmentOp Expr ";" ;
-IfBranch     = BraceExpr | Statement ;
+LetStmt          = "let" LetBinding ";" ;
+BreakStmt        = "break" [ Expr ] ";" ;
+DebugStmt        = "debug" "{" { DebugInnerStmt } "}" ;
+ExprOrAssignStmt = Expr [ AssignmentOp Expr ] ";" ;
+IfStmt           = "if" "(" Expr ")" IfBranch [ "else" IfBranch ] [ ";" ] ;
+IfBranch         = BlockExpr | BraceExpr | Statement ;
+DebugInnerStmt   = BreakStmt | DebugStmt | IfStmt | ExprOrAssignStmt ;
 
 AssignmentOp = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 ```
 
-Assignment targets are syntactically parsed as ordinary expressions in the POC. L-value validity is intentionally left for later semantics and IR lowering.
+Notes:
 
-`if` without `else` is valid only as `IfStmt`. `IfExpr` remains expression-level and requires an `else` branch.
+- `break;` is equivalent to `break `void;`.
+- `debug { ... }` is statement-only. The parser rejects `let` directly inside a
+  debug block, but other statements are allowed.
+- The left-hand side of an assignment is parsed as a plain expression and
+  validated later by the interpreter.
+- `if` without `else` is statement-only.
+- `if (...) a else b;` is an expression statement when both branches are
+  expressions.
+- `if (...) x = 1; else x = 2;` is a statement-form `if`.
 
-A leading `if` in statement position parses as `ExprStmt` when it is the expression form:
-
-```chirp
-if (cond) a else b;
-```
-
-It parses as `IfStmt` when it is else-less or when its branches are statement-only forms such as assignments:
-
-```chirp
-if (cond) x = 1; else x = 2;
-```
-
-`break` targets the nearest enclosing block expression. `break;` yields `` `void ``.
-
-Bindings:
+## Bindings
 
 ```ebnf
-BindingName            = Identifier | Intrinsic ;
-BindingModifier        = "mut" | "final" ;
-BindingWithInitializer = { BindingModifier } BindingName [ ParamList ] [ ":" Expr ] "=" Expr ;
-BindingNoInitializer   = { BindingModifier } BindingName [ ":" Expr ] ;
-NamedBinding           = { BindingModifier } BindingName [ ":" Expr ] [ "=" Expr ] ;
-FieldBinding           = NamedBinding | { BindingModifier } BindingName ParamList [ ":" Expr ] "=" Expr ;
+BindingName        = Identifier | Intrinsic ;
+BindingModifier    = "mut" | "final" ;
+LetBindingModifier = BindingModifier | "pub" ;
 
-ParamList = "(" [ BindingNoInitializer { "," BindingNoInitializer } ] ")" ;
+BindingNoInit = { BindingModifier } BindingName [ ":" Expr ] ;
+NamedBinding  = { BindingModifier } BindingName [ ":" Expr ] [ "=" Expr ] ;
+LetBinding    = { LetBindingModifier } BindingName [ ParamList ] [ ":" Expr ] "=" Expr ;
+FieldBinding  = NamedBinding
+              | { BindingModifier } BindingName ParamList [ ":" Expr ] "=" Expr ;
+
+ParamList = "(" [ BindingNoInit { "," BindingNoInit } ] ")" ;
 ```
 
-`let name(params): bound = body;` is function sugar. The parser lowers it to a let binding whose initializer is a lambda with the parsed parameters, optional return bound, and body expression.
+Notes:
 
-`pub` is a contextual let-declaration modifier. Outside `let pub`, it remains an ordinary identifier. `mut` and `final` are contextual modifiers in binding position. Outside that position they are ordinary identifiers. `final` marks a binding as unshadowable by descendant scopes; it does not imply assignment immutability.
-
-Backtick-prefixed binding names are accepted by the parser so boot sources can define public or private intrinsics, but ordinary user code is not allowed to define them.
+- Function sugar is implemented in both `let` bindings and struct fields. A form
+  such as `let f(x: int): int = body;` is lowered to a lambda initializer.
+- `pub` is only valid in `let` bindings.
+- The parser accepts intrinsic names as binding names so boot files can define
+  backtick-prefixed bindings. The interpreter only permits such definitions in
+  top-level boot scope.
+- `final` prevents shadowing from descendant scopes. It does not mean
+  assignment-immutable by itself.
 
 ## Expressions
 
-The expression grammar is precedence-based and left-associative at each binary level unless noted otherwise.
+Expression parsing is precedence-based and left-associative at each binary level.
 
 ```ebnf
-Expr        = LogicOr ;
-LogicOr     = LogicAnd { "||" LogicAnd } ;
-LogicAnd    = Equality { "&&" Equality } ;
-Equality    = Comparison { ( "==" | "!=" ) Comparison } ;
-Comparison  = Range { ComparisonOp Range } ;
-Range       = Term { RangeOp Term } ;
-Term        = Factor { ( "+" | "-" | "∪" ) Factor } ;
-Factor      = Unary { ( "*" | "/" | "%" | "∩" ) Unary } ;
-Unary       = "&" Unary
-            | "&mut" Unary
-            | "->" Unary
-            | "->mut" Unary
-            | ( "!" | "-" | "*" | "~" ) Unary
-            | Postfix ;
-Postfix     = Primary { "." Primary | CallArgs | IndexArgs } ;
+Expr       = LogicOr ;
+LogicOr    = LogicAnd { "||" LogicAnd } ;
+LogicAnd   = Equality { "&&" Equality } ;
+Equality   = Comparison { ( "==" | "!=" ) Comparison } ;
+Comparison = Range { ComparisonOp Range } ;
+Range      = Term { RangeOp Term } ;
+Term       = Factor { ( "+" | "-" | "∪" ) Factor } ;
+Factor     = Unary { ( "*" | "/" | "%" | "∩" ) Unary } ;
+Unary      = "&" Unary
+           | "&mut" Unary
+           | "->" Unary
+           | "->mut" Unary
+           | ( "!" | "-" | "*" | "~" ) Unary
+           | Postfix ;
+Postfix    = Primary { "." Primary | CallArgs | IndexArgs } ;
 
-ComparisonOp = ">" | ">=" | "<" | "<=" | "∈" | "∉" | "⊆" | "⊂" | "⊄" | "⊇" | "⊃" | "⊅" ;
+ComparisonOp = ">" | ">=" | "<" | "<=" | "∈" | "∉" ;
 RangeOp      = ".." | "..=" ;
-CallArgs     = "(" [ PositionalArgs | NamedArgs ] ")" ;
-IndexArgs    = "[" Expr { "," Expr } "]" ;
 ```
 
-Call arguments may be all positional or all named, but not mixed:
+Notes:
+
+- `&mut` and `->mut` are fused spellings; whitespace changes the parse.
+- The parser accepts `.` followed by any primary expression, but the interpreter
+  only accepts an identifier on the right-hand side.
+- `..` is inclusive-start/exclusive-end. `..=` is inclusive-start/inclusive-end.
+- The frontend has enum values for other range flavors, but they are not
+  tokenized or parsed by the current lexer/parser.
+
+## Calls And Indexing
 
 ```ebnf
+CallArgs  = "(" [ PositionalArgs | NamedArgs ] ")" ;
+IndexArgs = "[" Expr { "," Expr } "]" ;
+
 PositionalArgs = Expr { "," Expr } ;
 NamedArgs      = Identifier "=" Expr { "," Identifier "=" Expr } ;
 ```
 
-Constructor-like syntax is just call syntax. For example, `Point(x=1, y=2)` parses as an ordinary call with named arguments. Whether `Point` can construct a value is a semantic/yield-ness question, not a distinct grammar form.
+Notes:
 
-Postfix struct literals such as `Point { x: 1, y: 2 }` are intentionally not part of the grammar. Braces remain reserved for sets, constructed sets, and statement blocks.
-
-Index expressions require at least one index expression.
-
-`&mut` and `->mut` are fused operators; whitespace is not allowed inside them.
-Their mutability belongs to that pointer layer only:
-
-```chirp
-&x              // address-of
-&mut x          // mutable address-of
-->int           // read-capable pointer-set constraint
-->mut int       // write-capable pointer-set constraint
-->mut ->int     // mutable outer pointer layer
--> ->mut int    // mutable inner pointer layer
-->mut ->mut int // both pointer layers marked mutable
-```
-
-The parser records these as nested unary AST nodes. The semantic and IR layers decide which combinations are valid and what each write capability permits.
+- Calls may use either all positional or all named arguments, never both.
+- Index expressions require at least one argument.
+- Struct construction is not a distinct syntactic form. `Point(1, 2)` and
+  `Point(x=1, y=2)` are ordinary call syntax whose meaning is determined later.
 
 ## Primary Expressions
 
 ```ebnf
 Primary =
-    "struct" StructFields
-  | "for" "(" BindingNoInitializer "∈" Expr ")" Expr
-  | "while" "(" Expr ")" Expr
-  | "if" "(" Expr ")" Expr "else" Expr
+    StructExpr
+  | EnumExpr
+  | ForExpr
+  | WhileExpr
+  | IfExpr
   | MatchExpr
   | ListExpr
-  | Number | String | Character | SymbolicConstant
-  | Identifier | Intrinsic
-  | LambdaExpr | GroupExpr
+  | Number
+  | String
+  | FString
+  | Character
+  | SymbolicConstant
+  | Identifier
+  | Intrinsic
+  | LambdaExpr
+  | SignatureExpr
+  | GroupExpr
   | BlockExpr
   | BraceExpr ;
 ```
 
-Lambda and grouping both start with `(`. The parser treats a parenthesized form as a lambda only when a matching `=>` appears after the parameter list, optionally after a return bound.
+### Lambdas, Signatures, And Grouping
 
 ```ebnf
-LambdaExpr = "(" [ BindingNoInitializer { "," BindingNoInitializer } ] ")" [ ":" Expr ] "=>" Expr ;
-GroupExpr  = "(" Expr ")" ;
+LambdaExpr    = "(" [ BindingNoInit { "," BindingNoInit } ] ")" [ ":" Expr ] "=>" Expr ;
+SignatureExpr = "(" [ BindingNoInit { "," BindingNoInit } ] ")" "->" Expr ;
+GroupExpr     = "(" Expr ")" ;
 ```
 
-Lists:
+Notes:
+
+- The parser decides between grouping and lambda/signature syntax by scanning
+  ahead for `=>` or `->` after the matching `)`.
+- Signature expressions are runtime values. The current interpreter only uses
+  them as arity-based set constraints for lambdas, plus permissive acceptance of
+  some built-in callable values.
+- Parser quirk: `(params) : X -> Y` is currently accepted, but only `Y` is kept.
+  Treat that as an implementation quirk, not supported surface syntax.
+
+### Structs And Enums
+
+```ebnf
+StructExpr = "struct" StructFields ;
+EnumExpr   = "enum" "{" [ Identifier { "," Identifier } [ "," ] ] "}" ;
+
+StructFields = "{" [ FieldBinding { "," FieldBinding } [ "," ] ] "}" ;
+```
+
+Notes:
+
+- Struct fields may have bounds, default initializers, or function-sugar bodies.
+- Enum variants are bare identifiers.
+- `Color.Red` is parsed as ordinary `.` syntax and interpreted as enum-variant
+  selection because the left-hand side is an enum family value.
+
+### Control Expressions
+
+```ebnf
+ForExpr   = "for" "(" BindingNoInit "∈" Expr ")" Expr ;
+WhileExpr = "while" "(" Expr ")" Expr ;
+IfExpr    = "if" "(" Expr ")" Expr "else" Expr ;
+MatchExpr = "match" Expr "{" [ MatchArm { "," MatchArm } [ "," ] ] "}" ;
+MatchArm  = Expr "=>" Expr ;
+```
+
+Notes:
+
+- `for` and `while` are expressions and currently evaluate to `void`.
+- The interpreter currently supports `for` only over range values.
+- `match` evaluates arms from left to right.
+- If a pattern expression has set semantics, a match arm tests membership
+  (`subject ∈ pattern`); otherwise it tests ordinary equality.
+- A non-exhaustive `match` is a runtime error.
+
+### Lists
 
 ```ebnf
 ListExpr = "[" [ Expr { "," Expr } [ "," ] ] "]" ;
 ```
 
-Struct expressions define structured values/types for the POC. Fields are named bindings, and trailing commas are accepted. Function-sugar fields are accepted when they include a body initializer.
+### Format Strings
 
 ```ebnf
-StructFields = "{" [ FieldBinding { "," FieldBinding } [ "," ] ] "}" ;
+FString = 'f"' FStringPart { "{" Expr "}" FStringPart } '"' ;
 ```
 
-Pattern Matching:
+This is a user-level description. The lexer actually emits
+`fstring_head` / `fstring_middle` / `fstring_tail` / `fstring_literal` tokens.
+
+### Blocks And Brace Expressions
 
 ```ebnf
-MatchExpr = "match" Expr "{" [ MatchArm { "," MatchArm } [ "," ] ] "}" ;
-MatchArm  = Expr "=>" Expr ;
+BlockExpr = "do" "{" { Statement } [ Expr ] "}" ;
+
+BraceExpr             = EmptySet
+                      | ConstructedSet
+                      | AnonymousStructLiteral
+                      | EnumeratedSet ;
+EmptySet              = "{" "}" ;
+ConstructedSet        = "{" BindingNoInit "|" Expr "}" ;
+AnonymousStructLiteral = "{" Identifier "=" Expr { "," Identifier "=" Expr } [ "," ] "}" ;
+EnumeratedSet         = "{" Expr { "," Expr } [ "," ] "}" ;
 ```
 
-## Block Expressions and Brace Expressions
+Brace disambiguation is implemented in this order:
 
-Braces are strictly and unconditionally reserved for set construction:
+1. `{}` is an empty enumerated set.
+2. `{ name : bound | cond }` and `{ name | cond }` are constructed sets.
+3. `{ name = expr, ... }` is an anonymous struct literal.
+4. Everything else is an enumerated set.
 
-- `{}` parses as an empty enumerated set.
-- `{x}` parses as a singleton enumerated set.
-- `{x, y}` and `{x, y,}` parse as enumerated sets.
-- `{x | predicate}` and `{x : bound | predicate}` parse as constructed sets.
+Notes:
 
-Because braces are dedicated to sets, statement blocks are explicitly prefixed with the `do` keyword. This makes parsing completely unambiguous and eliminates the need for complex, speculative lookaheads.
-
-```ebnf
-BlockExpr      = "do" "{" { Statement } [ Expr ] "}" ;
-BraceExpr      = EnumeratedSet | ConstructedSet ;
-EnumeratedSet  = "{" [ Expr { "," Expr } [ "," ] ] "}" ;
-ConstructedSet = "{" Identifier [ ":" Expr ] "|" Expr "}" ;
-```
-
-A `BlockExpr` evaluates to its optional trailing `Expr`. If the trailing `Expr` is omitted, the block evaluates to `` `void ``. 
-
-At the parser level, this trailing expression is implicitly desugared:
-*   If a trailing `Expr` is present, it is wrapped in an implicit `BreakStmt(Expr)`.
-*   If it is absent, an implicit `BreakStmt(Void)` is appended.
-
-Explicit `break expr;` statements remain fully supported for early-exit control flow.
-
-```chirp
-let one = {1};                 // singleton set
-let empty = {};                // empty set
-let evens = {x : int | x % 2 == 0};
-let value = do { let y = 1; y }; // y is the tail expression (implicitly breaks with y)
-```
-
-No-op function bodies should be explicit rather than overloading `{}` as an empty block:
-
-```chirp
-let noop_block() = do {}; // empty block implicitly yields `void
-let noop_value() = `void;
-```
+- Braces never mean a statement block by themselves; `do { ... }` is required.
+- A block's trailing expression is implicitly lowered to `break expr`.
+- A block with no trailing expression implicitly yields `void`.
+- Anonymous struct literals require a concrete struct context at evaluation
+  time, such as a bound, parameter constraint, or constructor field type.
+- `Point { x: 1 }` is not part of the grammar.

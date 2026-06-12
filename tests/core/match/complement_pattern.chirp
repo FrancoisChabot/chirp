@@ -1,0 +1,9 @@
+`expect_exit(0);
+
+let classify(n) = match n {
+    ~{1, 2, 3} => "other",
+    `any => "small"
+};
+
+`expect(classify(4) == "other");
+`expect(classify(2) == "small");
