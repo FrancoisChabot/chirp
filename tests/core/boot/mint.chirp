@@ -1,18 +1,18 @@
 `expect_exit(0);
 
-let a = `mint();
+let a = `mint_finite(1).values[0];
 let same = a;
-let b = `mint();
-let constrained : `typeof(a) = a;
+let b = `mint_finite(1).values[0];
+let constrained : `type_of(a) = a;
 
 `expect(a == same);
 `expect(a != b);
-`expect(`typeof(a) == `typeof(same));
-`expect(`typeof(a) != `typeof(b));
-`expect(a ∈ `typeof(a));
-`expect(a ∉ `typeof(b));
-`expect(b ∈ `typeof(b));
+`expect(`type_of(a) == `type_of(same));
+`expect(`type_of(a) != `type_of(b));
+`expect(a ∈ `type_of(a));
+`expect(a ∉ `type_of(b));
+`expect(b ∈ `type_of(b));
 `expect(a ∉ `Set);
-`expect(`typeof(a) ∈ `type);
-`expect(`typeof(a) ∈ `Set);
+`expect(`type_of(a) ∈ `type);
+`expect(`type_of(a) ∈ `Set);
 `expect(constrained == a);

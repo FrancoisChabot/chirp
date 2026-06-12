@@ -11,8 +11,7 @@ let token_type = {
     #colon, #dot, #dots, #open_brace, #close_brace, #open_bracket, #close_bracket,
     #open_paren, #close_paren, #not_equal, #plus_equal, #and, #and_and,
     #or_or, #arrow, #fat_arrow, #bar,
-    #belonging, #union, #intersection, #subset,
-    #not_in, #proper_subset, #not_subset, #superset, #proper_superset, #not_superset,
+    #belonging, #union, #intersection, #not_in,
     
     #error
 };
@@ -97,13 +96,7 @@ let check_operator(lexeme) = match lexeme {
     "∈" => #belonging,
     "∪" => #union,
     "∩" => #intersection,
-    "⊆" => #subset,
     "∉" => #not_in,
-    "⊂" => #proper_subset,
-    "⊄" => #not_subset,
-    "⊇" => #superset,
-    "⊃" => #proper_superset,
-    "⊅" => #not_superset,
     `any => #error
 };
 

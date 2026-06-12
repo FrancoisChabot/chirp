@@ -7,34 +7,12 @@
 
 // ---------- Capabilities ----------
 // Destructor. Executes when a binding holding a value of that type goes out of scope without a terminal move.
-let pub final `Drop = `trait(struct { 
+let pub final `Drop = `make_trait(struct {
     drop: (self)->void
 });
-register("drop_trait", `Drop);
+register("traits.drop", `Drop);
 
 // A marker trait indicating that a type opts out of default copyability.
 // Assignments of unique types are restricted to Terminal Move Semantics.
-let pub final `Unique = `trait(struct {});
-register("unique_trait", `Unique);
-
-// ---------- Equality ----------
-let pub final `Equality = `trait(struct { 
-    equals: (self, other) -> bool
-});
-register("eq_trait", `Equality);
-
-// ---------- Ordering ----------
-// TODO: Should probably become a proper spaceship check.
-let pub final `Orderable = `trait(struct { 
-    less: (self, other) -> bool
-});
-register("order_trait", `Orderable);
-
-// ---------- Arithmetic ----------
-let pub final `Arithmetic = `trait(struct {
-    add: (self, other) -> `any,
-    sub: (self, other) -> `any,
-    mul: (self, other) -> `any,
-    div: (self, other) -> `any
-});
-register("arithmetic_trait", `Arithmetic);
+let pub final `Unique = `make_trait(void);
+register("traits.unique", `Unique);

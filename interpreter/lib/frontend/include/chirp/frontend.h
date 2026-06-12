@@ -33,12 +33,7 @@ enum class token_type {
     // Unicode tokens
     in_op,      // ∈
     not_in_op,  // ∉
-    subset_op,  // ⊆
-    proper_subset_op, // ⊂
-    not_subset_op, // ⊄
-    superset_op, // ⊇
-    proper_superset_op, // ⊃
-    not_superset_op, // ⊅
+
     union_op,   // ∪
     intersection_op, // ∩
     tilde,      // ~
@@ -104,8 +99,7 @@ enum class BinaryOp {
     Eq, Neq, Lt, Lte, Gt, Gte,
     And, Or,
     In, NotIn,
-    Subset, ProperSubset, NotSubset,
-    Superset, ProperSuperset, NotSuperset,
+
     Union, Intersection,
     Range, RangeInclusiveEnd, RangeInclusiveStart, RangeInclusiveBoth,
     Dot
@@ -126,10 +120,10 @@ class GroupingExpr;
 class NumberExpr;
 class StringExpr;
 class CharExpr;
-class BoolExpr;
+
 class IdentifierExpr;
 class IntrinsicExpr;
-class UndecidedExpr;
+
 class SymbolicConstantExpr;
 class EnumeratedSetExpr;
 class ConstructedSetExpr;
@@ -165,10 +159,10 @@ public:
     virtual void visit(const NumberExpr& expr) = 0;
     virtual void visit(const StringExpr& expr) = 0;
     virtual void visit(const CharExpr& expr) = 0;
-    virtual void visit(const BoolExpr& expr) = 0;
+
     virtual void visit(const IdentifierExpr& expr) = 0;
     virtual void visit(const IntrinsicExpr& expr) = 0;
-    virtual void visit(const UndecidedExpr& expr) = 0;
+
     virtual void visit(const SymbolicConstantExpr& expr) = 0;
     virtual void visit(const EnumeratedSetExpr& expr) = 0;
     virtual void visit(const ConstructedSetExpr& expr) = 0;
@@ -312,16 +306,7 @@ public:
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };
 
-class BoolExpr : public Expr {
-public:
-    bool value;
-    token diagnostic_token;
 
-    BoolExpr(bool value, token diag) 
-        : value(value), diagnostic_token(std::move(diag)) {}
-
-    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
-};
 
 class IdentifierExpr : public Expr {
 public:
@@ -345,15 +330,7 @@ public:
     void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
 };
 
-class UndecidedExpr : public Expr {
-public:
-    token diagnostic_token;
 
-    explicit UndecidedExpr(token diag) 
-        : diagnostic_token(std::move(diag)) {}
-
-    void accept(ASTVisitor& visitor) const override { visitor.visit(*this); }
-};
 
 class SymbolicConstantExpr : public Expr {
 public:

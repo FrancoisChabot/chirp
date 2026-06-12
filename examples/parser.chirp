@@ -76,7 +76,7 @@ let INFIX_OPS = {
     #plus, #minus, #asterisk, #slash,
     #equal_equal, #not_equal,
     #and_and, #or_or,
-    #belonging, #union, #intersection, #subset,
+    #belonging, #union, #intersection,
     #dots,
 };
 
@@ -99,7 +99,7 @@ let BP(op_type) = match op_type {
     #or_or =>                        4,
     #and_and =>                      6,
     {#equal_equal,  #not_equal} =>   8, 
-    {#belonging,  #subset} =>       10,
+    #belonging =>       10,
     #union =>                        12,
     #intersection =>                 14,
     {#plus, #minus} =>               16,

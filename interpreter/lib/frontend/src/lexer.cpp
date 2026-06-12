@@ -273,9 +273,9 @@ class Lexer {
         } else {
             std::string_view text = source.substr(start, current - start);
             if (text == "`in") add_token(token_type::in_op);
-            else if (text == "`union") add_token(token_type::union_op);
-            else if (text == "`intersection") add_token(token_type::intersection_op);
-            else if (text == "`subset") add_token(token_type::subset_op);
+            else if (text == "`notin") add_token(token_type::not_in_op);
+            else if (text == "`or") add_token(token_type::union_op);
+            else if (text == "`and") add_token(token_type::intersection_op);
             else add_token(token_type::intrinsic);
         }
     }
@@ -370,12 +370,7 @@ class Lexer {
 
         if (match_str("∈")) { add_token(token_type::in_op); return; }
         if (match_str("∉")) { add_token(token_type::not_in_op); return; }
-        if (match_str("⊆")) { add_token(token_type::subset_op); return; }
-        if (match_str("⊂")) { add_token(token_type::proper_subset_op); return; }
-        if (match_str("⊄")) { add_token(token_type::not_subset_op); return; }
-        if (match_str("⊇")) { add_token(token_type::superset_op); return; }
-        if (match_str("⊃")) { add_token(token_type::proper_superset_op); return; }
-        if (match_str("⊅")) { add_token(token_type::not_superset_op); return; }
+
         if (match_str("∪")) { add_token(token_type::union_op); return; }
         if (match_str("∩")) { add_token(token_type::intersection_op); return; }
         if (match_str("..=")) { add_token(token_type::dot_dot_equal); return; }
@@ -513,12 +508,12 @@ std::string format_text(std::string_view source) {
         
         if (t.type == token_type::in_op && t.lexeme == "`in") {
             out.append("∈");
-        } else if (t.type == token_type::union_op && t.lexeme == "`union") {
+        } else if (t.type == token_type::not_in_op && t.lexeme == "`notin") {
+            out.append("∉");
+        } else if (t.type == token_type::union_op && t.lexeme == "`or") {
             out.append("∪");
-        } else if (t.type == token_type::intersection_op && t.lexeme == "`intersection") {
+        } else if (t.type == token_type::intersection_op && t.lexeme == "`and") {
             out.append("∩");
-        } else if (t.type == token_type::subset_op && t.lexeme == "`subset") {
-            out.append("⊆");
         } else {
             out.append(t.lexeme);
         }

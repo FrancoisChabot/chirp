@@ -7,6 +7,7 @@
 #include "value.h"
 
 namespace chirp::frontend {
+class Expr;
 class StructExpr;
 }
 
@@ -46,10 +47,7 @@ public:
     std::string_view name() const override { return "bool"; }
 };
 
-class UndecidedType : public Type {
-public:
-    std::string_view name() const override { return "Undecided"; }
-};
+
 
 
 
@@ -104,12 +102,9 @@ public:
 };
 
 class SignatureType : public Type {
-    size_t parameter_count_;
 public:
-    explicit SignatureType(size_t parameter_count) : parameter_count_(parameter_count) {}
     std::string_view name() const override { return "Signature"; }
     bool hasSetness() const override { return true; }
-    size_t getParameterCount() const { return parameter_count_; }
     Value belongs(const Value& S, const Value& v) const override;
     Value belongs_approx(const Value& S, const Value& lc) const override;
 };
@@ -143,7 +138,6 @@ public:
 class TraitType : public Type {
 public:
     std::string_view name() const override { return "Trait"; }
-    bool hasSetness() const override { return true; }
     Value belongs(const Value& S, const Value& v) const override;
     Value belongs_approx(const Value& S, const Value& lc) const override;
 };
@@ -186,6 +180,30 @@ public:
     const frontend::StructExpr* expr() const { return expr_; }
 private:
     const frontend::StructExpr* expr_;
+};
+
+struct OrderedStructFieldSpec {
+    std::string name;
+    bool is_mut = false;
+    bool is_final = false;
+    const frontend::Expr* type_bound = nullptr;
+    const frontend::Expr* initializer = nullptr;
+};
+
+class RuntimeStructType : public Type {
+public:
+    explicit RuntimeStructType(std::vector<OrderedStructFieldSpec> fields)
+        : fields_(std::move(fields)) {}
+
+    std::string_view name() const override { return "Struct"; }
+    bool hasSetness() const override { return true; }
+    Value belongs(const Value& S, const Value& v) const override;
+    Value belongs_approx(const Value& S, const Value& lc) const override;
+
+    const std::vector<OrderedStructFieldSpec>& fields() const { return fields_; }
+
+private:
+    std::vector<OrderedStructFieldSpec> fields_;
 };
 
 class EnumFamilyType : public Type {

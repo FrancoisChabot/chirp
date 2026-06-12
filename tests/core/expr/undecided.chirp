@@ -1,11 +1,11 @@
 `expect_exit(0);
 
-`expect_stdout("undecided\n");
+`expect_stdout("<mint 2>\n");
 `print(undecided);
 `expect(undecided == undecided);
 `expect(!(undecided != undecided));
-`expect(undecided ∈ `typeof(undecided));
-`expect(true ∉ `typeof(undecided));
-`expect(`typeof(undecided) ∈ `Set);
+`expect(undecided ∈ `type_of(undecided));
+`expect(true ∉ `type_of(undecided));
+`expect(`type_of(undecided) ∈ `Set);
 `expect(undecided ∈ `Set);
 `expect(undecided ∉ bool);

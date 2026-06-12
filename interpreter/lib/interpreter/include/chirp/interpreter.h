@@ -32,7 +32,7 @@ private:
 
 // Core Types (as std::shared_ptr<const Type>)
 std::shared_ptr<const Type> getBoolType();
-std::shared_ptr<const Type> getUndecidedType();
+
 std::shared_ptr<const Type> getMetaType(); // represents the "Type" type
 
 std::shared_ptr<const Type> getSetType();
@@ -62,8 +62,7 @@ std::shared_ptr<const Type> getEnumVariantType();
 const Value& Bool();
 const Value& True();
 const Value& False();
-const Value& Undecided();
-const Value& UndecidedVal();
+
 const Value& TypeVal();
 
 const Value& Set();

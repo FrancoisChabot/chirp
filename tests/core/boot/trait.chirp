@@ -1,15 +1,15 @@
 `expect_exit(0);
 
-let Marker = `trait(`any);
-let Other = `trait(`any);
+let Marker = `make_trait(void);
+let Other = `make_trait(void);
 
 `implement(
     trait=Marker,
     on=int,
-    impl=#marker_impl
+    impl=void
 );
 
-`expect(`interface(Marker) == `any);
+
 
 `expect(1 ∈ Marker);
 
@@ -21,8 +21,11 @@ let Other = `trait(`any);
 
 `expect(1 ∉ Other);
 
+`expect(`interface_of(Marker) == void);
+`expect(`implementation(Marker, int) == void);
+
 let constrained : Marker = 5;
 
 `expect(constrained == 5);
 
-`expect(Marker ∈ `typeof(Marker));
+`expect(Marker ∈ `type_of(Marker));

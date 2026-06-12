@@ -29,7 +29,7 @@ UnicodeEscape    = "\u" HexDigit HexDigit HexDigit HexDigit ;
 
 Character literals contain exactly one Unicode scalar value. Raw character literals spell that scalar value directly as UTF-8 source text. Escaped literals may use the common one-character escapes listed above or `\uXXXX`; surrogate code units in `\uD800` through `\uDFFF`, empty character literals, multi-codepoint literals, and malformed escapes are lexical errors.
 
-The POC currently recognizes Unicode set operators directly: `∈`, `∉`, `⊆`, `⊂`, `⊄`, `⊇`, `⊃`, `⊅`, `∪`, and `∩`. ASCII aliases such as `in`, `union`, or `subset` are out of scope for the current parser.
+The POC currently recognizes Unicode set operators directly: `∈`, `∉`, `∪`, and `∩`. ASCII aliases such as `in` or `or` are out of scope for the current parser.
 
 The range operator family is tokenized by longest match:
 

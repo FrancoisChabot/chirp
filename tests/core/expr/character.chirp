@@ -23,8 +23,8 @@ let c_hex = '\u00AB';
 `print(c_hex);
 
 // 3. Types and Identity
-`expect(`typeof('a') == char);
-`expect(`typeof('😀') == char);
+`expect(`type_of('a') == char);
+`expect(`type_of('😀') == char);
 `expect('a' == 'a');
 `expect('a' != 'b');
 `expect('😀' == '😀');

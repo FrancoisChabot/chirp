@@ -1,0 +1,36 @@
+`expect_exit(0);
+
+let Counter = struct { value: int };
+
+`implement(
+    trait=`Additive,
+    on=Counter,
+    impl={
+        add = (self, other) => Counter(value=self.value + other.value)
+    }
+);
+
+let a = Counter(value=2);
+let b = Counter(value=5);
+let c = a + b;
+`expect(c.value == 7);
+
+let mut d = Counter(value=1);
+d += Counter(value=4);
+`expect(d.value == 5);
+
+let Pair = struct { first: int, second: int };
+
+`implement(
+    trait=`Indexable,
+    on=Pair,
+    impl={
+        index_space = (self) => struct { at: int },
+        result_space = (self, at) => int,
+        read = (self, at) => if (at.at == 0) self.first else self.second
+    }
+);
+
+let pair = Pair(first=3, second=8);
+`expect(pair[0] == 3);
+`expect(pair[1] == 8);

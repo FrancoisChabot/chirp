@@ -6,7 +6,7 @@ let Token = struct {};
 `implement(
     trait=`Drop,
     on=Token,
-    impl=`interface(`Drop)(drop=(this) => `print("drop"))
+    impl=`interface_of(`Drop)(drop=(this) => `print("drop"))
 );
 
 do {

@@ -1,0 +1,19 @@
+`expect_exit(0);
+
+let Token = `mint_finite(1).values[0];
+
+`implement(
+    trait=`Callable,
+    on=`type_of(Token),
+    impl={
+        param_space = (self) => struct { x: int, y: int },
+        result_space = (self, params) => int,
+        invoke = (self, params) => params.x + params.y
+    }
+);
+
+let a = Token(x=2, y=5);
+let b = Token(10, 7);
+
+`expect(a == 7);
+`expect(b == 17);

@@ -7,13 +7,13 @@ let B = struct {};
 `implement(
     trait=`Drop,
     on=A,
-    impl=`interface(`Drop)(drop=(this) => `print("A"))
+    impl=`interface_of(`Drop)(drop=(this) => `print("A"))
 );
 
 `implement(
     trait=`Drop,
     on=B,
-    impl=`interface(`Drop)(drop=(this) => `print("B"))
+    impl=`interface_of(`Drop)(drop=(this) => `print("B"))
 );
 
 do {

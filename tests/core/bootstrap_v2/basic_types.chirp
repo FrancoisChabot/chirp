@@ -1,0 +1,9 @@
+`expect_exit(0);
+
+`expect(`same(`type_of(true), bool));
+`expect(`same(`type_of(1), int));
+
+let Minted = `mint_finite(2);
+`expect(`same(`type_of(Minted.type), `type));
+`expect(Minted.values[0] != Minted.values[1]);
+`expect(Minted.values[0] ∈ Minted.type);

@@ -17,13 +17,15 @@ for (c ∈ rng) do {
 let Version = struct { major: int, minor: int };
 
 `implement(
-    trait=`Orderable,
+    trait=`Comparable,
     on=Version,
     impl={
-        less = (this, other) => 
-            if (this.major < other.major) true
-            else if (this.major > other.major) false
-            else this.minor < other.minor
+        compare = (this, other) => 
+            if (this.major < other.major) `less
+            else if (this.major > other.major) `greater
+            else if (this.minor < other.minor) `less
+            else if (this.minor > other.minor) `greater
+            else `equal
     }
 );
 

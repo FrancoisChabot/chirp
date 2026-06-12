@@ -1,10 +1,10 @@
 `expect_exit(1);
 
-let Token = `mint();
+let Token = `mint_finite(1).values[0];
 
 `implement(
     trait=`Set,
-    on=`typeof(Token),
+    on=`type_of(Token),
     impl={
         bp = (this, v) => false,
         br = (this, lc) => {false},

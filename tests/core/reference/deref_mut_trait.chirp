@@ -6,7 +6,7 @@ let MyMutBox = struct {
 `implement(
     trait=`DereferenceableMut,
     on=MyMutBox,
-    impl=`interface(`DereferenceableMut)(
+    impl=`interface_of(`DereferenceableMut)(
         deref_assign = (self, new_val) => do { *(self.ptr) = new_val; }
     )
 );
@@ -14,7 +14,7 @@ let MyMutBox = struct {
 `implement(
     trait=`Dereferenceable,
     on=MyMutBox,
-    impl=`interface(`Dereferenceable)(
+    impl=`interface_of(`Dereferenceable)(
         deref = (self) => *(self.ptr)
     )
 );

@@ -32,10 +32,10 @@ let final make_type_a_self_set(t) = do {
         trait=`Set,
         on=t,
         impl={
-            belongs = (this, v) => v == this,
-            belongs_approx = (this, lc) =>
-                if (this ∉ lc) {false}
-                else if ({this} == lc) {true}
+            belongs = (self, v) => `same(v, self),
+            belongs_range = (self, lc) =>
+                if (self ∉ lc) {false}
+                else if (`coextensive(lc, {self})) {true}
                 else {true, false}
         }
     );
@@ -46,9 +46,10 @@ make_type_a_self_set(int);
 make_type_a_self_set(char);
 make_type_a_self_set(string);
 make_type_a_self_set(symbol);
-make_type_a_self_set(`typeof(undecided));
+make_type_a_self_set(`type_of(void));
+make_type_a_self_set(`type_of(undecided));
 
 
 // We could just force returning from main. But being able to bail out is nice and easy to implement, 
 // and it's not like it adds much complexity.
-let pub final `exit = `import("exit_func", "__chirp_boot");
+let pub final `exit = `import("system.exit", "__chirp_boot");

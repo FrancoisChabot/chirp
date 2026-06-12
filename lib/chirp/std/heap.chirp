@@ -1,18 +1,18 @@
 let pub Unique(T) = { p: `heap_allocation | *p ∈ T };
 let pub Shared(T) = { p: `heap_shared_allocation | *p ∈ T };
 
-`implement(trait=`Unique, on=`heap_allocation, impl=`interface(`Unique)());
+`implement(trait=`Unique, on=`heap_allocation, impl=void);
 
 `implement(
     trait=`Drop,
     on=`heap_allocation,
-    impl=`interface(`Drop)(drop=(this) => `heap_destroy(this))
+    impl=`interface_of(`Drop)(drop=(this) => `heap_destroy(this))
 );
 
 `implement(
     trait=`Drop,
     on=`heap_shared_allocation,
-    impl=`interface(`Drop)(drop=(this) => `heap_shared_destroy(this))
+    impl=`interface_of(`Drop)(drop=(this) => `heap_shared_destroy(this))
 );
 
 let pub create = `heap_create;

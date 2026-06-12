@@ -301,12 +301,20 @@ private:
         size_t depth;
         std::shared_ptr<Binding> binding;
     };
+
+    struct TerminalValue {
+        Value value;
+        std::shared_ptr<Binding> handoff_binding;
+    };
+
     std::optional<TerminalHandoff> terminal_handoff_;
     std::optional<std::filesystem::path> chirp_root_;
     std::unordered_map<std::string, ModuleCacheEntry> module_cache_;
     std::vector<std::unique_ptr<SourceUnit>> module_sources_;
     std::vector<std::string> source_stack_;
     std::vector<std::map<std::string, std::shared_ptr<Binding>>*> module_export_stack_;
+    std::unordered_map<const frontend::LambdaExpr*, std::shared_ptr<const RuntimeStructType>> lambda_param_struct_types_;
+    std::unordered_map<const Type*, std::shared_ptr<const RuntimeStructType>> construction_arg_struct_types_;
 
     struct Implementation {
         Value trait;
@@ -364,42 +372,47 @@ private:
 
         void visit(const frontend::CallExpr& expr) override {
             if (!is_pure) return;
+            std::string name;
             if (auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(expr.callee.get())) {
-                std::string name = std::string(ident->name);
-                bool is_param = false;
-                for (const auto& p : params) {
-                    if (std::string(p.name.lexeme) == name) {
-                        is_param = true; break;
-                    }
+                name = std::string(ident->name);
+            } else if (auto* intrinsic = dynamic_cast<const frontend::IntrinsicExpr*>(expr.callee.get())) {
+                name = std::string(intrinsic->name);
+            } else {
+                is_pure = false; return;
+            }
+
+            bool is_param = false;
+            for (const auto& p : params) {
+                if (std::string(p.name.lexeme) == name) {
+                    is_param = true; break;
                 }
-                if (is_param) {
-                    is_pure = false; return;
-                }
-                if (local_vars.count(name)) {
-                    is_pure = false; return;
-                }
-                auto binding = evaluator.lookup_binding_optional(name);
-                if (binding) {
-                    Value val = binding->getCV();
-                    if (val.isLambda()) {
-                        if (!evaluator.check_purity(&val.asLambda())) {
+            }
+            if (is_param) {
+                is_pure = false; return;
+            }
+            if (local_vars.count(name)) {
+                is_pure = false; return;
+            }
+            auto binding = evaluator.lookup_binding_optional(name);
+            if (binding) {
+                Value val = binding->getCV();
+                if (val.isLambda()) {
+                        if (!evaluator.check_purity(val.asLambdaTag())) {
                             is_pure = false; return;
                         }
-                    } else if (val.isHostFunction()) {
-                        if (val.asHostFunction() == Value::HostFunction::Print) {
-                            is_pure = false; return;
-                        }
-                    } else if (val.isEnumeratedSet() && binding->isFinal()) {
-                        // Capturing a final boolean/enumerated set is pure
-                    } else if (!val.isType()) {
+                } else if (val.isHostFunction()) {
+                    if (val.asHostFunction() == Value::HostFunction::Print) {
                         is_pure = false; return;
                     }
-                } else {
+                } else if (val.isEnumeratedSet() && binding->isFinal()) {
+                    // Capturing a final boolean/enumerated set is pure
+                } else if (!val.isType()) {
                     is_pure = false; return;
                 }
             } else {
                 is_pure = false; return;
             }
+
             for (const auto& arg : expr.args) {
                 if (arg.value) arg.value->accept(*this);
             }
@@ -508,8 +521,8 @@ private:
             for (const auto& part : expr.parts) part->accept(*this);
         }
         void visit(const frontend::CharExpr&) override {}
-        void visit(const frontend::BoolExpr&) override {}
-        void visit(const frontend::UndecidedExpr&) override {}
+
+
         void visit(const frontend::SymbolicConstantExpr&) override {}
         void visit(const frontend::EnumExpr&) override {}
         void visit(const frontend::EnumeratedSetExpr& expr) override {
@@ -551,9 +564,93 @@ private:
         return visitor.is_pure;
     }
 
+    bool check_purity(const Value::LambdaTag& lambda_tag) {
+        RuntimeScopeChain saved_scopes = std::move(scopes_);
+        if (lambda_tag.captured_scopes) {
+            scopes_ = *lambda_tag.captured_scopes;
+        } else {
+            scopes_ = saved_scopes;
+        }
+
+        try {
+            bool result = check_purity(lambda_tag.lambda);
+            scopes_ = std::move(saved_scopes);
+            return result;
+        } catch (...) {
+            scopes_ = std::move(saved_scopes);
+            throw;
+        }
+    }
+
     Value evaluate(const Expr& expr) {
         expr.accept(*this);
         return result_;
+    }
+
+    Value evaluate_terminal_expression_impl(const Expr& expr) {
+        if (const auto* identifier = dynamic_cast<const IdentifierExpr*>(&expr)) {
+            auto [binding, depth] = lookup_binding_with_depth(identifier->name, identifier->diagnostic_token);
+            if (depth == scopes_.size() - 1 &&
+                binding->ownsCV() &&
+                (is_uncopyable(binding->getCV().getType()) ||
+                    is_shared_heap_allocation_type(binding->getCV().getType()))) {
+                terminal_handoff_ = TerminalHandoff{depth, binding};
+            }
+            return builtin_identifier(identifier->name, identifier->diagnostic_token);
+        }
+
+        if (const auto* grouping = dynamic_cast<const GroupingExpr*>(&expr)) {
+            return evaluate_terminal_expression_impl(*grouping->expression);
+        }
+
+        if (const auto* if_expr = dynamic_cast<const IfExpr*>(&expr)) {
+            if (as_bool(evaluate(*if_expr->condition), if_expr->diagnostic_token)) {
+                return evaluate_terminal_expression_impl(*if_expr->then_branch);
+            }
+            return evaluate_terminal_expression_impl(*if_expr->else_branch);
+        }
+
+        if (const auto* match_expr = dynamic_cast<const MatchExpr*>(&expr)) {
+            Value subject = evaluate(*match_expr->subject);
+
+            for (const auto& arm : match_expr->arms) {
+                Value pattern = evaluate(*arm.pattern);
+
+                bool matched = false;
+                if (has_setness(pattern)) {
+                    Value result = belongs_to(pattern, subject, match_expr->diagnostic_token);
+                    matched = as_bool(result, match_expr->diagnostic_token);
+                } else {
+                    matched = (subject == pattern);
+                }
+
+                if (matched) {
+                    return evaluate_terminal_expression_impl(*arm.body);
+                }
+            }
+
+            fail(match_expr->diagnostic_token, "Non-exhaustive match: no arm matched value " + display_string(subject));
+        }
+
+        return evaluate(expr);
+    }
+
+    TerminalValue evaluate_terminal_expression(const Expr& expr) {
+        auto previous_handoff = terminal_handoff_;
+        terminal_handoff_.reset();
+
+        try {
+            Value value = evaluate_terminal_expression_impl(expr);
+            std::shared_ptr<Binding> handoff_binding;
+            if (terminal_handoff_.has_value()) {
+                handoff_binding = terminal_handoff_->binding;
+            }
+            terminal_handoff_ = previous_handoff;
+            return TerminalValue{std::move(value), std::move(handoff_binding)};
+        } catch (...) {
+            terminal_handoff_ = previous_handoff;
+            throw;
+        }
     }
 
     void execute_stmt(const Stmt& stmt) {
@@ -639,7 +736,45 @@ private:
         return value.asInt();
     }
 
+    static const ReferenceType* as_reference_type(const std::shared_ptr<const Type>& type) {
+        return dynamic_cast<const ReferenceType*>(type.get());
+    }
+
+    bool is_reference_type(const std::shared_ptr<const Type>& type) const {
+        return as_reference_type(type) != nullptr;
+    }
+
+    bool is_mutable_reference_type(const std::shared_ptr<const Type>& type) const {
+        if (const auto* reference_type = as_reference_type(type)) {
+            return reference_type->is_mut();
+        }
+        return false;
+    }
+
+    const Value* builtin_reference_impl_for(const Value& trait, const std::shared_ptr<const Type>& dispatch_target) const {
+        if (!is_reference_type(dispatch_target)) {
+            return nullptr;
+        }
+
+        if (const Value* dereferenceable_trait = get_registered_item("traits.dereferenceable")) {
+            if (trait == *dereferenceable_trait) {
+                return get_registered_item("traits.dereferenceable.reference_impl");
+            }
+        }
+
+        if (const Value* dereferenceable_mut_trait = get_registered_item("traits.dereferenceable_mut")) {
+            if (trait == *dereferenceable_mut_trait && is_mutable_reference_type(dispatch_target)) {
+                return get_registered_item("traits.dereferenceable_mut.reference_impl");
+            }
+        }
+
+        return nullptr;
+    }
+
     const Value* registered_impl_for(const Value& trait, const std::shared_ptr<const Type>& dispatch_target) const {
+        if (const Value* builtin_impl = builtin_reference_impl_for(trait, dispatch_target)) {
+            return builtin_impl;
+        }
         for (const auto& implementation : implementations_) {
             if (implementation.trait == trait && implementation.on == dispatch_target) {
                 return &implementation.impl;
@@ -649,7 +784,7 @@ private:
     }
 
     const Value* registered_setness_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
-        if (const Value* st = get_registered_item("set_trait")) {
+        if (const Value* st = get_registered_item("traits.set")) {
             return registered_impl_for(*st, dispatch_target);
         }
         return nullptr;
@@ -664,11 +799,11 @@ private:
     }
 
     const Value* callable_trait_value() const {
-        return get_registered_item("callable_trait");
+        return get_registered_item("traits.callable");
     }
 
     const Value* unique_trait_value() const {
-        return get_registered_item("unique_trait");
+        return get_registered_item("traits.unique");
     }
 
     const Value* registered_unique_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
@@ -680,7 +815,7 @@ private:
     }
 
     const Value* drop_trait_value() const {
-        return get_registered_item("drop_trait");
+        return get_registered_item("traits.drop");
     }
 
     const Value* registered_drop_impl_for(const std::shared_ptr<const Type>& dispatch_target) const {
@@ -695,16 +830,71 @@ private:
         return registered_drop_impl_for(type) != nullptr;
     }
     
-    const Value* equality_trait_value() const {
-        return get_registered_item("eq_trait");
+    const Value* comparable_trait_value() const { return get_registered_item("operators.comparable"); }
+    const Value* additive_trait_value() const { return get_registered_item("operators.additive"); }
+    const Value* subtractive_trait_value() const { return get_registered_item("operators.subtractive"); }
+    const Value* negatable_trait_value() const { return get_registered_item("operators.negatable"); }
+    const Value* multiplicative_trait_value() const { return get_registered_item("operators.multiplicative"); }
+    const Value* divisible_trait_value() const { return get_registered_item("operators.divisible"); }
+    const Value* modulable_trait_value() const { return get_registered_item("operators.modulable"); }
+    const Value* indexable_trait_value() const { return get_registered_item("operators.indexable"); }
+    const Value* index_assignable_trait_value() const { return get_registered_item("operators.index_assignable"); }
+
+    const Value* comparison_result_value(std::string_view key) const {
+        return get_registered_item(std::string(key));
     }
 
-    const Value* orderable_trait_value() const {
-        return get_registered_item("order_trait");
+    std::optional<Value> call_comparable(const Value& left, const Value& right, const token& diag) {
+        if (left.getType() != right.getType()) {
+            return std::nullopt;
+        }
+        const Value* trait = comparable_trait_value();
+        if (trait == nullptr) {
+            return std::nullopt;
+        }
+        const Value* impl = registered_impl_for(*trait, left.getType());
+        if (impl == nullptr) {
+            return std::nullopt;
+        }
+        if (!impl->isStructInstance()) {
+            fail(diag, "`Comparable implementation must be a struct instance");
+        }
+        const auto& fields = *impl->asStructInstance().fields;
+        auto found = fields.find("compare");
+        if (found == fields.end()) {
+            fail(diag, "`Comparable implementation is missing method 'compare'");
+        }
+                    return call_callable_with_values(found->second, {left, right}, diag, {}, {false, true});
     }
 
-    const Value* arithmetic_trait_value() const {
-        return get_registered_item("arithmetic_trait");
+    bool comparison_result_is(const Value& value, std::string_view key, const token& diag) const {
+        const Value* registered = comparison_result_value(key);
+        if (registered == nullptr) {
+            fail(diag, "Comparison result value '" + std::string(key) + "' is not registered");
+        }
+        return value == *registered;
+    }
+
+    const Value* arithmetic_trait_for(BinaryOp op) const {
+        switch (op) {
+            case BinaryOp::Add: return additive_trait_value();
+            case BinaryOp::Sub: return subtractive_trait_value();
+            case BinaryOp::Mul: return multiplicative_trait_value();
+            case BinaryOp::Div: return divisible_trait_value();
+            case BinaryOp::Mod: return modulable_trait_value();
+            default: return nullptr;
+        }
+    }
+
+    const char* arithmetic_method_for(BinaryOp op) const {
+        switch (op) {
+            case BinaryOp::Add: return "add";
+            case BinaryOp::Sub: return "sub";
+            case BinaryOp::Mul: return "mul";
+            case BinaryOp::Div: return "div";
+            case BinaryOp::Mod: return "mod";
+            default: return nullptr;
+        }
     }
 
     Value value_arithmetic(const Value& left, const Value& right, BinaryOp op, const token& diag) {
@@ -712,25 +902,20 @@ private:
             return Value::make_int(binary_int(left, right, op, diag));
         }
         if (left.getType() == right.getType()) {
-            const Value* trait = arithmetic_trait_value();
-            if (trait != nullptr) {
+            const Value* trait = arithmetic_trait_for(op);
+            const char* method_name = arithmetic_method_for(op);
+            if (trait != nullptr && method_name != nullptr) {
                 const Value* impl = registered_impl_for(*trait, left.getType());
-                if (impl != nullptr && impl->isStructInstance()) {
+                if (impl != nullptr) {
+                    if (!impl->isStructInstance()) {
+                        fail(diag, "Arithmetic implementation must be a struct instance");
+                    }
                     const auto& fields = *impl->asStructInstance().fields;
-                    std::string method_name;
-                    switch (op) {
-                        case BinaryOp::Add: method_name = "add"; break;
-                        case BinaryOp::Sub: method_name = "sub"; break;
-                        case BinaryOp::Mul: method_name = "mul"; break;
-                        case BinaryOp::Div: method_name = "div"; break;
-                        default: break;
+                    auto it = fields.find(method_name);
+                    if (it == fields.end()) {
+                        fail(diag, std::string("Arithmetic implementation is missing method '") + method_name + "'");
                     }
-                    if (!method_name.empty()) {
-                        auto it = fields.find(method_name);
-                        if (it != fields.end()) {
-                            return call_callable_with_values(it->second, {left, right}, diag);
-                        }
-                    }
+                    return call_callable_with_values(it->second, {left, right}, diag, {}, {false, true});
                 }
             }
         }
@@ -747,46 +932,38 @@ private:
         return Value();
     }
 
-    bool accepts_argument(const Value& callable, size_t arg_index, const Value& arg_value, const token& diag) {
-        if (!callable.isLambda()) return false;
-        const auto& tag = callable.asLambdaTag();
-        if (arg_index >= tag.lambda->parameters.size()) return false;
-        
-        Value constraint = evaluate_lambda_parameter_bound(tag, tag.lambda->parameters[arg_index]);
-        if (constraint.isVoid()) return true;
-        
-        Value belongs = belongs_to(constraint, arg_value, diag);
-        return belongs.isBool() && belongs.asBool();
+    Value value_negate(const Value& value, const token& diag) {
+        if (value.isInt()) {
+            try {
+                return Value::make_int(-value.asInt());
+            } catch (const std::out_of_range&) {
+                fail(diag, "Integer negation overflow");
+            }
+        }
+        const Value* trait = negatable_trait_value();
+        if (trait != nullptr) {
+            const Value* impl = registered_impl_for(*trait, value.getType());
+            if (impl != nullptr) {
+                if (!impl->isStructInstance()) {
+                    fail(diag, "`Negatable implementation must be a struct instance");
+                }
+                const auto& fields = *impl->asStructInstance().fields;
+                auto found = fields.find("neg");
+                if (found == fields.end()) {
+                    fail(diag, "`Negatable implementation is missing method 'neg'");
+                }
+                return call_callable_with_values(found->second, {value}, diag, {}, {false});
+            }
+        }
+        fail(diag, "Cannot negate value of type " + std::string(value.getType()->name()));
+        return Value();
     }
 
     bool value_equality(const Value& left, const Value& right, const token& diag) {
-        const Value* trait = equality_trait_value();
-        if (trait != nullptr) {
-            auto try_equals = [&](const Value& a, const Value& b) -> std::optional<bool> {
-                const Value* impl = registered_impl_for(*trait, a.getType());
-                if (impl != nullptr) {
-                    const auto& fields = *impl->asStructInstance().fields;
-                    auto found = fields.find("equals");
-                    if (found != fields.end() && found->second.isLambda()) {
-                        if (accepts_argument(found->second, 1, b, diag)) {
-                            Value res = call_callable_with_values(found->second, {a, b}, diag);
-                            if (!res.isBool()) fail(diag, "equality trait implementation 'equals' must return bool");
-                            return res.asBool();
-                        }
-                    }
-                }
-                return std::nullopt;
-            };
-
-            if (auto res = try_equals(left, right)) {
-                return *res;
-            }
-            if (auto res = try_equals(right, left)) {
-                return *res;
-            }
-        }
-
         if (left.getType() == right.getType()) {
+            if (auto compare_result = call_comparable(left, right, diag)) {
+                return comparison_result_is(*compare_result, "operators.comparable.equal", diag);
+            }
             return left == right;
         }
         return false;
@@ -809,20 +986,8 @@ private:
             return left.asString() < right.asString();
         }
         if (left.getType() == right.getType()) {
-            const Value* trait = orderable_trait_value();
-            if (trait != nullptr) {
-                const Value* impl = registered_impl_for(*trait, left.getType());
-                if (impl != nullptr && impl->isStructInstance()) {
-                    const auto& fields = *impl->asStructInstance().fields;
-                    auto it = fields.find("less");
-                    if (it != fields.end()) {
-                        Value less_res = call_callable_with_values(it->second, {left, right}, diag);
-                        if (!less_res.isBool()) {
-                            fail(diag, "orderable trait implementation 'less' must return bool");
-                        }
-                        return less_res.asBool();
-                    }
-                }
+            if (auto compare_result = call_comparable(left, right, diag)) {
+                return comparison_result_is(*compare_result, "operators.comparable.less", diag);
             }
         }
         fail(diag, "Cannot compare values of types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
@@ -846,7 +1011,13 @@ private:
             return left.asString() <= right.asString();
         }
         if (left.getType() == right.getType()) {
-            if (left == right) return true;
+            if (auto compare_result = call_comparable(left, right, diag)) {
+                return comparison_result_is(*compare_result, "operators.comparable.less", diag) ||
+                    comparison_result_is(*compare_result, "operators.comparable.equal", diag);
+            }
+            if (left == right) {
+                return true;
+            }
             return value_compare_less(left, right, diag);
         }
         fail(diag, "Cannot compare values of types " + std::string(left.getType()->name()) + " and " + std::string(right.getType()->name()));
@@ -883,7 +1054,7 @@ private:
             fail(diag, "`drop implementation is missing method 'drop'");
         }
 
-        Value result = call_callable_with_values(found->second, {value}, diag, {false});
+        Value result = call_callable_with_values(found->second, {value}, diag, {false}, {false});
         if (!result.isVoid()) {
             fail(diag, "`drop.drop must return void");
         }
@@ -992,28 +1163,21 @@ private:
     }
 
     bool has_setness(const Value& value) const {
-        if (value.isTrait()) {
-            return true;
-        }
         return registered_setness_impl_for(value.getType()) != nullptr ||
             value.getType()->hasSetness();
     }
 
     Value call_setness_bp(const Value& set, const Value& value, const token& diag) {
-        if (const Value* st = get_registered_item("set_trait"); st && set == *st) {
-            return Value::make_bool(has_setness(value));
-        }
-
-        if (set.isTrait()) {
-            return Value::make_bool(registered_impl_for(set, value.getType()) != nullptr);
-        }
-
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
+            if (!impl->isStructInstance()) {
+                fail(diag, "`Set implementation must be a struct instance");
+            }
             const auto& fields = *impl->asStructInstance().fields;
             auto found = fields.find("belongs");
-            if (found != fields.end() && found->second.isLambda()) {
-                return call_callable_with_values(found->second, {set, value}, diag, {false, false});
+            if (found == fields.end()) {
+                fail(diag, "`Set implementation is missing method 'belongs'");
             }
+            return call_callable_with_values(found->second, {set, value}, diag, {false, false}, {false, true});
         }
 
         if (!set.getType()->hasSetness()) {
@@ -1023,20 +1187,16 @@ private:
     }
 
     Value call_setness_br(const Value& set, const Value& lc, const token& diag) {
-        if (const Value* st = get_registered_item("set_trait"); st && set == *st) {
-            return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
-        }
-
-        if (set.isTrait()) {
-            return Value::make_enumerated_set({Value::make_bool(true), Value::make_bool(false)});
-        }
-
         if (const Value* impl = registered_setness_impl_for(set.getType())) {
-            const auto& fields = *impl->asStructInstance().fields;
-            auto found = fields.find("belongs_approx");
-            if (found != fields.end() && found->second.isLambda()) {
-                return call_callable_with_values(found->second, {set, lc}, diag, {false, false});
+            if (!impl->isStructInstance()) {
+                fail(diag, "`Set implementation must be a struct instance");
             }
+            const auto& fields = *impl->asStructInstance().fields;
+            auto found = fields.find("belongs_range");
+            if (found == fields.end()) {
+                fail(diag, "`Set implementation is missing method 'belongs_range'");
+            }
+            return call_callable_with_values(found->second, {set, lc}, diag, {false, false}, {false, true});
         }
 
         if (!set.getType()->hasSetness()) {
@@ -1246,7 +1406,7 @@ private:
             }
         }
 
-        if (set.isBool() || set.isInt() || set.isString() || set.isSymbol() || set.getType() == getUndecidedType()) {
+        if (set.isBool() || set.isInt() || set.isString() || set.isSymbol() || set.isMinted()) {
             return {set};
         }
 
@@ -1269,17 +1429,7 @@ private:
         return Value::make_composite_set(left, right, Value::CompositeSetOp::Intersection);
     }
 
-    bool is_subset(const Value& left, const Value& right, const token& diag) {
-        require_set_operand(left, diag);
-        require_set_operand(right, diag);
 
-        for (const auto& element : finite_elements(left, diag)) {
-            if (!as_bool(belongs_to(right, element, diag), diag)) {
-                return false;
-            }
-        }
-        return true;
-    }
 
     void enforce_constraint(const Value& constraint, const Value& value, const token& diag) {
         if (constraint.isVoid()) {
@@ -1338,35 +1488,50 @@ private:
     }
 
     Value boot_bind(std::string_view name, const token& diag) const {
-        if (is_name(name, "print_func")) return Value::make_host_function(Value::HostFunction::Print);
-        if (is_name(name, "write_func")) return Value::make_host_function(Value::HostFunction::Write);
-        if (is_name(name, "input_func")) return Value::make_host_function(Value::HostFunction::Input);
-        if (is_name(name, "inject_stdin_func")) return Value::make_host_function(Value::HostFunction::InjectStdin);
-        if (is_name(name, "invoke_func")) return Value::make_host_function(Value::HostFunction::Invoke);
-        if (is_name(name, "function_args_func")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
-        if (is_name(name, "typeof_func")) return Value::make_host_function(Value::HostFunction::TypeOf);
-        if (is_name(name, "exit_func")) return Value::make_host_function(Value::HostFunction::Exit);
-        if (is_name(name, "mint_func")) return Value::make_host_function(Value::HostFunction::Mint);
-        if (is_name(name, "trait_func")) return Value::make_host_function(Value::HostFunction::Trait);
-        if (is_name(name, "interface_func")) return Value::make_host_function(Value::HostFunction::Interface);
-        if (is_name(name, "implement_func")) return Value::make_host_function(Value::HostFunction::Implement);
-        if (is_name(name, "expect_func")) return Value::make_host_function(Value::HostFunction::Expect);
-        if (is_name(name, "expect_stdout_func")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
-        if (is_name(name, "expect_stderr_func")) return Value::make_host_function(Value::HostFunction::ExpectStderr);
-        if (is_name(name, "expect_exit_func")) return Value::make_host_function(Value::HostFunction::ExpectExit);
-        if (is_name(name, "expect_test_failure_func")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
-        if (is_name(name, "true_val")) return True();
-        if (is_name(name, "false_val")) return False();
-        if (is_name(name, "undecided_val")) return UndecidedVal();
-        if (is_name(name, "register_func")) return Value::make_host_function(Value::HostFunction::Register);
-        if (is_name(name, "heap_allocation_type")) return Value::make_type(getHeapAllocationType());
-        if (is_name(name, "heap_create_func")) return Value::make_host_function(Value::HostFunction::HeapCreate);
-        if (is_name(name, "heap_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
-        if (is_name(name, "heap_shared_allocation_type")) return Value::make_type(getHeapSharedAllocationType());
-        if (is_name(name, "heap_shared_create_func")) return Value::make_host_function(Value::HostFunction::HeapSharedCreate);
-        if (is_name(name, "heap_shared_destroy_func")) return Value::make_host_function(Value::HostFunction::HeapSharedDestroy);
-        if (is_name(name, "testing_enabled")) return Value::make_bool(testing_enabled_);
-        if (is_name(name, "is_pure_func")) return Value::make_host_function(Value::HostFunction::IsPure);
+        if (is_name(name, "io.print")) return Value::make_host_function(Value::HostFunction::Print);
+        if (is_name(name, "io.write")) return Value::make_host_function(Value::HostFunction::Write);
+        if (is_name(name, "io.input")) return Value::make_host_function(Value::HostFunction::Input);
+        if (is_name(name, "testing.inject_stdin")) return Value::make_host_function(Value::HostFunction::InjectStdin);
+        if (is_name(name, "compute.invoke")) return Value::make_host_function(Value::HostFunction::Invoke);
+        if (is_name(name, "compute.function_args")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
+        if (is_name(name, "types.type_of")) return Value::make_host_function(Value::HostFunction::TypeOf);
+        if (is_name(name, "values.same")) return Value::make_host_function(Value::HostFunction::Same);
+        if (is_name(name, "system.exit")) return Value::make_host_function(Value::HostFunction::Exit);
+
+        if (is_name(name, "types.mint_finite")) return Value::make_host_function(Value::HostFunction::MintFinite);
+        if (is_name(name, "types.is_struct_type")) return Value::make_host_function(Value::HostFunction::IsStructType);
+
+        if (is_name(name, "traits.make")) return Value::make_host_function(Value::HostFunction::MakeTrait);
+        if (is_name(name, "traits.interface")) return Value::make_host_function(Value::HostFunction::Interface);
+        if (is_name(name, "traits.implements")) return Value::make_host_function(Value::HostFunction::Implements);
+        if (is_name(name, "traits.implementation")) return Value::make_host_function(Value::HostFunction::Implementation);
+        if (is_name(name, "traits.implement")) return Value::make_host_function(Value::HostFunction::Implement);
+        if (is_name(name, "testing.expect")) return Value::make_host_function(Value::HostFunction::Expect);
+        if (is_name(name, "testing.expect_stdout")) return Value::make_host_function(Value::HostFunction::ExpectStdout);
+        if (is_name(name, "testing.expect_stderr")) return Value::make_host_function(Value::HostFunction::ExpectStderr);
+        if (is_name(name, "testing.expect_exit")) return Value::make_host_function(Value::HostFunction::ExpectExit);
+        if (is_name(name, "testing.expect_test_failure")) return Value::make_host_function(Value::HostFunction::ExpectTestFailure);
+
+        if (is_name(name, "values.undecided")) {
+            if (const Value* v = get_registered_item("values.undecided")) return *v;
+            fail(diag, "undecided_val intrinsic used before registry initialization");
+        }
+        if (is_name(name, "system.register")) return Value::make_host_function(Value::HostFunction::Register);
+        if (is_name(name, "memory.heap_allocation")) return Value::make_type(getHeapAllocationType());
+        if (is_name(name, "memory.heap_create")) return Value::make_host_function(Value::HostFunction::HeapCreate);
+        if (is_name(name, "memory.heap_destroy")) return Value::make_host_function(Value::HostFunction::HeapDestroy);
+        if (is_name(name, "memory.heap_shared_allocation")) return Value::make_type(getHeapSharedAllocationType());
+        if (is_name(name, "memory.heap_shared_create")) return Value::make_host_function(Value::HostFunction::HeapSharedCreate);
+        if (is_name(name, "memory.heap_shared_destroy")) return Value::make_host_function(Value::HostFunction::HeapSharedDestroy);
+        if (is_name(name, "testing.enabled")) return Value::make_bool(testing_enabled_);
+        if (is_name(name, "compute.is_pure")) return Value::make_host_function(Value::HostFunction::IsPure);
+        if (is_name(name, "compute.lambda_param_space")) return Value::make_host_function(Value::HostFunction::LambdaParamSpace);
+        if (is_name(name, "compute.lambda_result_space")) return Value::make_host_function(Value::HostFunction::LambdaResultSpace);
+        if (is_name(name, "types.construction_args")) return Value::make_host_function(Value::HostFunction::ConstructionArgs);
+        if (is_name(name, "types.construct")) return Value::make_host_function(Value::HostFunction::Construct);
+        if (is_name(name, "sets.types_in_set")) return Value::make_host_function(Value::HostFunction::TypesInSet);
+        if (is_name(name, "sets.enumerable")) return Value::make_host_function(Value::HostFunction::IsEnumerable);
+        if (is_name(name, "sets.coextensive")) return Value::make_host_function(Value::HostFunction::Coextensive);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
     }
 
@@ -1608,6 +1773,14 @@ private:
                 injected_stdin_ += value.asString();
                 return VoidVal();
             }
+            case Value::HostFunction::Same: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`same expects two positional arguments");
+                }
+                Value left = evaluate(*args[0].value);
+                Value right = evaluate(*args[1].value);
+                return Value::make_bool(left == right);
+            }
             case Value::HostFunction::Invoke: {
                 if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
                     fail(diag, "`invoke_func expects two positional arguments: callee and args struct");
@@ -1617,43 +1790,20 @@ private:
 
                 if (callee.isLambda()) {
                     const auto& lambda_tag = callee.asLambdaTag();
-                    const LambdaExpr& lambda = *lambda_tag.lambda;
-                    std::vector<Value> arg_values(lambda.parameters.size());
-
-                    if (args_val.isStructInstance()) {
-                        const auto& fields = *args_val.asStructInstance().fields;
-                        for (size_t i = 0; i < lambda.parameters.size(); ++i) {
-                            std::string param_name = std::string(to_key(lambda.parameters[i].name.lexeme));
-                            auto it = fields.find(param_name);
-                            if (it != fields.end()) {
-                                arg_values[i] = it->second;
-                            } else {
-                                // Fallback to positional mapping by index
-                                auto pos_it = fields.find(std::to_string(i));
-                                if (pos_it != fields.end()) {
-                                    arg_values[i] = pos_it->second;
-                                } else {
-                                    fail(diag, "`invoke_func missing argument for parameter '" + param_name + "'");
-                                }
-                            }
+                    if (!args_val.isStructInstance()) {
+                        fail(diag, "`invoke_func second argument must be a struct");
+                    }
+                    const auto& fields = *args_val.asStructInstance().fields;
+                    std::vector<Value> arg_values(lambda_tag.lambda->parameters.size());
+                    for (size_t i = 0; i < lambda_tag.lambda->parameters.size(); ++i) {
+                        std::string param_name = std::string(to_key(lambda_tag.lambda->parameters[i].name.lexeme));
+                        auto it = fields.find(param_name);
+                        if (it == fields.end()) {
+                            fail(diag, "`invoke_func missing argument for parameter '" + param_name + "'");
                         }
-                    } else if (args_val.isList()) {
-                        const auto& list_elems = args_val.asList();
-                        if (list_elems.size() != lambda.parameters.size()) {
-                            fail(diag, "`invoke_func list arity mismatch");
-                        }
-                        for (size_t i = 0; i < list_elems.size(); ++i) {
-                            arg_values[i] = list_elems[i];
-                        }
-                    } else {
-                        fail(diag, "`invoke_func second argument must be a struct or list");
+                        arg_values[i] = it->second;
                     }
                     return call_lambda_with_values(lambda_tag, std::move(arg_values), diag);
-                } else if (callee.isHostFunction()) {
-                    // For host functions, just pass args as positional arguments.
-                    // To do this, we'd need to construct std::vector<Argument>... wait, call_host_function takes vector<Argument> which are AST nodes.
-                    // This is annoying since HostFunctions expect un-evaluated arguments (they do their own evaluate()).
-                    fail(diag, "`invoke_func cannot currently invoke host functions");
                 } else {
                     fail(diag, "`invoke_func expects a lambda");
                 }
@@ -1662,13 +1812,15 @@ private:
                 if (args.size() != 1 || args.front().name.has_value()) {
                     fail(diag, "`function_args_func expects one positional argument");
                 }
-                // For now, return `any (which is getSetType() conceptually) or `list.
-                // Since this is purely conceptual for now, we just return `list type as a placeholder.
-                return Value::make_type(getListType());
+                Value callee = evaluate(*args.front().value);
+                if (!callee.isLambda()) {
+                    fail(diag, "`function_args_func expects a lambda");
+                }
+                return Value::make_type(lambda_param_struct_type(callee.asLambdaTag()));
             }
             case Value::HostFunction::TypeOf: {
                 if (args.size() != 1 || args.front().name.has_value()) {
-                    fail(diag, "`typeof expects one positional argument");
+                    fail(diag, "`type_of expects one positional argument");
                 }
                 Value value = evaluate(*args.front().value);
                 return Value::make_type(value.getType());
@@ -1692,6 +1844,51 @@ private:
                 auto type = std::make_shared<MintedType>(id);
                 return Value::make_minted(std::move(type), id);
             }
+            case Value::HostFunction::MintFinite: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`mint_finite expects one positional integer argument");
+                }
+                Value count_value = evaluate(*args.front().value);
+                BigInt count_big = as_int(count_value, diag);
+                if (!count_big.fits_int64()) {
+                    fail(diag, "`mint_finite count is out of range");
+                }
+                int64_t count = count_big.to_int64();
+                if (count < 0) {
+                    fail(diag, "`mint_finite count must be non-negative");
+                }
+
+                uint64_t type_id = next_mint_id_++;
+                auto minted_type = std::make_shared<MintedType>(type_id);
+                std::vector<Value> values;
+                values.reserve(static_cast<size_t>(count));
+                for (int64_t i = 0; i < count; ++i) {
+                    values.push_back(Value::make_minted(minted_type, next_mint_id_++));
+                }
+
+                std::vector<OrderedStructFieldSpec> fields = {
+                    OrderedStructFieldSpec{"type"},
+                    OrderedStructFieldSpec{"values"}
+                };
+                auto result_type = std::make_shared<RuntimeStructType>(std::move(fields));
+                return Value::make_struct_instance(
+                    std::move(result_type),
+                    {
+                        {"type", Value::make_type(minted_type)},
+                        {"values", Value::make_list(std::move(values))}
+                    }
+                );
+            }
+            case Value::HostFunction::IsStructType: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`is_struct_type expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                if (!value.isType()) {
+                    return Value::make_bool(false);
+                }
+                return Value::make_bool(is_struct_type(value.asType()));
+            }
             case Value::HostFunction::Trait: {
                 if (args.size() != 1 || args.front().name.has_value()) {
                     fail(diag, "`trait expects one positional argument");
@@ -1699,6 +1896,17 @@ private:
                 Value interface = evaluate(*args.front().value);
                 if (!interface.isVoid() && !has_setness(interface)) {
                     fail(diag, "`trait interface must be a set");
+                }
+                return Value::make_trait(next_trait_id_++, std::move(interface));
+            }
+            case Value::HostFunction::MakeTrait: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`make_trait expects one positional argument");
+                }
+                Value interface = evaluate(*args.front().value);
+                if (!interface.isVoid() &&
+                    (!interface.isType() || !is_struct_type(interface.asType()))) {
+                    fail(diag, "`make_trait expects either void or a struct type");
                 }
                 return Value::make_trait(next_trait_id_++, std::move(interface));
             }
@@ -1711,6 +1919,38 @@ private:
                     return trait.asTraitInterface();
                 }
                 fail(diag, "`interface expects a trait");
+            }
+            case Value::HostFunction::Implements: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`implements expects two positional arguments");
+                }
+                Value trait = evaluate(*args[0].value);
+                Value on = evaluate(*args[1].value);
+                if (!trait.isTrait()) {
+                    fail(diag, "`implements first argument must be a trait");
+                }
+                if (!on.isType()) {
+                    fail(diag, "`implements second argument must be a type");
+                }
+                return Value::make_bool(registered_impl_for(trait, on.asType()) != nullptr);
+            }
+            case Value::HostFunction::Implementation: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`implementation expects two positional arguments");
+                }
+                Value trait = evaluate(*args[0].value);
+                Value on = evaluate(*args[1].value);
+                if (!trait.isTrait()) {
+                    fail(diag, "`implementation first argument must be a trait");
+                }
+                if (!on.isType()) {
+                    fail(diag, "`implementation second argument must be a type");
+                }
+                const Value* impl = registered_impl_for(trait, on.asType());
+                if (impl == nullptr) {
+                    fail(diag, "No implementation registered for trait/type pair");
+                }
+                return *impl;
             }
             case Value::HostFunction::Implement: {
                 const Argument* trait_arg = nullptr;
@@ -1762,7 +2002,14 @@ private:
                 }
 
                 Value interface = trait.asTraitInterface();
+                if (!interface.isVoid() &&
+                    (!interface.isType() || !is_struct_type(interface.asType()))) {
+                    fail(*trait_arg->name, "`implement trait interface must be either void or a struct type");
+                }
                 Value impl = evaluate_with_expected_type(*impl_arg->value, interface, *impl_arg->name);
+                if (interface.isVoid() && !impl.isVoid()) {
+                    fail(*impl_arg->name, "Marker trait implementations must be void");
+                }
                 enforce_constraint(interface, impl, *impl_arg->name);
 
                 if (registered_impl_for(trait, on.asType()) != nullptr) {
@@ -1854,7 +2101,131 @@ private:
                 if (!arg_val.isLambda()) {
                     return Value::make_bool(false);
                 }
-                return Value::make_bool(check_purity(&arg_val.asLambda()));
+                return Value::make_bool(check_purity(arg_val.asLambdaTag()));
+            }
+            case Value::HostFunction::LambdaParamSpace: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`lambda_param_space expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                if (!value.isLambda()) {
+                    fail(diag, "`lambda_param_space expects a lambda");
+                }
+                return Value::make_type(lambda_param_struct_type(value.asLambdaTag()));
+            }
+            case Value::HostFunction::LambdaResultSpace: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`lambda_result_space expects two positional arguments");
+                }
+                Value value = evaluate(*args[0].value);
+                if (!value.isLambda()) {
+                    fail(diag, "`lambda_result_space expects a lambda");
+                }
+                (void)evaluate(*args[1].value);
+                return lambda_result_space(value.asLambdaTag(), diag);
+            }
+            case Value::HostFunction::ConstructionArgs: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`construction_args expects one positional argument");
+                }
+                Value value = evaluate(*args.front().value);
+                if (!value.isType() || !is_struct_type(value.asType())) {
+                    fail(diag, "`construction_args expects a struct type");
+                }
+                return Value::make_type(construction_arg_struct_type(value.asType(), diag));
+            }
+            case Value::HostFunction::Construct: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`construct expects two positional arguments");
+                }
+                Value type_value = evaluate(*args[0].value);
+                Value params = evaluate(*args[1].value);
+                if (!type_value.isType() || !is_struct_type(type_value.asType())) {
+                    fail(diag, "`construct expects a struct type");
+                }
+                if (!params.isStructInstance()) {
+                    fail(diag, "`construct expects a struct argument bundle");
+                }
+                return construct_struct_from_fields(type_value.asType(), *params.asStructInstance().fields, diag);
+            }
+            case Value::HostFunction::TypesInSet: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`types_in_set expects one positional argument");
+                }
+                Value set = evaluate(*args.front().value);
+                std::vector<Value> types;
+                try {
+                    for (const auto& element : finite_elements(set, diag)) {
+                        append_unique(types, Value::make_type(element.getType()));
+                    }
+                    return Value::make_enumerated_set(std::move(types));
+                } catch (const std::exception&) {
+                    if (set.isType()) {
+                        return Value::make_enumerated_set({set});
+                    }
+                    if (set.isConstructedSet() && set.asConstructedSet().binding.type_bound) {
+                        Value bound = evaluate(*set.asConstructedSet().binding.type_bound);
+                        if (bound.isType()) {
+                            return Value::make_enumerated_set({bound});
+                        }
+                    }
+                    return type_set_value(diag);
+                }
+            }
+            case Value::HostFunction::IsEnumerable: {
+                if (args.size() != 1 || args.front().name.has_value()) {
+                    fail(diag, "`is_enumerable expects one positional argument");
+                }
+                Value set = evaluate(*args.front().value);
+                try {
+                    (void)finite_elements(set, diag);
+                    return Value::make_bool(true);
+                } catch (const std::exception&) {
+                    return Value::make_bool(false);
+                }
+            }
+            case Value::HostFunction::Coextensive: {
+                if (args.size() != 2 || args[0].name.has_value() || args[1].name.has_value()) {
+                    fail(diag, "`coextensive expects two positional arguments");
+                }
+                Value left = evaluate(*args[0].value);
+                Value right = evaluate(*args[1].value);
+                bool left_enumerable = false;
+                bool right_enumerable = false;
+                std::vector<Value> left_elements;
+                std::vector<Value> right_elements;
+
+                try {
+                    left_elements = finite_elements(left, diag);
+                    left_enumerable = true;
+                } catch (const std::exception&) {
+                }
+                try {
+                    right_elements = finite_elements(right, diag);
+                    right_enumerable = true;
+                } catch (const std::exception&) {
+                }
+
+                if (!left_enumerable && !right_enumerable) {
+                    fail(diag, "`coextensive requires at least one finite enumerable operand");
+                }
+
+                const std::vector<Value>& base = left_enumerable ? left_elements : right_elements;
+                const Value& other = left_enumerable ? right : left;
+                for (const auto& element : base) {
+                    if (!as_bool(belongs_to(other, element, diag), diag)) {
+                        return Value::make_bool(false);
+                    }
+                }
+
+                if (left_enumerable && right_enumerable) {
+                    for (const auto& element : right_elements) {
+                        if (!as_bool(belongs_to(left, element, diag), diag)) {
+                            return Value::make_bool(false);
+                        }
+                    }
+                }
+                return Value::make_bool(true);
             }
             case Value::HostFunction::HeapCreate: {
                 if (args.size() != 1 || args.front().name.has_value()) {
@@ -1919,7 +2290,8 @@ private:
         const Value::LambdaTag& lambda_tag,
         std::vector<Value> arg_values,
         const token& diag,
-        std::vector<bool> arg_ownership = {}) {
+        std::vector<bool> arg_ownership = {},
+        std::vector<bool> enforce_constraints_mask = {}) {
         const LambdaExpr& lambda = *lambda_tag.lambda;
         if (arg_values.size() != lambda.parameters.size()) {
             fail(diag, "Function expected " + std::to_string(lambda.parameters.size()) +
@@ -1927,6 +2299,9 @@ private:
         }
         if (!arg_ownership.empty() && arg_ownership.size() != arg_values.size()) {
             fail(diag, "Internal error: argument ownership metadata does not match argument count");
+        }
+        if (!enforce_constraints_mask.empty() && enforce_constraints_mask.size() != arg_values.size()) {
+            fail(diag, "Internal error: argument constraint metadata does not match argument count");
         }
 
         RuntimeScopeChain saved_scopes = std::move(scopes_);
@@ -1940,7 +2315,10 @@ private:
             for (size_t i = 0; i < lambda.parameters.size(); ++i) {
                 const NamedBinding& param = lambda.parameters[i];
                 Value constraint = param.type_bound ? evaluate(*param.type_bound) : VoidVal();
-                enforce_constraint(constraint, arg_values[i], param.name);
+                bool enforce_arg_constraint = enforce_constraints_mask.empty() ? true : enforce_constraints_mask[i];
+                if (enforce_arg_constraint) {
+                    enforce_constraint(constraint, arg_values[i], param.name);
+                }
 
                 bool owns_arg = arg_ownership.empty() ? true : arg_ownership[i];
                 if (owns_arg) {
@@ -1951,10 +2329,17 @@ private:
             }
 
             Value return_constraint = lambda.return_bound ? evaluate(*lambda.return_bound) : VoidVal();
-            Value return_value = evaluate_with_expected_type(*lambda.body, return_constraint, lambda.diagnostic_token);
+            TerminalValue return_result = dynamic_cast<const AnonymousStructLiteralExpr*>(lambda.body.get()) != nullptr
+                ? TerminalValue{evaluate_with_expected_type(*lambda.body, return_constraint, lambda.diagnostic_token), nullptr}
+                : evaluate_terminal_expression(*lambda.body);
+            Value return_value = std::move(return_result.value);
             enforce_constraint(return_constraint, return_value, lambda.diagnostic_token);
 
-            leave_scope(nullptr, lambda.diagnostic_token);
+            if (return_result.handoff_binding) {
+                disown_shared_heap_allocation_without_destroy(return_result.handoff_binding->getCV(), lambda.diagnostic_token);
+                return_result.handoff_binding->setOwnsCV(false);
+            }
+            leave_scope(return_result.handoff_binding, lambda.diagnostic_token);
             scopes_ = std::move(saved_scopes);
             return return_value;
         } catch (...) {
@@ -1967,11 +2352,22 @@ private:
         const Value& callee,
         std::vector<Value> arg_values,
         const token& diag,
-        std::vector<bool> arg_ownership = {}) {
+        std::vector<bool> arg_ownership = {},
+        std::vector<bool> enforce_constraints_mask = {}) {
         if (!callee.isLambda()) {
             fail(diag, "Value is not callable: " + callee.toString());
         }
-        return call_lambda_with_values(callee.asLambdaTag(), std::move(arg_values), diag, std::move(arg_ownership));
+        return call_lambda_with_values(
+            callee.asLambdaTag(),
+            std::move(arg_values),
+            diag,
+            std::move(arg_ownership),
+            std::move(enforce_constraints_mask));
+    }
+
+    bool is_struct_type(const std::shared_ptr<const Type>& type_ptr) const {
+        return dynamic_cast<const StructType*>(type_ptr.get()) != nullptr ||
+            dynamic_cast<const RuntimeStructType*>(type_ptr.get()) != nullptr;
     }
 
     std::shared_ptr<const Type> direct_struct_type_from_constraint(const Value& constraint) const {
@@ -1979,10 +2375,32 @@ private:
             return nullptr;
         }
         std::shared_ptr<const Type> type_ptr = constraint.asType();
-        if (dynamic_cast<const StructType*>(type_ptr.get()) == nullptr) {
+        if (!is_struct_type(type_ptr)) {
             return nullptr;
         }
         return type_ptr;
+    }
+
+    std::vector<OrderedStructFieldSpec> ordered_struct_fields(const std::shared_ptr<const Type>& type_ptr, const token& diag) const {
+        if (const auto* struct_t = dynamic_cast<const StructType*>(type_ptr.get())) {
+            std::vector<OrderedStructFieldSpec> fields;
+            fields.reserve(struct_t->expr()->fields.size());
+            for (const auto& field : struct_t->expr()->fields) {
+                fields.push_back(OrderedStructFieldSpec{
+                    std::string(field.name.lexeme),
+                    field.is_mut,
+                    field.is_final,
+                    field.type_bound.get(),
+                    field.initializer.get()
+                });
+            }
+            return fields;
+        }
+        if (const auto* runtime_struct_t = dynamic_cast<const RuntimeStructType*>(type_ptr.get())) {
+            return runtime_struct_t->fields();
+        }
+        fail(diag, "Expected a struct type");
+        return {};
     }
 
     Value evaluate_with_expected_type(const Expr& expr, const Value& expected, const token& diag) {
@@ -1991,14 +2409,13 @@ private:
             if (type_ptr == nullptr) {
                 fail(literal->diagnostic_token, "Anonymous struct literal requires a concrete struct context");
             }
-            const auto* struct_t = dynamic_cast<const StructType*>(type_ptr.get());
-            return call_struct_constructor(type_ptr, struct_t, literal->fields, literal->diagnostic_token);
+            return call_struct_constructor(type_ptr, literal->fields, literal->diagnostic_token);
         }
         return evaluate(expr);
     }
 
-    Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const StructType* struct_t, const std::vector<Argument>& args, const token& diag) {
-        const auto* struct_expr = struct_t->expr();
+    Value call_struct_constructor(std::shared_ptr<const Type> type_ptr, const std::vector<Argument>& args, const token& diag) {
+        std::vector<OrderedStructFieldSpec> field_specs = ordered_struct_fields(type_ptr, diag);
         std::map<std::string, Value> fields;
 
         bool has_named = false;
@@ -2011,7 +2428,7 @@ private:
         if (has_named && has_positional) {
             fail(diag, "Cannot mix named and positional arguments");
         }
-        if (has_positional && args.size() > struct_expr->fields.size()) {
+        if (has_positional && args.size() > field_specs.size()) {
             fail(diag, "Too many positional arguments for struct constructor");
         }
 
@@ -2026,34 +2443,82 @@ private:
             }
         } else {
             for (size_t i = 0; i < args.size(); ++i) {
-                provided_args[std::string(struct_expr->fields[i].name.lexeme)] = &args[i];
+                provided_args[field_specs[i].name] = &args[i];
             }
         }
 
         for (const auto& pair : provided_args) {
             bool found = false;
-            for (const auto& field : struct_expr->fields) {
-                if (std::string(field.name.lexeme) == pair.first) { found = true; break; }
+            for (const auto& field : field_specs) {
+                if (field.name == pair.first) { found = true; break; }
             }
             if (!found) {
                 fail(diag, "Unknown field in struct constructor: " + pair.first);
             }
         }
 
-        for (const auto& field : struct_expr->fields) {
-            std::string field_name = std::string(field.name.lexeme);
+        for (const auto& field : field_specs) {
+            std::string field_name = field.name;
             Value constraint = field.type_bound ? evaluate(*field.type_bound) : VoidVal();
             Value field_val;
             if (provided_args.count(field_name)) {
                 field_val = evaluate_with_expected_type(*provided_args[field_name]->value, constraint, *provided_args[field_name]->name);
             } else if (field.initializer) {
-                field_val = evaluate_with_expected_type(*field.initializer, constraint, field.name);
+                field_val = evaluate_with_expected_type(*field.initializer, constraint, diag);
             } else {
                 fail(diag, "Missing required field: " + field_name);
             }
 
-            enforce_constraint(constraint, field_val, field.name);
+            try {
+                enforce_constraint(constraint, field_val, diag);
+            } catch (const std::runtime_error& e) {
+                fail(diag, "Struct field '" + field_name + "' constraint failure: " + std::string(e.what()));
+            }
 
+            fields[field_name] = std::move(field_val);
+        }
+
+        return Value::make_struct_instance(std::move(type_ptr), std::move(fields));
+    }
+
+    Value construct_struct_from_fields(
+        std::shared_ptr<const Type> type_ptr,
+        const std::map<std::string, Value>& provided_fields,
+        const token& diag) {
+        std::vector<OrderedStructFieldSpec> field_specs = ordered_struct_fields(type_ptr, diag);
+        std::map<std::string, Value> fields;
+
+        for (const auto& pair : provided_fields) {
+            bool found = false;
+            for (const auto& field : field_specs) {
+                if (field.name == pair.first) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                fail(diag, "Unknown field in struct constructor: " + pair.first);
+            }
+        }
+
+        for (const auto& field : field_specs) {
+            std::string field_name = field.name;
+            Value constraint = field.type_bound ? evaluate(*field.type_bound) : VoidVal();
+            Value field_val;
+            auto provided = provided_fields.find(field_name);
+            if (provided != provided_fields.end()) {
+                field_val = provided->second;
+            } else if (field.initializer) {
+                field_val = evaluate_with_expected_type(*field.initializer, constraint, diag);
+            } else {
+                fail(diag, "Missing required field: " + field_name);
+            }
+
+            try {
+                enforce_constraint(constraint, field_val, diag);
+            } catch (const std::runtime_error& e) {
+                fail(diag, "Struct field '" + field_name + "' constraint failure: " + std::string(e.what()));
+            }
             fields[field_name] = std::move(field_val);
         }
 
@@ -2080,6 +2545,137 @@ private:
             scopes_ = std::move(saved_scopes);
             throw;
         }
+    }
+
+    std::shared_ptr<const RuntimeStructType> lambda_param_struct_type(const Value::LambdaTag& lambda_tag) {
+        auto found = lambda_param_struct_types_.find(lambda_tag.lambda);
+        if (found != lambda_param_struct_types_.end()) {
+            return found->second;
+        }
+
+        std::vector<OrderedStructFieldSpec> fields;
+        fields.reserve(lambda_tag.lambda->parameters.size());
+        for (const auto& param : lambda_tag.lambda->parameters) {
+            fields.push_back(OrderedStructFieldSpec{
+                std::string(param.name.lexeme),
+                param.is_mut,
+                param.is_final,
+                param.type_bound.get(),
+                nullptr
+            });
+        }
+
+        auto type_ptr = std::make_shared<RuntimeStructType>(std::move(fields));
+        lambda_param_struct_types_.emplace(lambda_tag.lambda, type_ptr);
+        return type_ptr;
+    }
+
+    std::shared_ptr<const RuntimeStructType> construction_arg_struct_type(
+        const std::shared_ptr<const Type>& type_ptr,
+        const token& diag) {
+        auto found = construction_arg_struct_types_.find(type_ptr.get());
+        if (found != construction_arg_struct_types_.end()) {
+            return found->second;
+        }
+
+        std::vector<OrderedStructFieldSpec> fields = ordered_struct_fields(type_ptr, diag);
+        auto arg_type = std::make_shared<RuntimeStructType>(std::move(fields));
+        construction_arg_struct_types_.emplace(type_ptr.get(), arg_type);
+        return arg_type;
+    }
+
+    Value any_set_value(const token& diag) const {
+        if (auto binding = lookup_binding_optional("`any")) {
+            return binding->getCV();
+        }
+        fail(diag, "Bootstrap value `any is not available");
+        return Value();
+    }
+
+    Value type_set_value(const token& diag) const {
+        if (auto binding = lookup_binding_optional("`type")) {
+            return binding->getCV();
+        }
+        fail(diag, "Bootstrap value `type is not available");
+        return Value();
+    }
+
+    std::shared_ptr<const Type> reference_set_type(const token& diag) const {
+        if (const Value* set_type = get_registered_item("types.reference_set")) {
+            if (set_type->isType() && is_struct_type(set_type->asType())) {
+                return set_type->asType();
+            }
+            fail(diag, "Registered item 'reference_set_type' must be a struct type");
+        }
+        fail(diag, "Bootstrap reference set type is not available");
+        return nullptr;
+    }
+
+    Value make_reference_set(Value target, bool is_mut, const token& diag) {
+        std::map<std::string, Value> fields;
+        fields.emplace("target", std::move(target));
+        fields.emplace("mutable", Value::make_bool(is_mut));
+        return construct_struct_from_fields(reference_set_type(diag), fields, diag);
+    }
+
+    Value lambda_result_space(const Value::LambdaTag& lambda_tag, const token& diag) {
+        if (!lambda_tag.lambda->return_bound) {
+            return any_set_value(diag);
+        }
+
+        RuntimeScopeChain saved_scopes = std::move(scopes_);
+        if (lambda_tag.captured_scopes) {
+            scopes_ = *lambda_tag.captured_scopes;
+        } else {
+            scopes_ = saved_scopes;
+        }
+
+        try {
+            Value result = evaluate(*lambda_tag.lambda->return_bound);
+            scopes_ = std::move(saved_scopes);
+            return result;
+        } catch (...) {
+            scopes_ = std::move(saved_scopes);
+            throw;
+        }
+    }
+
+    Value lower_struct_arguments(
+        const Value& receiver,
+        const Value& impl,
+        std::string_view space_method_name,
+        const std::vector<Argument>& args,
+        const token& diag) {
+        if (!impl.isStructInstance()) {
+            fail(diag, "Protocol implementation must be a struct instance");
+        }
+
+        const auto& fields = *impl.asStructInstance().fields;
+        auto space_it = fields.find(std::string(space_method_name));
+        if (space_it == fields.end()) {
+            fail(diag, "Protocol implementation is missing method '" + std::string(space_method_name) + "'");
+        }
+
+        Value space = call_callable_with_values(space_it->second, {receiver}, diag, {false}, {false});
+        if (!space.isType() || !is_struct_type(space.asType())) {
+            fail(diag, std::string("Protocol method '") + std::string(space_method_name) + "' must return a struct type");
+        }
+        return call_struct_constructor(space.asType(), args, diag);
+    }
+
+    Value call_registered_callable(const Value& callee, const Value& impl, const std::vector<Argument>& args, const token& diag) {
+        if (!impl.isStructInstance()) {
+            fail(diag, "`Callable implementation must be a struct instance");
+        }
+
+        const auto& fields = *impl.asStructInstance().fields;
+        auto invoke_it = fields.find("invoke");
+        if (invoke_it == fields.end()) {
+            fail(diag, "`Callable implementation is missing method 'invoke'");
+        }
+
+        Value lowered_args = lower_struct_arguments(callee, impl, "param_space", args, diag);
+        return call_callable_with_values(invoke_it->second, {callee, lowered_args}, diag, {false, true}, {false, true});
     }
 
     Value call_lambda(const Value::LambdaTag& lambda_tag, const std::vector<Argument>& args, const token& diag) {
@@ -2263,28 +2859,7 @@ private:
             case BinaryOp::Intersection:
                 result_ = set_intersection(left, right, expr.diagnostic_token);
                 return;
-            case BinaryOp::Subset:
-                result_ = Value::make_bool(is_subset(left, right, expr.diagnostic_token));
-                return;
-            case BinaryOp::ProperSubset:
-                result_ = Value::make_bool(
-                    is_subset(left, right, expr.diagnostic_token) &&
-                    !is_subset(right, left, expr.diagnostic_token));
-                return;
-            case BinaryOp::NotSubset:
-                result_ = Value::make_bool(!is_subset(left, right, expr.diagnostic_token));
-                return;
-            case BinaryOp::Superset:
-                result_ = Value::make_bool(is_subset(right, left, expr.diagnostic_token));
-                return;
-            case BinaryOp::ProperSuperset:
-                result_ = Value::make_bool(
-                    is_subset(right, left, expr.diagnostic_token) &&
-                    !is_subset(left, right, expr.diagnostic_token));
-                return;
-            case BinaryOp::NotSuperset:
-                result_ = Value::make_bool(!is_subset(right, left, expr.diagnostic_token));
-                return;
+
             default:
                 fail(expr.diagnostic_token, "Unsupported binary operator");
         }
@@ -2304,12 +2879,7 @@ private:
                 }
 
                 Value right = evaluate(*expr.right);
-                BigInt value = as_int(right, expr.diagnostic_token);
-                try {
-                    result_ = Value::make_int(-value);
-                } catch (const std::out_of_range& e) {
-                    fail(expr.diagnostic_token, "Integer negation overflow");
-                }
+                result_ = value_negate(right, expr.diagnostic_token);
                 return;
             }
             case UnaryOp::AddressOf:
@@ -2346,8 +2916,7 @@ private:
             case UnaryOp::MutablePointerType: {
                 bool is_mut = (expr.op == UnaryOp::MutablePointerType);
                 Value target_type = evaluate(*expr.right);
-                auto ref_type = std::make_shared<ReferenceType>(std::move(target_type), is_mut);
-                result_ = Value::make_type(std::move(ref_type));
+                result_ = make_reference_set(std::move(target_type), is_mut, expr.diagnostic_token);
                 return;
             }
             case UnaryOp::Deref: {
@@ -2362,13 +2931,13 @@ private:
                     }
                     result_ = cv;
                 } else {
-                    if (const Value* deref_trait = get_registered_item("dereferenceable_trait")) {
+                    if (const Value* deref_trait = get_registered_item("traits.dereferenceable")) {
                         if (const Value* impl = registered_impl_for(*deref_trait, right.getType())) {
                             if (impl->isStructInstance()) {
                                 const auto& fields = *impl->asStructInstance().fields;
                                 auto deref_it = fields.find("deref");
                                 if (deref_it != fields.end() && deref_it->second.isLambda()) {
-                                    result_ = call_callable_with_values(deref_it->second, {right}, expr.diagnostic_token, {false});
+                                    result_ = call_callable_with_values(deref_it->second, {right}, expr.diagnostic_token, {false}, {false});
                                     return;
                                 }
                             }
@@ -2421,9 +2990,7 @@ private:
         result_ = Value::make_char(codepoint);
     }
 
-    void visit(const BoolExpr& expr) override {
-        result_ = Value::make_bool(expr.value);
-    }
+
 
     void visit(const IdentifierExpr& expr) override {
         result_ = builtin_identifier(expr.name, expr.diagnostic_token);
@@ -2433,9 +3000,7 @@ private:
         result_ = builtin_intrinsic(expr.name, expr.diagnostic_token);
     }
 
-    void visit(const UndecidedExpr& expr) override {
-        result_ = UndecidedVal();
-    }
+
 
     void visit(const SymbolicConstantExpr& expr) override {
         result_ = Value::make_symbol(std::string(expr.value));
@@ -2535,8 +3100,7 @@ private:
     }
 
     void visit(const SignatureExpr& expr) override {
-        auto type = std::make_shared<SignatureType>(expr.parameters.size());
-        result_ = Value::make_type(std::move(type));
+        result_ = Value::make_signature(expr, capture_scopes());
     }
 
     void visit(const BlockExpr& expr) override {
@@ -2579,14 +3143,6 @@ private:
         }
 
         Value callee = evaluate(*expr.callee);
-        if (callee.isType()) {
-            std::shared_ptr<const Type> t = callee.asType();
-            if (const auto* struct_t = dynamic_cast<const StructType*>(t.get())) {
-                result_ = call_struct_constructor(t, struct_t, expr.args, expr.diagnostic_token);
-                return;
-            }
-        }
-
         if (callee.isLambda()) {
             result_ = call_lambda(callee.asLambdaTag(), expr.args, expr.diagnostic_token);
             return;
@@ -2596,79 +3152,23 @@ private:
             return;
         }
 
-        if (const Value* callable_trait = get_registered_item("callable_trait")) {
+        if (const Value* callable_trait = callable_trait_value()) {
             if (const Value* impl = registered_impl_for(*callable_trait, callee.getType())) {
-                if (impl->isStructInstance()) {
-                    const auto& fields = *impl->asStructInstance().fields;
-                    auto invoke_it = fields.find("invoke");
-                    if (invoke_it != fields.end() && invoke_it->second.isLambda()) {
-                        const auto& invoke_lambda = invoke_it->second.asLambdaTag();
-                        const LambdaExpr& lambda = *invoke_lambda.lambda;
-                        
-                        bool has_named = false;
-                        bool has_positional = false;
-                        for (const auto& arg : expr.args) {
-                            has_named = has_named || arg.name.has_value();
-                            has_positional = has_positional || !arg.name.has_value();
-                        }
+                result_ = call_registered_callable(callee, *impl, expr.args, expr.diagnostic_token);
+                return;
+            }
+        }
 
-                        if (has_named && has_positional) {
-                            fail(expr.diagnostic_token, "Cannot mix named and positional arguments");
-                        }
+        if (callee.isType() && is_struct_type(callee.asType())) {
+            result_ = call_struct_constructor(callee.asType(), expr.args, expr.diagnostic_token);
+            return;
+        }
 
-                        std::vector<Value> arg_values(lambda.parameters.size());
-                        arg_values[0] = callee;
-
-                        if (has_named) {
-                            std::unordered_map<std::string, size_t> parameter_indices;
-                            for (size_t i = 1; i < lambda.parameters.size(); ++i) {
-                                parameter_indices.emplace(to_key(lambda.parameters[i].name.lexeme), i);
-                            }
-
-                            std::vector<bool> provided(lambda.parameters.size(), false);
-                            provided[0] = true;
-
-                            for (const auto& arg : expr.args) {
-                                std::string name = to_key(arg.name->lexeme);
-                                auto found = parameter_indices.find(name);
-                                if (found == parameter_indices.end()) {
-                                    fail(*arg.name, "Unknown parameter '" + name + "'");
-                                }
-
-                                size_t index = found->second;
-                                if (provided[index]) {
-                                    fail(*arg.name, "Duplicate argument for parameter '" + name + "'");
-                                }
-
-                                Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(arg.value.get()) != nullptr
-                                    ? evaluate_lambda_parameter_bound(invoke_lambda, lambda.parameters[index])
-                                    : VoidVal();
-                                arg_values[index] = evaluate_with_expected_type(*arg.value, expected, *arg.name);
-                                provided[index] = true;
-                            }
-
-                            for (size_t i = 1; i < lambda.parameters.size(); ++i) {
-                                if (!provided[i]) {
-                                    fail(expr.diagnostic_token, "Missing argument for parameter '" + to_key(lambda.parameters[i].name.lexeme) + "'");
-                                }
-                            }
-                        } else {
-                            if (1 + expr.args.size() != lambda.parameters.size()) {
-                                fail(expr.diagnostic_token, "Callable invoke arity mismatch: expected " + 
-                                    std::to_string(lambda.parameters.size() - 1) + " args, got " + std::to_string(expr.args.size()));
-                            }
-                            
-                            for (size_t i = 0; i < expr.args.size(); ++i) {
-                                Value expected = dynamic_cast<const AnonymousStructLiteralExpr*>(expr.args[i].value.get()) != nullptr
-                                    ? evaluate_lambda_parameter_bound(invoke_lambda, lambda.parameters[i + 1])
-                                    : VoidVal();
-                                arg_values[i + 1] = evaluate_with_expected_type(*expr.args[i].value, expected, expr.diagnostic_token);
-                            }
-                        }
-                        
-                        result_ = call_lambda_with_values(invoke_lambda, std::move(arg_values), expr.diagnostic_token);
-                        return;
-                    }
+        if (callee.isType()) {
+            if (const Value* callable_trait = callable_trait_value()) {
+                if (const Value* impl = registered_impl_for(*callable_trait, callee.getType())) {
+                    result_ = call_registered_callable(callee, *impl, expr.args, expr.diagnostic_token);
+                    return;
                 }
             }
         }
@@ -2678,6 +3178,22 @@ private:
 
     void visit(const IndexExpr& expr) override {
         Value target = evaluate(*expr.target);
+        if (const Value* indexable_trait = indexable_trait_value()) {
+            if (const Value* impl = registered_impl_for(*indexable_trait, target.getType())) {
+                if (!impl->isStructInstance()) {
+                    fail(expr.diagnostic_token, "`Indexable implementation must be a struct instance");
+                }
+                const auto& fields = *impl->asStructInstance().fields;
+                auto read_it = fields.find("read");
+                if (read_it == fields.end()) {
+                    fail(expr.diagnostic_token, "`Indexable implementation is missing method 'read'");
+                }
+                Value lowered_args = lower_struct_arguments(target, *impl, "index_space", expr.args, expr.diagnostic_token);
+                result_ = call_callable_with_values(read_it->second, {target, lowered_args}, expr.diagnostic_token, {false, true}, {false, true});
+                return;
+            }
+        }
+
         if (!target.isList() && !target.isString()) {
             fail(expr.diagnostic_token, "Only list and string indexing/slicing are supported");
         }
@@ -2792,47 +3308,57 @@ private:
     }
 
     void visit(const BreakStmt& stmt) override {
-        std::optional<TerminalHandoff> handoff;
-        if (stmt.value) {
-            if (auto* identifier = dynamic_cast<const IdentifierExpr*>(stmt.value.get())) {
-                auto [binding, depth] = lookup_binding_with_depth(identifier->name, identifier->diagnostic_token);
-                if (depth == scopes_.size() - 1 &&
-                    (is_uncopyable(binding->getCV().getType()) ||
-                        is_shared_heap_allocation_type(binding->getCV().getType()))) {
-                    handoff = TerminalHandoff{depth, binding};
-                }
-            }
+        TerminalValue terminal_value = stmt.value
+            ? evaluate_terminal_expression(*stmt.value)
+            : TerminalValue{VoidVal(), nullptr};
+
+        if (terminal_value.handoff_binding) {
+            disown_shared_heap_allocation_without_destroy(terminal_value.handoff_binding->getCV(), stmt.diagnostic_token);
+            terminal_value.handoff_binding->setOwnsCV(false);
         }
 
-        auto prev_terminal = terminal_handoff_;
-        terminal_handoff_ = handoff;
-        Value value;
-        try {
-            value = stmt.value ? evaluate(*stmt.value) : VoidVal();
-            terminal_handoff_ = prev_terminal;
-        } catch (...) {
-            terminal_handoff_ = prev_terminal;
-            throw;
-        }
-
-        std::shared_ptr<Binding> handoff_binding;
-        if (handoff.has_value()) {
-            handoff_binding = handoff->binding;
-            disown_shared_heap_allocation_without_destroy(handoff_binding->getCV(), stmt.diagnostic_token);
-            handoff_binding->setOwnsCV(false);
-        }
-        throw BreakSignal{std::move(value), std::move(handoff_binding)};
+        throw BreakSignal{std::move(terminal_value.value), std::move(terminal_value.handoff_binding)};
     }
 
     void visit(const AssignStmt& stmt) override {
         std::shared_ptr<Binding> binding;
         bool is_heap_assignment = false;
+        bool is_index_assignment = false;
         std::shared_ptr<Value::HeapAllocationState> heap_state;
         const Value* trait_deref_assign_lambda = nullptr;
         Value trait_ref_val;
+        Value trait_index_write;
+        Value trait_index_target;
+        Value trait_index_at;
+        Value trait_index_constraint = VoidVal();
 
         if (const auto* target = dynamic_cast<const IdentifierExpr*>(stmt.target.get())) {
             binding = lookup_binding(target->name, target->diagnostic_token);
+        } else if (const auto* index = dynamic_cast<const IndexExpr*>(stmt.target.get())) {
+            Value target_val = evaluate(*index->target);
+            const Value* index_assignable_trait = index_assignable_trait_value();
+            if (index_assignable_trait == nullptr) {
+                fail(stmt.diagnostic_token, "Indexed assignment is not supported");
+            }
+            const Value* impl = registered_impl_for(*index_assignable_trait, target_val.getType());
+            if (impl == nullptr || !impl->isStructInstance()) {
+                fail(stmt.diagnostic_token, "Indexed assignment is not supported for this value");
+            }
+            const auto& fields = *impl->asStructInstance().fields;
+            auto write_it = fields.find("write");
+            auto value_space_it = fields.find("value_space");
+            if (write_it == fields.end()) {
+                fail(stmt.diagnostic_token, "`IndexAssignable implementation is missing method 'write'");
+            }
+            if (value_space_it == fields.end()) {
+                fail(stmt.diagnostic_token, "`IndexAssignable implementation is missing method 'value_space'");
+            }
+
+            trait_index_target = target_val;
+            trait_index_at = lower_struct_arguments(target_val, *impl, "index_space", index->args, stmt.diagnostic_token);
+            trait_index_constraint = call_callable_with_values(value_space_it->second, {trait_index_target, trait_index_at}, stmt.diagnostic_token, {false, true}, {false, true});
+            trait_index_write = write_it->second;
+            is_index_assignment = true;
         } else if (const auto* deref = dynamic_cast<const UnaryExpr*>(stmt.target.get())) {
             if (deref->op == UnaryOp::Deref) {
                 Value ref_val = evaluate_deref_target(*deref->right);
@@ -2852,7 +3378,7 @@ private:
                     }
                     binding = ref_val.asBinding();
                 } else {
-                    if (const Value* deref_mut_trait = get_registered_item("dereferenceable_mut_trait")) {
+                    if (const Value* deref_mut_trait = get_registered_item("traits.dereferenceable_mut")) {
                         if (const Value* impl = registered_impl_for(*deref_mut_trait, ref_val.getType())) {
                             if (impl->isStructInstance()) {
                                 const auto& fields = *impl->asStructInstance().fields;
@@ -2872,10 +3398,12 @@ private:
                 fail(stmt.diagnostic_token, "Unsupported assignment target");
             }
         } else {
-            fail(stmt.diagnostic_token, "Only identifier and dereference assignment are supported");
+            fail(stmt.diagnostic_token, "Only identifier, index, and dereference assignment are supported");
         }
 
-        Value constraint = is_heap_assignment ? VoidVal() : (trait_deref_assign_lambda ? VoidVal() : binding->getFC());
+        Value constraint = is_heap_assignment ? VoidVal() :
+            (trait_deref_assign_lambda ? VoidVal() :
+            (is_index_assignment ? trait_index_constraint : binding->getFC()));
         Value value = evaluate_with_expected_type(*stmt.value, constraint, stmt.diagnostic_token);
 
         try {
@@ -2883,14 +3411,16 @@ private:
             if (stmt.op.type != token_type::equal) {
                 if (is_heap_assignment) {
                     current_val = *heap_state->stored;
+                } else if (is_index_assignment) {
+                    current_val = evaluate(*stmt.target);
                 } else if (trait_deref_assign_lambda) {
-                    if (const Value* deref_trait = get_registered_item("dereferenceable_trait")) {
+                    if (const Value* deref_trait = get_registered_item("traits.dereferenceable")) {
                         if (const Value* read_impl = registered_impl_for(*deref_trait, trait_ref_val.getType())) {
                             if (read_impl->isStructInstance()) {
                                 const auto& read_fields = *read_impl->asStructInstance().fields;
                                 auto deref_it = read_fields.find("deref");
                                 if (deref_it != read_fields.end() && deref_it->second.isLambda()) {
-                                    current_val = call_callable_with_values(deref_it->second, {trait_ref_val}, stmt.diagnostic_token, {false});
+                                    current_val = call_callable_with_values(deref_it->second, {trait_ref_val}, stmt.diagnostic_token, {false}, {false});
                                 } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
                             } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
                         } else fail(stmt.diagnostic_token, "Cannot read trait value for compound assignment");
@@ -2925,7 +3455,13 @@ private:
         }
 
         if (trait_deref_assign_lambda) {
-            call_callable_with_values(*trait_deref_assign_lambda, {trait_ref_val, value}, stmt.diagnostic_token, {false, false});
+            call_callable_with_values(*trait_deref_assign_lambda, {trait_ref_val, value}, stmt.diagnostic_token, {false, false}, {false, true});
+            return;
+        }
+
+        if (is_index_assignment) {
+            enforce_constraint(trait_index_constraint, value, stmt.diagnostic_token);
+            call_callable_with_values(trait_index_write, {trait_index_target, trait_index_at, value}, stmt.diagnostic_token, {false, true, true}, {false, true, true});
             return;
         }
 

@@ -20,10 +20,7 @@ std::shared_ptr<const Type> getBoolType() {
     return instance;
 }
 
-std::shared_ptr<const Type> getUndecidedType() {
-    static auto instance = std::make_shared<UndecidedType>();
-    return instance;
-}
+
 
 
 
@@ -44,6 +41,11 @@ std::shared_ptr<const Type> getRangeType() {
 
 std::shared_ptr<const Type> getConstructedSetType() {
     static auto instance = std::make_shared<ConstructedSetType>();
+    return instance;
+}
+
+std::shared_ptr<const Type> getSignatureType() {
+    static auto instance = std::make_shared<SignatureType>();
     return instance;
 }
 
@@ -135,15 +137,7 @@ const Value& False() {
     return instance;
 }
 
-const Value& Undecided() {
-    static Value instance = Value::make_type(getUndecidedType());
-    return instance;
-}
 
-const Value& UndecidedVal() {
-    static Value instance = Value(getUndecidedType(), std::monostate{});
-    return instance;
-}
 
 const Value& TypeVal() {
     static Value instance = Value::make_type(getMetaType());
@@ -212,6 +206,10 @@ Value Value::make_composite_set(Value left, Value right, CompositeSetOp op) {
 
 Value Value::make_lambda(const frontend::LambdaExpr& lambda, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
     return Value(getFunctionType(), LambdaTag{&lambda, std::move(captured_scopes)});
+}
+
+Value Value::make_signature(const frontend::SignatureExpr& expr, std::shared_ptr<const RuntimeScopeChain> captured_scopes) {
+    return Value(getSignatureType(), SignatureTag{&expr, std::move(captured_scopes)});
 }
 
 Value Value::make_host_function(HostFunction fn) {
@@ -419,6 +417,17 @@ const Value::LambdaTag& Value::asLambdaTag() const {
         throw std::runtime_error("Value is not a Function");
     }
     return std::get<LambdaTag>(payload_);
+}
+
+bool Value::isSignature() const {
+    return std::holds_alternative<SignatureTag>(payload_);
+}
+
+const Value::SignatureTag& Value::asSignatureTag() const {
+    if (!isSignature()) {
+        throw std::runtime_error("Value is not a Signature");
+    }
+    return std::get<SignatureTag>(payload_);
 }
 
 bool Value::isHostFunction() const {
@@ -706,9 +715,7 @@ std::string Value::toString() const {
         }
         return "<heap allocation " + std::to_string(state->id) + ">";
     }
-    if (type_ == getUndecidedType()) {
-        return "undecided";
-    }
+
     return "Value(type=" + std::string(type_->name()) + ")";
 }
 
@@ -856,9 +863,12 @@ Value TraitType::belongs_approx(const Value& S, const Value& lc) const {
 }
 
 Value SignatureType::belongs(const Value& S, const Value& v) const {
+    if (!S.isSignature()) throw std::runtime_error("SignatureType::belongs requires a Signature value");
+    size_t parameter_count = S.asSignatureTag().expr->parameters.size();
+
     if (v.isLambda()) {
         size_t v_size = v.asLambdaTag().lambda->parameters.size();
-        return Value::make_bool(v_size == parameter_count_);
+        return Value::make_bool(v_size == parameter_count);
     }
     if (v.isHostFunction() || v.isStructInstance()) {
         return Value::make_bool(true);
@@ -876,6 +886,15 @@ Value StructType::belongs(const Value& S, const Value& v) const {
 }
 
 Value StructType::belongs_approx(const Value& S, const Value& lc) const {
+    throw std::runtime_error("Range operations on struct types are not supported");
+}
+
+Value RuntimeStructType::belongs(const Value& S, const Value& v) const {
+    if (!v.isStructInstance()) return Value::make_bool(false);
+    return Value::make_bool(v.getType() == S.asType());
+}
+
+Value RuntimeStructType::belongs_approx(const Value& S, const Value& lc) const {
     throw std::runtime_error("Range operations on struct types are not supported");
 }
 
