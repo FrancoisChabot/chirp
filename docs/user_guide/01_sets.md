@@ -204,7 +204,7 @@ If the value does not belong to the constraint set, evaluation fails.
 
 ```ebnf
 MatchExpr = "match" Expr "{" [ MatchArm { "," MatchArm } [ "," ] ] "}" ;
-MatchArm  = Expr "=>" Expr ;
+MatchArm  = SetExpr "=>" Expr ;
 ```
 
 ```chirp
