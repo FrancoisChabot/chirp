@@ -1,10 +1,9 @@
 # Chirp - User guide
 
-If you haven't read the [motivation](../motivation.md) document yet, you should.
+If you're finding it hard to wrap your ehad around the language, reading the [motivation](../motivation.md) document might help provide context.
 
-This guide is intentionally small. It covers the core surface language you need
-to read and write simple Chirp programs, not every experimental or advanced
-feature.
+This guide is intentionally small and to the point. We'll be adding details around areas that people find confusing as 
+we discover them.
 
 ## Suggested Reading Order
 
@@ -13,6 +12,7 @@ feature.
 3. [Values and Bindings](./02_values_and_bindings.md)
 4. [Functions and Control Flow](./03_functions_and_control_flow.md)
 5. [Structs, Enums, and Match](./04_structs_enums_and_match.md)
+6. [Traits](./05_traits.md)
 
 ## Conventions
 
@@ -28,7 +28,7 @@ So in Chirp land, values **belong** to sets. They are not "members" of sets.
 
 ```chirp
 let naturals = {x : int | x > 0};
-let double(x : naturals) : int = x * 2;
+let double(x : naturals) : naturals = x * 2;
 
 let result = match double(3) {
     1..=5 => "small",

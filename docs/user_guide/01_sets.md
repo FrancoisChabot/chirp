@@ -133,15 +133,6 @@ let callback: sig = print_msg;
 callback(1, "yo");
 ```
 
-Current limitation:
-
-- Signature membership is only partially implemented today. For ordinary
-  lambdas, the interpreter checks arity. It does not fully enforce parameter
-  bounds or return constraints yet.
-
-That means signature values are useful, but they are not yet a complete
-call-shape checker.
-
 ## Set Operators
 
 The implemented set operators are union, intersection, and complement.
