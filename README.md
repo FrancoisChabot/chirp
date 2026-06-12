@@ -7,8 +7,10 @@ Chirp is being built as a systems programming language. Two things make its desi
 
 These two things play off of each other to create an unusually expressive and (I think) harmonious way to define compiled programs using surprisingly few building blocks.
 
+For the whole story behind the what/why, have a look at [motivation.md](docs/motivation.md).
+
 > [!NOTE]
-> Chirp is very much a work-in-progress. As of today, it's a perfectly workable scripting language. Albeit one with a very limited standard library.
+> Chirp is very much a work-in-progress. As of today, it's a perfectly workable scripting language. Albeit one with a very limited standard library. Compilation is not implemented yet.
 
 ## Getting started
 
@@ -53,7 +55,7 @@ If you are a seasoned developer and, as I suspect will likely be the case, you g
 let some_var : int64 = 3;
 ```
 
-Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [motivation](docs/motivation.md) file.
+Is NOT the variable's type in Chirp. Thinking about it this way is not the end of the world and won't prevent you from using the language, but it shackles you in a way where you'd miss out on a lot of what the language has to offer. The full explanation is in the [motivation.md](docs/motivation.md) file.
 
 After that, the [user guide](docs/user_guide/) will cover the basics.
 
@@ -72,7 +74,6 @@ After that, the [user guide](docs/user_guide/) will cover the basics.
 
 ### Current objectives
 
-- Bring the documentation back in sync with the implementation. It has fallen behind.
 - Develop an IR-based interpreter, so that the static solver has something to manipulate.
 - Start populating the standard library.
 
@@ -85,7 +86,7 @@ Because of this, the roadmap is split up in two:
 #### Part 1: Dynamic Chirp
 
 1. Fully support all of Chirp's semantics in the interpreter's VM (COMPLETE)
-2. Get the repo to a publishable state. (IN PROGRESS)
+2. Get the repo to a publishable state. (COMPLETE)
 
 MILESTONE: Start publishing Dynamic Chirp v0.1
 

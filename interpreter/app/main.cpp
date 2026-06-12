@@ -26,6 +26,10 @@
 #define CHIRP_INSTALL_ROOT_DIR ""
 #endif
 
+#ifndef CHIRP_INSTALL_ROOT_RELATIVE_DIR
+#define CHIRP_INSTALL_ROOT_RELATIVE_DIR ""
+#endif
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -118,6 +122,23 @@ std::optional<fs::path> existingAutoRootDir(const fs::path& path) {
     return std::nullopt;
 }
 
+std::optional<fs::path> executableRelativeRootDir() {
+    fs::path relative_root(CHIRP_INSTALL_ROOT_RELATIVE_DIR);
+    if (relative_root.empty()) {
+        return std::nullopt;
+    }
+
+    std::error_code ec;
+    fs::path executable = fs::canonical("/proc/self/exe", ec);
+    if (ec) {
+        return std::nullopt;
+    }
+
+    fs::path executable_dir = executable.parent_path();
+    fs::path candidate = executable_dir / relative_root;
+    return existingAutoRootDir(candidate.lexically_normal());
+}
+
 std::optional<fs::path> findRootDir(const Options& options) {
     if (options.root_dir.has_value()) {
         return requireRootDir(*options.root_dir, "CLI");
@@ -132,6 +153,10 @@ std::optional<fs::path> findRootDir(const Options& options) {
         return requireRootDir(*root_dir, "source-tree");
     }
 #endif
+
+    if (auto root_dir = executableRelativeRootDir()) {
+        return requireRootDir(*root_dir, "install");
+    }
 
     if (auto root_dir = existingAutoRootDir(CHIRP_INSTALL_ROOT_DIR)) {
         return requireRootDir(*root_dir, "install");

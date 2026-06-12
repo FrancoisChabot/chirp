@@ -5,5 +5,5 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(CHIRP_ENABLE_SOURCE_TREE_ROOT "Enable source-tree Chirp root fallback for development builds" ON)
 
-enable_testing()
+include(CTest)
 add_subdirectory(interpreter)

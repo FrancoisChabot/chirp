@@ -1,17 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 project(ChirpInterpreter VERSION 0.1.0 LANGUAGES CXX)
 
-enable_testing()
 include(GNUInstallDirs)
+include(CTest)
 
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG        v1.14.0
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+if(BUILD_TESTING)
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        v1.14.0
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+endif()
 
 add_subdirectory(lib/bigint)
 add_subdirectory(lib/frontend)
@@ -22,6 +25,10 @@ target_link_libraries(chirp PRIVATE chirp_frontend chirp_interpreter)
 target_compile_features(chirp PUBLIC cxx_std_20)
 
 get_filename_component(CHIRP_REPO_ROOT "${ChirpInterpreter_SOURCE_DIR}/.." ABSOLUTE)
+file(RELATIVE_PATH CHIRP_INSTALL_ROOT_RELATIVE_TO_BINDIR
+  "/${CMAKE_INSTALL_BINDIR}"
+  "/${CMAKE_INSTALL_DATADIR}/chirp"
+)
 
 if(CHIRP_ENABLE_SOURCE_TREE_ROOT)
   target_compile_definitions(chirp PRIVATE CHIRP_ENABLE_SOURCE_TREE_ROOT=1)
@@ -31,6 +38,7 @@ endif()
 
 target_compile_definitions(chirp PRIVATE
   CHIRP_SOURCE_ROOT_DIR="${CHIRP_REPO_ROOT}/lib/chirp"
+  CHIRP_INSTALL_ROOT_RELATIVE_DIR="${CHIRP_INSTALL_ROOT_RELATIVE_TO_BINDIR}"
   CHIRP_INSTALL_ROOT_DIR="${CMAKE_INSTALL_FULL_DATADIR}/chirp"
 )
 
@@ -44,12 +52,14 @@ install(DIRECTORY "${CHIRP_REPO_ROOT}/lib/chirp/std"
   FILES_MATCHING PATTERN "*.chirp"
 )
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(
-  NAME chirp_e2e_tests
-  COMMAND Python3::Interpreter
-    "${ChirpInterpreter_SOURCE_DIR}/../scripts/test_conformance.py"
-    -j auto
-    --suite "${ChirpInterpreter_SOURCE_DIR}/../tests"
-    $<TARGET_FILE:chirp>
-)
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(
+    NAME chirp_e2e_tests
+    COMMAND Python3::Interpreter
+      "${ChirpInterpreter_SOURCE_DIR}/../scripts/test_conformance.py"
+      -j auto
+      --suite "${ChirpInterpreter_SOURCE_DIR}/../tests"
+      $<TARGET_FILE:chirp>
+  )
+endif()
