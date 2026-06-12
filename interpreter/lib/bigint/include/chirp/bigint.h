@@ -5,6 +5,9 @@
 #include <ostream>
 #include <compare>
 #include <cstdint>
+#include <utility>
+#include <variant>
+#include <vector>
 
 namespace chirp::interpreter {
 
@@ -42,13 +45,8 @@ public:
     BigInt& operator/=(const BigInt& other);
     BigInt& operator%=(const BigInt& other);
 
-    // Comparison Operators (C++20 spaceship operator)
-    bool operator==(const BigInt& other) const = default;
-    std::strong_ordering operator<=>(const BigInt& other) const {
-        if (value_ < other.value_) return std::strong_ordering::less;
-        if (value_ > other.value_) return std::strong_ordering::greater;
-        return std::strong_ordering::equal;
-    }
+    bool operator==(const BigInt& other) const;
+    std::strong_ordering operator<=>(const BigInt& other) const;
 
     // Friend stream insertion
     friend std::ostream& operator<<(std::ostream& os, const BigInt& val);
@@ -61,11 +59,25 @@ public:
     uint64_t to_uint64() const;
 
 private:
-#ifdef __SIZEOF_INT128__
-    __int128_t value_;
-#else
-    long long value_;
-#endif
+    struct LargeValue {
+        bool negative = false;
+        std::vector<uint32_t> limbs;
+
+        bool operator==(const LargeValue& other) const = default;
+    };
+
+    using Storage = std::variant<int64_t, LargeValue>;
+
+    explicit BigInt(Storage storage);
+
+    bool is_small() const;
+    int64_t small_value() const;
+    const LargeValue& large_value() const;
+    std::pair<bool, std::vector<uint32_t>> signed_magnitude() const;
+
+    static BigInt from_signed_magnitude(bool negative, std::vector<uint32_t> limbs);
+
+    Storage storage_;
 };
 
 } // namespace chirp::interpreter

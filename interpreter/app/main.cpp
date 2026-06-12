@@ -14,6 +14,12 @@
 #include <string_view>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #ifndef CHIRP_ENABLE_SOURCE_TREE_ROOT
 #define CHIRP_ENABLE_SOURCE_TREE_ROOT 0
 #endif
@@ -122,6 +128,32 @@ std::optional<fs::path> existingAutoRootDir(const fs::path& path) {
     return std::nullopt;
 }
 
+std::optional<fs::path> getExecutablePath(std::error_code& ec) {
+    ec.clear();
+#if defined(_WIN32)
+    wchar_t buffer[MAX_PATH];
+    DWORD size = GetModuleFileNameW(NULL, buffer, MAX_PATH);
+    if (size == 0) {
+        ec.assign(GetLastError(), std::system_category());
+        return std::nullopt;
+    }
+    return fs::path(buffer);
+#elif defined(__APPLE__)
+    char buffer[1024];
+    uint32_t size = sizeof(buffer);
+    if (_NSGetExecutablePath(buffer, &size) == 0) {
+        return fs::canonical(fs::path(buffer), ec);
+    }
+    std::vector<char> large_buffer(size);
+    if (_NSGetExecutablePath(large_buffer.data(), &size) == 0) {
+        return fs::canonical(fs::path(large_buffer.data()), ec);
+    }
+    return std::nullopt;
+#else
+    return fs::canonical("/proc/self/exe", ec);
+#endif
+}
+
 std::optional<fs::path> executableRelativeRootDir() {
     fs::path relative_root(CHIRP_INSTALL_ROOT_RELATIVE_DIR);
     if (relative_root.empty()) {
@@ -129,12 +161,12 @@ std::optional<fs::path> executableRelativeRootDir() {
     }
 
     std::error_code ec;
-    fs::path executable = fs::canonical("/proc/self/exe", ec);
-    if (ec) {
+    std::optional<fs::path> executable = getExecutablePath(ec);
+    if (ec || !executable.has_value()) {
         return std::nullopt;
     }
 
-    fs::path executable_dir = executable.parent_path();
+    fs::path executable_dir = executable->parent_path();
     fs::path candidate = executable_dir / relative_root;
     return existingAutoRootDir(candidate.lexically_normal());
 }

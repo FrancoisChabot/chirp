@@ -86,7 +86,7 @@ Because of this, the roadmap is split up in two:
 #### Part 1: Dynamic Chirp
 
 1. Fully support all of Chirp's semantics in the interpreter's VM (COMPLETE)
-2. Get the repo to a publishable state. (COMPLETE)
+2. Get the repo to a publishable state. (Al... MOST... DONE...)
 
 MILESTONE: Start publishing Dynamic Chirp v0.1
 
@@ -136,3 +136,7 @@ It's hooked up to run automatically when invoking ctest. But you can also run it
 ```bash
 python scripts/test_conformance.py -j auto path/to/chirp
 ```
+
+### Areas of (dis) interest
+
+I wouldn't bother trying too hard to improve the current interpreter. It's the most naive of implementations to make the language work enough to poke it with a stick. A better designed one is already in the works.

@@ -204,7 +204,7 @@ Several language operators are routed through these traits by the interpreter:
 - dereference behavior can route through `` `Dereferenceable `` and
   `` `DereferenceableMut ``
 
-If you implement any arithmetric traits, you need to be aware that the interpreter is free to apply the usual transformations. `(a+b) == (b+a)`, etc...
+If you implement any arithmetic traits, you need to be aware that the interpreter is free to apply the usual transformations. `(a+b) == (b+a)`, etc...
 
 ## A Small Example
 

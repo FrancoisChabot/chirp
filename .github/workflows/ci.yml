@@ -16,18 +16,134 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build and test
-    runs-on: ubuntu-latest
+    name: Build and test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-gcc
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            config: Debug
+            cmake_configure_args: -DCMAKE_BUILD_TYPE=Debug
+            cmake_build_args: --parallel
+            ctest_args: --output-on-failure
+          - name: ubuntu-clang
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            config: Debug
+            cmake_configure_args: -DCMAKE_BUILD_TYPE=Debug
+            cmake_build_args: --parallel
+            ctest_args: --output-on-failure
+          - name: macos-clang
+            os: macos-latest
+            cc: clang
+            cxx: clang++
+            config: Debug
+            cmake_configure_args: -DCMAKE_BUILD_TYPE=Debug
+            cmake_build_args: --parallel
+            ctest_args: --output-on-failure
+          - name: windows-msvc
+            os: windows-latest
+            config: Debug
+            cmake_configure_args: -A x64
+            cmake_build_args: --config Debug --parallel
+            ctest_args: -C Debug --output-on-failure
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build ${{ matrix.cmake_configure_args }}
 
       - name: Build
-        run: cmake --build build --parallel 2
+        run: cmake --build build ${{ matrix.cmake_build_args }}
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build ${{ matrix.ctest_args }}
+
+  sanitizers:
+    name: Sanitizers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CC: clang
+      CXX: clang++
+      CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+      CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+      LDFLAGS: -fsanitize=address,undefined
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Configure
+        run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build-asan --parallel
+
+      - name: Test
+        run: ctest --test-dir build-asan --output-on-failure
+
+  install-smoke:
+    name: Install smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CC: gcc
+      CXX: g++
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-install
+          -DCMAKE_BUILD_TYPE=Release
+          -DCHIRP_ENABLE_SOURCE_TREE_ROOT=OFF
+
+      - name: Build
+        run: cmake --build build-install --parallel
+
+      - name: Install
+        run: cmake --install build-install --prefix "${{ runner.temp }}/chirp-install"
+
+      - name: Smoke test installed binary
+        run: |
+          cat > "${{ runner.temp }}/install-smoke.chirp" <<'EOF'
+          let out = match 15 {
+              { x:int | x % 3 == 0 } ∩ { x:int | x % 5 == 0 } => "fizzbuzz",
+              `any => "nope"
+          };
+          `print(out);
+          EOF
+          "${{ runner.temp }}/chirp-install/bin/chirp" "${{ runner.temp }}/install-smoke.chirp"

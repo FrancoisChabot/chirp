@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace chirp::interpreter {
@@ -194,8 +195,6 @@ bool is_name(std::string_view actual, std::string_view expected) {
 }
 
 constexpr int64_t MAX_LOOP_ITERATIONS = 1'000'000;
-constexpr uint64_t INT64_MAX_MAGNITUDE = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
-constexpr uint64_t INT64_MIN_MAGNITUDE = INT64_MAX_MAGNITUDE + 1;
 
 BigInt parse_positive_integer_literal(std::string_view text, const token& diag) {
     if (text.find('.') != std::string_view::npos) {
@@ -266,6 +265,64 @@ public:
         chirp_root_ = std::filesystem::absolute(std::filesystem::path(std::move(path))).lexically_normal();
     }
 
+    void shutdown() {
+        std::vector<ScopePtr> reachable_scopes;
+        std::unordered_set<const RuntimeScope*> seen_scopes;
+        std::unordered_set<const Binding*> seen_bindings;
+        std::unordered_set<const Value::HeapAllocationState*> seen_heap_allocations;
+
+        for (const auto& scope : scopes_) {
+            collect_scope_references(scope, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+        for (auto& [_, value] : registered_items_) {
+            collect_value_references(value, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+        for (auto& implementation : implementations_) {
+            collect_value_references(implementation.trait, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            collect_value_references(implementation.impl, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+        for (auto& [_, entry] : module_cache_) {
+            collect_value_references(entry.value, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+        collect_value_references(result_, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        if (terminal_handoff_.has_value()) {
+            collect_binding_references(terminal_handoff_->binding, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+
+        for (const auto& scope : reachable_scopes) {
+            if (!scope) {
+                continue;
+            }
+            scope->bindings.clear();
+            scope->declaration_order.clear();
+        }
+
+        terminal_handoff_.reset();
+        result_ = VoidVal();
+
+        for (const auto& scope : scopes_) {
+            if (!scope) {
+                continue;
+            }
+            scope->bindings.clear();
+            scope->declaration_order.clear();
+        }
+        scopes_.clear();
+
+        module_export_stack_.clear();
+        module_cache_.clear();
+        registered_items_.clear();
+        implementations_.clear();
+        lambda_param_struct_types_.clear();
+        construction_arg_struct_types_.clear();
+
+        source_stack_.clear();
+        module_sources_.clear();
+        chirp_root_.reset();
+        injected_stdin_.clear();
+        stdin_cursor_ = 0;
+    }
+
 private:
     using Scope = RuntimeScope;
     using ScopePtr = std::shared_ptr<Scope>;
@@ -322,6 +379,161 @@ private:
         Value impl;
     };
     std::vector<Implementation> implementations_;
+
+    void collect_scope_references(
+        const ScopePtr& scope,
+        std::vector<ScopePtr>& reachable_scopes,
+        std::unordered_set<const RuntimeScope*>& seen_scopes,
+        std::unordered_set<const Binding*>& seen_bindings,
+        std::unordered_set<const Value::HeapAllocationState*>& seen_heap_allocations) {
+        if (!scope) {
+            return;
+        }
+
+        const RuntimeScope* scope_ptr = scope.get();
+        if (!seen_scopes.insert(scope_ptr).second) {
+            return;
+        }
+
+        reachable_scopes.push_back(scope);
+        for (const auto& [_, binding] : scope->bindings) {
+            collect_binding_references(binding, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+        for (const auto& binding : scope->declaration_order) {
+            collect_binding_references(binding, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        }
+    }
+
+    void collect_binding_references(
+        const std::shared_ptr<Binding>& binding,
+        std::vector<ScopePtr>& reachable_scopes,
+        std::unordered_set<const RuntimeScope*>& seen_scopes,
+        std::unordered_set<const Binding*>& seen_bindings,
+        std::unordered_set<const Value::HeapAllocationState*>& seen_heap_allocations) {
+        if (!binding) {
+            return;
+        }
+
+        const Binding* binding_ptr = binding.get();
+        if (!seen_bindings.insert(binding_ptr).second) {
+            return;
+        }
+
+        collect_value_references(const_cast<Value&>(binding->getFC()), reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        collect_value_references(const_cast<Value&>(binding->getLC()), reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+        collect_value_references(const_cast<Value&>(binding->getCV()), reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+    }
+
+    void collect_value_references(
+        Value& value,
+        std::vector<ScopePtr>& reachable_scopes,
+        std::unordered_set<const RuntimeScope*>& seen_scopes,
+        std::unordered_set<const Binding*>& seen_bindings,
+        std::unordered_set<const Value::HeapAllocationState*>& seen_heap_allocations) {
+        if (value.isBinding()) {
+            collect_binding_references(value.asBinding(), reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            return;
+        }
+        if (value.isEnumeratedSet()) {
+            for (auto& element : const_cast<std::vector<Value>&>(value.asEnumeratedSet())) {
+                collect_value_references(element, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isRange()) {
+            auto range = value.asRange();
+            if (range.start) {
+                collect_value_references(*range.start, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            if (range.end) {
+                collect_value_references(*range.end, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isConstructedSet()) {
+            const auto& tag = value.asConstructedSetTag();
+            if (tag.captured_scopes) {
+                for (const auto& scope : *tag.captured_scopes) {
+                    collect_scope_references(scope, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+                }
+            }
+            return;
+        }
+        if (value.isList()) {
+            for (auto& element : const_cast<std::vector<Value>&>(value.asList())) {
+                collect_value_references(element, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isLambda()) {
+            const auto& tag = value.asLambdaTag();
+            if (tag.captured_scopes) {
+                for (const auto& scope : *tag.captured_scopes) {
+                    collect_scope_references(scope, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+                }
+            }
+            return;
+        }
+        if (value.isSignature()) {
+            const auto& tag = value.asSignatureTag();
+            if (tag.captured_scopes) {
+                for (const auto& scope : *tag.captured_scopes) {
+                    collect_scope_references(scope, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+                }
+            }
+            return;
+        }
+        if (value.isCompositeSet()) {
+            const auto& tag = value.asCompositeSet();
+            if (tag.left) {
+                collect_value_references(*tag.left, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            if (tag.right) {
+                collect_value_references(*tag.right, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isComplementSet()) {
+            const auto& tag = value.asComplementSet();
+            if (tag.operand) {
+                collect_value_references(*tag.operand, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isTrait()) {
+            collect_value_references(const_cast<Value&>(value.asTraitInterface()), reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            return;
+        }
+        if (value.isStructInstance()) {
+            for (auto& [_, field_value] : *value.asStructInstance().fields) {
+                collect_value_references(field_value, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isModule()) {
+            const auto& exports = value.asModule().exports;
+            if (!exports) {
+                return;
+            }
+            for (const auto& [_, binding] : *exports) {
+                collect_binding_references(binding, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+            return;
+        }
+        if (value.isHeapAllocation()) {
+            const auto& state = value.asHeapAllocation().state;
+            if (!state) {
+                return;
+            }
+            const Value::HeapAllocationState* state_ptr = state.get();
+            if (!seen_heap_allocations.insert(state_ptr).second) {
+                return;
+            }
+            if (state->stored) {
+                collect_value_references(*state->stored, reachable_scopes, seen_scopes, seen_bindings, seen_heap_allocations);
+            }
+        }
+    }
 
     void execute_statements(const std::vector<std::unique_ptr<Stmt>>& stmts) {
         for (const auto& stmt : stmts) {
@@ -1343,14 +1555,7 @@ private:
                 append_unique(elements, current);
 
                 if (current.isInt()) {
-                    if (current.asInt() == BigInt("170141183460469231731687303715884105727")) {
-                        break;
-                    }
-                    try {
-                        current = Value::make_int(current.asInt() + BigInt(1));
-                    } catch (const std::out_of_range&) {
-                        break;
-                    }
+                    current = Value::make_int(current.asInt() + BigInt(1));
                 } else if (current.isChar()) {
                     current = Value::make_char(current.asChar() + 1);
                 } else {
@@ -3113,14 +3318,7 @@ private:
             }
 
             if (current.isInt()) {
-                if (current.asInt() == BigInt("170141183460469231731687303715884105727")) {
-                    break;
-                }
-                try {
-                    current = Value::make_int(current.asInt() + BigInt(1));
-                } catch (const std::out_of_range&) {
-                    break;
-                }
+                current = Value::make_int(current.asInt() + BigInt(1));
             } else if (current.isChar()) {
                 current = Value::make_char(current.asChar() + 1);
             } else {
@@ -3547,6 +3745,10 @@ class Session::Impl {
 
 public:
     explicit Impl(std::ostream& out, bool testing_enabled = false) : evaluator(out, testing_enabled) {}
+    ~Impl() {
+        evaluator.shutdown();
+        sources.clear();
+    }
 
     SessionExpectations getExpectations() const {
         return evaluator.expectations;

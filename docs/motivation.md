@@ -17,9 +17,9 @@ Chirp is an engineered language. So to trace back where it comes from, we need t
 
 I like Zig's model, and I also like TypeScript's expressiveness. It's hard to imagine two languages further apart (ok, it's pretty easy... but they are still very different beasts), so fusing them together seems like a suitable act of hubris for this vanity project. 
 
-The holy grail would be if we could get something along the lines of Rust’s borrow checker as an emergent feature of a more general correctness engine. I've always felt that it's a shame it has so much syntactical noise just to handle a very specific category of bugs. I
+The holy grail would be if we could get something along the lines of Rust’s borrow checker as an emergent feature of a more general correctness engine. I've always felt that it's a shame it has so much syntactical noise just to handle a very specific category of bugs.
 
-And let's try to make this as squeaky-clean as possible. The fewer primitive building blocks and special cases, the better. This is partly because it makes the language's mental model simpler, but it also makes the compiler more robust, and I'd be lying if I tried tp pretendaesticism and personal satisfaction didn't come into it.
+And let's try to make this as squeaky-clean as possible. The fewer primitive building blocks and special cases, the better. This is partly because it makes the language's mental model simpler, but it also makes the compiler more robust, and I'd be lying if I tried to pretend aestheticism and personal satisfaction didn't come into it.
 
 ### The constraints
 
@@ -205,7 +205,7 @@ match (v ∈ S) {
 
 ### A concrete example
 
-To better understand what the implications of this are, let's have a glance at [04_conveniences.chirp](../../lib/chirp/boot/04_conveniences.chirp), which is a file that the chirp interpreter loads before anything else.
+To better understand what the implications of this are, let's have a glance at [04_conveniences.chirp](../lib/chirp/boot/04_conveniences.chirp), which is a file that the chirp interpreter loads before anything else.
 
 The role of the portion we are going to look at is to imbue the `int`, `bool`, and `string` types with set-ness so that we can use their values directly in places like match arms:
 ```chirp
@@ -239,7 +239,7 @@ make_type_a_self_set(string);
 
 If you zero-in on the `br` portion: `belongs_range`:
 - If `self ∉ lc`, the range of possible answers is `{false}`. So the branch can be ignored.
-- If `{this} == lc` (which is what coextensive checks), the range of possible answers is `{true}`. So the brach is guaranteed
+- If `{this} == lc` (which is what coextensive checks), the range of possible answers is `{true}`. So the branch is guaranteed
 - Otherwise, it returns `{true, false}`, which will lead to a runtime check.
 
 How cool is that? The compiler still needs the ordinary machinery to remove unreachable code, but the proof that a branch is unreachable does not have to be hardcoded into pattern matching. It falls out of the set’s own user-defined abstract heuristic.
