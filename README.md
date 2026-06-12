@@ -114,8 +114,6 @@ How far we can take it from there is unclear. I am reasonably confident that it 
 
 [`docs/spec/`](docs/spec/) : It's not trying to be a legalese-style spec at the moment. Formalism will happen once the dust settles a bit.
 
-[`docs/design/drafts/`](docs/design/drafts/) : partially baked ideas that aren't locked down enough to put in the spec yet.
-
 [`scripts/`](scripts/) : Developer utilities, including the conformance test runner.
 
 [`tests/`](tests/) : A chirp-based test/conformance suite. Run via `scripts/test_conformance.py`.
