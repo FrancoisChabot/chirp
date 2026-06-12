@@ -10,7 +10,7 @@ These two things play off of each other to create an unusually expressive and (I
 For the whole story behind the what/why, have a look at [motivation.md](docs/motivation.md).
 
 > [!NOTE]
-> Chirp is very much a work-in-progress. As of today, it's a perfectly workable scripting language. Albeit one with a very limited standard library. Compilation is not implemented yet.
+> Chirp is very much a work-in-progress. As of today, it's a workable scripting language. Albeit one with a very limited standard library. Compilation is not implemented yet.
 
 ## Getting started
 
