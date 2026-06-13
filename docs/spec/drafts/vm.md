@@ -71,6 +71,20 @@ With 5 bits, we have room for exactly 32 base semantics. The VM uses a unified i
 - `If` (0x03): Ternary branching (condition, true_branch, false_branch).
 - `Loop` (0x04): Infinite loop (desugars `while` and `for` in combination with `If` and `Break`).
 - `Match` (0x05): Evaluates a subject against a sequence of patterns. 
+  
+  **Bytecode Layout:**
+  To evaluate pattern matching efficiently without unbounded stacks or sequential decoding of skipped branches, the `Match` instruction uses a packed bytecode layout:
+  ```text
+  [Opcode::Match (8-bit prefix)]
+  [Total Match Length (32 bits)]  <-- Jump to end upon successful arm evaluation
+  [Number of Arms (8 bits)]
+  [Subject Operand]
+  // Sequence of arms:
+  [Result Length (24 bits) | Cond Operand Header (8 bits)] <-- Packed into 32 bits
+  [Cond Operand Payload (if any)]
+  [Result Operand]
+  ```
+  This 24-bit result length allows the VM to skip the `Result Operand` in O(1) time if the condition fails, keeping the bytecode dense and aligned while completely avoiding the need for an explicit "jump to end" offset at the tail of every arm.
 
 #### 2. Memory & Reference
 - `Ref` (0x06): Creates a reference (`&` / `&mut`).

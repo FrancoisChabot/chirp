@@ -704,6 +704,38 @@ public:
                 [[maybe_unused]] uint32_t false_len = read32();
                 return evalOperand();
             }
+            case Opcode::Match: {
+                uint32_t total_match_len = read32();
+                size_t match_start_pc = pc;
+                uint8_t num_arms = read8();
+                Value subject = evalOperand();
+
+                Value result;
+                bool matched = false;
+
+                for (uint8_t i = 0; i < num_arms; ++i) {
+                    uint32_t header = read32();
+                    uint32_t result_len = header & 0xFFFFFF;
+                    pc--; // Rewind PC to the 8-bit condition operand header
+                    
+                    Value cond = evalOperand();
+                    Value matches = belongsTo(cond, subject);
+
+                    if (isTruthy(matches)) {
+                        result = evalOperand();
+                        pc = match_start_pc + total_match_len;
+                        matched = true;
+                        break;
+                    } else {
+                        pc += result_len;
+                    }
+                }
+                
+                if (!matched) {
+                    throw std::runtime_error("Match expression failed: no branches matched");
+                }
+                return result;
+            }
             case Opcode::MakeLambda: {
                 return Value(captureChildClosure(read32()));
             }

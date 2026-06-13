@@ -669,7 +669,44 @@ public:
     }
 
     void visit(const frontend::MatchExpr& expr) override {
-        throw std::runtime_error("MatchExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::Match, Domain::Generic));
+        
+        size_t total_match_len_offset = unit->bytecode.size();
+        emitU32(0); // Placeholder for total match length
+        
+        size_t match_start = unit->bytecode.size();
+
+        unit->emit(static_cast<uint8_t>(expr.arms.size()));
+        emitOperand(*expr.subject);
+
+        for (const auto& arm : expr.arms) {
+            size_t arm_header_offset = unit->bytecode.size();
+            emitU32(0); // Placeholder for [Result Length (24 bits) | Cond Operand Header (8 bits)]
+
+            size_t cond_start = unit->bytecode.size();
+            emitOperand(*arm.pattern);
+            
+            uint8_t cond_header = unit->bytecode[cond_start];
+            unit->bytecode.erase(unit->bytecode.begin() + cond_start);
+
+            size_t result_start = unit->bytecode.size();
+            emitOperand(*arm.body);
+            
+            uint32_t result_len = static_cast<uint32_t>(unit->bytecode.size() - result_start);
+            if (result_len > 0xFFFFFF) {
+                throw std::runtime_error("Match arm result is too large (exceeds 24 bits)");
+            }
+
+            uint32_t packed_header = (static_cast<uint32_t>(cond_header) << 24) | result_len;
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[arm_header_offset + i] = static_cast<uint8_t>((packed_header >> (i * 8)) & 0xFF);
+            }
+        }
+        
+        uint32_t total_match_len = static_cast<uint32_t>(unit->bytecode.size() - match_start);
+        for (int i = 0; i < 4; ++i) {
+            unit->bytecode[total_match_len_offset + i] = static_cast<uint8_t>((total_match_len >> (i * 8)) & 0xFF);
+        }
     }
 
     void visit(const frontend::EnumExpr& expr) override {

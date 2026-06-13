@@ -12,6 +12,7 @@ enum class Opcode : uint8_t {
     Eval = 0x00,
     Block = 0x01,
     Break = 0x02,
+    Match = 0x05,
 
     // Functions & Calls
     Call = 0x0C,
