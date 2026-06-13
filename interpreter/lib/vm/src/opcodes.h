@@ -66,6 +66,10 @@ enum class BinaryMathOp : uint8_t {
     Add = 0, Sub = 1, Mul = 2, Div = 3, Mod = 4
 };
 
+enum class UnaryMathOp : uint8_t {
+    Not = 0, Negate = 1, Complement = 2
+};
+
 enum class CompareOp : uint8_t {
     Eq = 0, Neq = 1, Lt = 2, Lte = 3, Gt = 4, Gte = 5
 };

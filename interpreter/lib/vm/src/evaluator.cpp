@@ -641,6 +641,27 @@ public:
             }
             case Opcode::Deref:
                 return dereferenceValue(evalOperand());
+            case Opcode::UnaryMath: {
+                UnaryMathOp math_op = static_cast<UnaryMathOp>(read8());
+                Value right = evalOperand();
+                
+                if (math_op == UnaryMathOp::Not) {
+                    return Value(!isTruthy(right));
+                }
+                
+                if (right.type != ValueType::Int) {
+                    throw std::runtime_error("Type error: expected integer for unary math");
+                }
+                
+                switch (math_op) {
+                    case UnaryMathOp::Negate:
+                        return Value(-right.as_int);
+                    case UnaryMathOp::Complement:
+                        return Value(~right.as_int);
+                    default:
+                        throw std::runtime_error("Unknown UnaryMathOp");
+                }
+            }
             case Opcode::BinaryMath: {
                 BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
                 Value left = evalOperand();

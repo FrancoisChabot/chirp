@@ -483,48 +483,34 @@ public:
     }
 
     void visit(const frontend::UnaryExpr& expr) override {
-        if (expr.op == frontend::UnaryOp::Not) {
-            unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
-            emitOperand(*expr.right);
-
-            size_t true_len_offset = unit->bytecode.size();
-            emitU32(0);
-            size_t true_start = unit->bytecode.size();
-            emitBoolOperand(false);
-            uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
-            for (int i = 0; i < 4; ++i) {
-                unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
-            }
-
-            size_t false_len_offset = unit->bytecode.size();
-            emitU32(0);
-            size_t false_start = unit->bytecode.size();
-            emitBoolOperand(true);
-            uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
-            for (int i = 0; i < 4; ++i) {
-                unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
-            }
-            return;
+        switch (expr.op) {
+            case frontend::UnaryOp::Not:
+                unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(UnaryMathOp::Not));
+                emitOperand(*expr.right);
+                break;
+            case frontend::UnaryOp::Negate:
+                if (auto* number = dynamic_cast<const frontend::NumberExpr*>(expr.right.get())) {
+                    unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
+                    emitU64(static_cast<uint64_t>(-std::stoll(std::string(number->value))));
+                    return;
+                }
+                unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(UnaryMathOp::Negate));
+                emitOperand(*expr.right);
+                break;
+            case frontend::UnaryOp::Complement:
+                unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(UnaryMathOp::Complement));
+                emitOperand(*expr.right);
+                break;
+            case frontend::UnaryOp::Deref:
+                unit->emit(encodeInstruction(Opcode::Deref, Domain::Generic));
+                emitOperand(*expr.right);
+                break;
+            default:
+                throw std::runtime_error("Unary operation not supported in the VM yet");
         }
-        if (expr.op == frontend::UnaryOp::Negate) {
-            if (auto* number = dynamic_cast<const frontend::NumberExpr*>(expr.right.get())) {
-                unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-                emitU64(static_cast<uint64_t>(-std::stoll(std::string(number->value))));
-                return;
-            }
-            unit->emit(encodeInstruction(Opcode::BinaryMath, Domain::Generic));
-            unit->emit(static_cast<uint8_t>(BinaryMathOp::Sub));
-            unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-            emitU64(0);
-            emitOperand(*expr.right);
-            return;
-        }
-        if (expr.op == frontend::UnaryOp::Deref) {
-            unit->emit(encodeInstruction(Opcode::Deref, Domain::Generic));
-            emitOperand(*expr.right);
-            return;
-        }
-        throw std::runtime_error("UnaryExpr is not supported in the VM yet");
     }
 
     void visit(const frontend::GroupingExpr& expr) override {
@@ -708,6 +694,8 @@ public:
             unit->bytecode[total_match_len_offset + i] = static_cast<uint8_t>((total_match_len >> (i * 8)) & 0xFF);
         }
     }
+
+
 
     void visit(const frontend::EnumExpr& expr) override {
         throw std::runtime_error("EnumExpr is not supported in the VM yet");
