@@ -1,0 +1,3 @@
+add_library(chirp_backend INTERFACE)
+target_include_directories(chirp_backend INTERFACE include)
+target_link_libraries(chirp_backend INTERFACE chirp_frontend)

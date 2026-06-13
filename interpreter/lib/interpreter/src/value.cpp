@@ -1,4 +1,4 @@
-#include "chirp/interpreter.h"
+#include "interpreter_internal.h"
 #include <stdexcept>
 #include <algorithm>
 #include <sstream>

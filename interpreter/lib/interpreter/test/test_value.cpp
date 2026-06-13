@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "chirp/interpreter.h"
+#include "../src/interpreter_internal.h"
 
 #include <chrono>
 #include <filesystem>
@@ -154,7 +155,8 @@ TEST(InterpreterTest, Bindings) {
 
 TEST(InterpreterTest, BootPublicBindingsArePublishedAndPrivateBindingsAreHidden) {
     std::ostringstream out;
-    Session session(out);
+    auto session_ptr = chirp::interpreter::createSession(out);
+    auto& session = *session_ptr;
 
     session.execute_boot_source(
         "let pub final exposed = 41;\n"
@@ -178,7 +180,8 @@ TEST(InterpreterTest, ModulePrivateExportsAreHidden) {
         "let pub visible = 2;\n");
 
     std::ostringstream out;
-    Session session(out);
+    auto session_ptr = chirp::interpreter::createSession(out);
+    auto& session = *session_ptr;
 
     EXPECT_THROW(session.execute_source(
         "let m = `import(\"./mod\");\n"
@@ -197,7 +200,8 @@ TEST(InterpreterTest, ModuleImportCycleIsDetected) {
         "let pub value = 2;\n");
 
     std::ostringstream out;
-    Session session(out);
+    auto session_ptr = chirp::interpreter::createSession(out);
+    auto& session = *session_ptr;
 
     EXPECT_THROW(session.execute_source(
         "let a = `import(\"./a\");\n",
@@ -210,7 +214,8 @@ TEST(InterpreterTest, ModuleFailureIsCached) {
     write_file(broken, "missing;\n");
 
     std::ostringstream out;
-    Session session(out);
+    auto session_ptr = chirp::interpreter::createSession(out);
+    auto& session = *session_ptr;
 
     EXPECT_THROW(session.execute_source(
         "let broken = `import(\"./broken\");\n",
@@ -231,7 +236,8 @@ TEST(InterpreterTest, StdImportsUseConfiguredChirpRoot) {
         "let pub answer = private + 2;\n");
 
     std::ostringstream out;
-    Session session(out);
+    auto session_ptr = chirp::interpreter::createSession(out);
+    auto& session = *session_ptr;
     session.set_chirp_root(temp.path.string());
 
     EXPECT_NO_THROW(session.execute_source(
@@ -242,7 +248,8 @@ TEST(InterpreterTest, StdImportsUseConfiguredChirpRoot) {
 
 TEST(InterpreterTest, NonStdLogicalImportsAreRejectedInV1) {
     std::ostringstream out;
-    Session session(out);
+    auto session_ptr = chirp::interpreter::createSession(out);
+    auto& session = *session_ptr;
 
     EXPECT_THROW(session.execute_source(
         "let sample = `import(\"mylib/sample\");\n",

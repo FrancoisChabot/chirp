@@ -1,4 +1,5 @@
 #include "chirp/interpreter.h"
+#include "interpreter_internal.h"
 #include "chirp/bigint.h"
 #include "chirp/frontend.h"
 
@@ -221,7 +222,7 @@ BigInt parse_negated_integer_literal(std::string_view text, const token& diag) {
 
 class Evaluator : public ASTVisitor, public StmtVisitor {
 public:
-    SessionExpectations expectations;
+    backend::SessionExpectations expectations;
 
     explicit Evaluator(std::ostream& out, bool testing_enabled = false)
         : out_(out), testing_enabled_(testing_enabled) {
@@ -1880,7 +1881,7 @@ private:
             entry.value = Value::make_module(identity, std::move(exports));
             entry.state = ModuleCacheEntry::State::Loaded;
             return entry.value;
-        } catch (const ScriptExit&) {
+        } catch (const backend::ScriptExit&) {
             module_cache_.erase(identity);
             throw;
         } catch (const std::exception& e) {
@@ -2070,7 +2071,7 @@ private:
                 if (code_big < BigInt(0) || code_big > BigInt(255)) {
                     fail(diag, "`exit expects an integer exit code between 0 and 255");
                 }
-                throw ScriptExit(static_cast<int>(code_big.to_int64()));
+                throw backend::ScriptExit(static_cast<int>(code_big.to_int64()));
             }
             case Value::HostFunction::Mint: {
                 if (!args.empty()) {
@@ -3736,7 +3737,24 @@ private:
 
 } // namespace
 
-class Session::Impl {
+class InterpreterSession : public backend::Session {
+    class Impl;
+    std::unique_ptr<Impl> impl_;
+
+public:
+    explicit InterpreterSession(std::ostream& out, bool testing_enabled = false);
+    ~InterpreterSession() override;
+
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override;
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) override;
+    void execute_source(std::string source, std::string label) override;
+    void execute_boot_source(std::string source, std::string label) override;
+    void set_chirp_root(std::string path) override;
+
+    backend::SessionExpectations getExpectations() const override;
+};
+
+class InterpreterSession::Impl {
     struct SourceUnit {
         std::string label;
         std::string source;
@@ -3750,7 +3768,7 @@ public:
         sources.clear();
     }
 
-    SessionExpectations getExpectations() const {
+    backend::SessionExpectations getExpectations() const {
         return evaluator.expectations;
     }
 
@@ -3780,7 +3798,7 @@ public:
             } else {
                 evaluator.execute(loaded->stmts, loaded->label);
             }
-        } catch (const ScriptExit&) {
+        } catch (const backend::ScriptExit&) {
             throw;
         } catch (const std::exception& e) {
             if (error_label.empty()) {
@@ -3799,38 +3817,35 @@ private:
     std::vector<std::unique_ptr<SourceUnit>> sources;
 };
 
-Session::Session(std::ostream& out, bool testing_enabled) : impl_(std::make_unique<Impl>(out, testing_enabled)) {}
-Session::~Session() = default;
-Session::Session(Session&&) noexcept = default;
-Session& Session::operator=(Session&&) noexcept = default;
+InterpreterSession::InterpreterSession(std::ostream& out, bool testing_enabled) : impl_(std::make_unique<Impl>(out, testing_enabled)) {}
+InterpreterSession::~InterpreterSession() = default;
 
-void Session::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
+void InterpreterSession::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
     impl_->execute(stmts);
 }
 
-void Session::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) {
+void InterpreterSession::execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) {
     impl_->execute(stmts, std::move(label));
 }
 
-void Session::execute_source(std::string source, std::string label) {
+void InterpreterSession::execute_source(std::string source, std::string label) {
     impl_->execute_source(std::move(source), std::move(label), false);
 }
 
-void Session::execute_boot_source(std::string source, std::string label) {
+void InterpreterSession::execute_boot_source(std::string source, std::string label) {
     impl_->execute_source(std::move(source), std::move(label), true);
 }
 
-void Session::set_chirp_root(std::string path) {
+void InterpreterSession::set_chirp_root(std::string path) {
     impl_->set_chirp_root(std::move(path));
 }
 
-SessionExpectations Session::getExpectations() const {
+backend::SessionExpectations InterpreterSession::getExpectations() const {
     return impl_->getExpectations();
 }
 
-void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::ostream& out) {
-    Session session(out);
-    session.execute(stmts);
+std::unique_ptr<backend::Session> createSession(std::ostream& out, bool testing_enabled) {
+    return std::make_unique<InterpreterSession>(out, testing_enabled);
 }
 
 } // namespace chirp::interpreter

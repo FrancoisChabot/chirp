@@ -222,13 +222,13 @@ std::vector<fs::path> findBootFiles(const fs::path& boot_dir) {
     return files;
 }
 
-void loadBoot(chirp::interpreter::Session& session, const fs::path& boot_dir) {
+void loadBoot(chirp::backend::Session& session, const fs::path& boot_dir) {
     for (const auto& file : findBootFiles(boot_dir)) {
         session.execute_boot_source(readFile(file), file.string());
     }
 }
 
-void loadConfiguredBoot(chirp::interpreter::Session& session, const Options& options) {
+void loadConfiguredBoot(chirp::backend::Session& session, const Options& options) {
     if (auto root_dir = findRootDir(options)) {
         session.set_chirp_root(root_dir->string());
         loadBoot(session, *root_dir / "boot");
@@ -250,11 +250,11 @@ bool runAstDump(const fs::path& path) {
 
 int runFile(const fs::path& path, const Options& options) {
     try {
-        chirp::interpreter::Session session(std::cout, options.test);
-        loadConfiguredBoot(session, options);
-        session.execute_source(readFile(path), path.string());
+        auto session = chirp::interpreter::createSession(std::cout, options.test);
+        loadConfiguredBoot(*session, options);
+        session->execute_source(readFile(path), path.string());
         return 0;
-    } catch (const chirp::interpreter::ScriptExit& e) {
+    } catch (const chirp::backend::ScriptExit& e) {
         return e.code();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
@@ -373,10 +373,10 @@ int runFileWithReport(const fs::path& path, const Options& options) {
     }
 
     try {
-        chirp::interpreter::Session session(std::cout, options.test);
+        auto session = chirp::interpreter::createSession(std::cout, options.test);
 
         try {
-            loadConfiguredBoot(session, options);
+            loadConfiguredBoot(*session, options);
         } catch (const std::exception& e) {
             report.outcome = "boot_failure";
             report.diagnostics.push_back({"boot", e.what(), ""});
@@ -414,8 +414,8 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
         if (parsed && report.diagnostics.empty()) {
             try {
-                session.execute(stmts, path.string());
-            } catch (const chirp::interpreter::ScriptExit& e) {
+                session->execute(stmts, path.string());
+            } catch (const chirp::backend::ScriptExit& e) {
                 report.outcome = "script_exit";
                 report.script_exit = e.code();
                 process_exit = e.code();
@@ -425,7 +425,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
                 process_exit = 1;
             }
 
-            auto dynamic_expectations = session.getExpectations();
+            auto dynamic_expectations = session->getExpectations();
             if (dynamic_expectations.has_expectations) {
                 report.expected_stdout = dynamic_expectations.expected_stdout;
                 report.expected_stderr = dynamic_expectations.expected_stderr;
@@ -450,8 +450,8 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
 bool runPrompt(const Options& options) {
     try {
-        chirp::interpreter::Session session(std::cout, options.test);
-        loadConfiguredBoot(session, options);
+        auto session = chirp::interpreter::createSession(std::cout, options.test);
+        loadConfiguredBoot(*session, options);
 
         std::string line;
         std::cout << "Chirp REPL (Experimental Syntax Stub)\n"
@@ -467,7 +467,7 @@ bool runPrompt(const Options& options) {
             if (line.empty()) continue;
 
             try {
-                session.execute_source(line, "<repl>");
+                session->execute_source(line, "<repl>");
             } catch (const std::exception& e) {
                 std::cerr << "Error: " << e.what() << "\n";
             }

@@ -1,11 +1,10 @@
 #pragma once
-
 #include <iosfwd>
 #include <memory>
 #include "chirp/backend.h"
 
-namespace chirp::interpreter {
+namespace chirp::vm {
 
 std::unique_ptr<chirp::backend::Session> createSession(std::ostream& out, bool testing_enabled = false);
 
-} // namespace chirp::interpreter
+} // namespace chirp::vm
