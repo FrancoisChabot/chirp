@@ -414,6 +414,12 @@ public:
         emitU32(static_cast<uint32_t>(expr.fields.size()));
         for (const auto& field : expr.fields) {
             emitStringIndex(std::string(field.name.lexeme));
+            if (field.type_bound) {
+                unit->emit(1);
+                emitU32(unit->addChildUnit(compileExpressionUnit(*field.type_bound)));
+            } else {
+                unit->emit(0);
+            }
             if (field.initializer) {
                 unit->emit(1);
                 emitU32(unit->addChildUnit(compileExpressionUnit(*field.initializer)));

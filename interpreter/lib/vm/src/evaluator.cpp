@@ -198,12 +198,52 @@ public:
         return call_state.run();
     }
 
+    static bool primitive_constraint_matches(const std::string& constraint_name, const Value& value) {
+        if (constraint_name == "int") return value.type == ValueType::Int;
+        if (constraint_name == "bool") return value.type == ValueType::Bool;
+        if (constraint_name == "string") return value.type == ValueType::String;
+        if (constraint_name == "char") return value.type == ValueType::Char;
+        if (constraint_name == "symbol") return value.type == ValueType::Symbol;
+        if (constraint_name == "any") return true;
+        return false;
+    }
+
+    Value enforceConstraint(Value constraint, Value value, const std::string& field_name) {
+        if (constraint.type == ValueType::Null) {
+            return value;
+        }
+
+        if (constraint.type == ValueType::Symbol) {
+            if (!primitive_constraint_matches(constraint.as_string, value)) {
+                throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
+            }
+            return value;
+        }
+
+        if (constraint.type == ValueType::StructType) {
+            if (value.type != ValueType::Struct) {
+                throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
+            }
+            if (value.as_struct_instance_type == constraint.as_struct_type) {
+                return value;
+            }
+            std::vector<CallArgument> args;
+            args.reserve(value.as_struct->size());
+            for (const auto& [name, field_value] : *value.as_struct) {
+                args.push_back(CallArgument{std::optional<std::string>(name), field_value});
+            }
+            return constructStruct(constraint.as_struct_type, args);
+        }
+
+        throw std::runtime_error("Struct field '" + field_name + "' has unsupported constraint");
+    }
+
     static std::vector<CallArgument> require_consistent_argument_style(const std::vector<CallArgument>& args) {
         reject_mixed_call_arguments(args);
         return args;
     }
 
-    Value constructStruct(const StructTypeDef& type_def, const std::vector<CallArgument>& args) {
+    Value constructStruct(const std::shared_ptr<StructTypeDef>& type_def, const std::vector<CallArgument>& args) {
         require_consistent_argument_style(args);
 
         bool has_named = false;
@@ -211,7 +251,7 @@ public:
             has_named = has_named || arg.name.has_value();
         }
 
-        if (!has_named && args.size() > type_def.fields.size()) {
+        if (!has_named && args.size() > type_def->fields.size()) {
             throw std::runtime_error("Too many positional arguments for struct constructor");
         }
 
@@ -226,14 +266,14 @@ public:
             }
         } else {
             for (size_t i = 0; i < args.size(); ++i) {
-                provided.emplace(type_def.fields[i].name, args[i].value);
+                provided.emplace(type_def->fields[i].name, args[i].value);
             }
         }
 
         auto instance = std::make_shared<std::unordered_map<std::string, Value>>();
         for (const auto& pair : provided) {
             bool found = false;
-            for (const auto& field : type_def.fields) {
+            for (const auto& field : type_def->fields) {
                 if (field.name == pair.first) {
                     found = true;
                     break;
@@ -244,19 +284,27 @@ public:
             }
         }
 
-        for (const auto& field : type_def.fields) {
+        for (const auto& field : type_def->fields) {
             auto provided_it = provided.find(field.name);
             if (provided_it != provided.end()) {
-                (*instance)[field.name] = provided_it->second;
+                Value field_value = provided_it->second;
+                if (field.constraint) {
+                    field_value = enforceConstraint(invokeClosure(*field.constraint), std::move(field_value), field.name);
+                }
+                (*instance)[field.name] = std::move(field_value);
                 continue;
             }
             if (field.default_value) {
-                (*instance)[field.name] = invokeClosure(*field.default_value);
+                Value field_value = invokeClosure(*field.default_value);
+                if (field.constraint) {
+                    field_value = enforceConstraint(invokeClosure(*field.constraint), std::move(field_value), field.name);
+                }
+                (*instance)[field.name] = std::move(field_value);
                 continue;
             }
             throw std::runtime_error("Missing required field: " + field.name);
         }
-        return Value::Struct(instance);
+        return Value::Struct(instance, type_def);
     }
 
     Value evalInstruction() {
@@ -384,7 +432,7 @@ public:
                     return (*callee.as_native)(args);
                 }
                 if (callee.type == ValueType::StructType) {
-                    return constructStruct(*callee.as_struct_type, args);
+                    return constructStruct(callee.as_struct_type, args);
                 }
                 if (callee.type != ValueType::Closure) {
                     throw std::runtime_error("Type error: target is not callable");
@@ -404,12 +452,21 @@ public:
                 struct_type->fields.reserve(field_count);
                 for (uint32_t i = 0; i < field_count; ++i) {
                     std::string name = unit->constant_strings.at(read32());
+                    bool has_constraint = read8() != 0;
+                    std::shared_ptr<Closure> constraint;
+                    if (has_constraint) {
+                        constraint = captureChildClosure(read32());
+                    }
                     bool has_default = read8() != 0;
                     std::shared_ptr<Closure> default_value;
                     if (has_default) {
                         default_value = captureChildClosure(read32());
                     }
-                    struct_type->fields.push_back(StructFieldSpec{std::move(name), std::move(default_value)});
+                    struct_type->fields.push_back(StructFieldSpec{
+                        std::move(name),
+                        std::move(constraint),
+                        std::move(default_value)
+                    });
                 }
                 return Value::StructType(std::move(struct_type));
             }

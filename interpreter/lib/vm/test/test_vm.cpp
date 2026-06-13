@@ -98,3 +98,33 @@ TEST(VmTest, StructDuplicateNamedFieldIsRejected) {
 TEST(VmTest, AnonymousStructDuplicateFieldIsRejected) {
     EXPECT_THROW(run_vm("let p = {x=1, x=2}; p.x;\n"), std::runtime_error);
 }
+
+TEST(VmTest, PrimitiveStructFieldConstraintIsEnforced) {
+    EXPECT_EQ(run_vm("let Point = struct { x: int, y: int }; let p = Point(x=1, y=2); p.x + p.y;\n"), "3\n");
+    EXPECT_THROW(run_vm("let Point = struct { x: int, y: int }; Point(x=true, y=2);\n"), std::runtime_error);
+}
+
+TEST(VmTest, NestedStructConstraintCoercesAnonymousLiteral) {
+    EXPECT_EQ(
+        run_vm("let Point = struct { x: int, y: int }; let Rect = struct { top_left: Point, bottom_right: Point }; "
+               "let r = Rect(top_left={x=1, y=2}, bottom_right={x=3, y=4}); r.top_left.y;\n"),
+        "2\n");
+}
+
+TEST(VmTest, NestedStructConstraintRejectsInvalidAnonymousLiteral) {
+    EXPECT_THROW(
+        run_vm("let Point = struct { x: int, y: int }; let Rect = struct { top_left: Point, bottom_right: Point }; "
+               "Rect(top_left={x=true, y=2}, bottom_right={x=3, y=4});\n"),
+        std::runtime_error);
+}
+
+TEST(VmTest, StructDefaultConstraintIsEnforced) {
+    EXPECT_THROW(run_vm("let Point = struct { x: int = true, y: int = 2 }; Point();\n"), std::runtime_error);
+}
+
+TEST(VmTest, IsStructTypeHostHookWorks) {
+    EXPECT_EQ(
+        run_vm("let is_struct_type = `import(\"types.is_struct_type\", \"__chirp_boot\"); let Point = struct { x: int, y: int }; "
+               "if (is_struct_type(Point)) 1 else 0;\n"),
+        "1\n");
+}

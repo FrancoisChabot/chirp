@@ -30,6 +30,7 @@ struct Value {
     std::shared_ptr<std::unordered_map<std::string, Value>> as_struct;
     std::shared_ptr<std::vector<Value>> as_array;
     std::shared_ptr<StructTypeDef> as_struct_type;
+    std::shared_ptr<StructTypeDef> as_struct_instance_type;
 
     Value() : type(ValueType::Null), as_int(0) {}
     explicit Value(int64_t v) : type(ValueType::Int), as_int(v) {}
@@ -39,7 +40,14 @@ struct Value {
     explicit Value(NativeFunc f) : type(ValueType::NativeFunc), as_native(std::make_shared<NativeFunc>(std::move(f))) {}
     static Value Char(uint32_t c) { Value v; v.type = ValueType::Char; v.as_int = c; return v; }
     static Value Symbol(std::string s) { Value v; v.type = ValueType::Symbol; v.as_string = std::move(s); return v; }
-    static Value Struct(std::shared_ptr<std::unordered_map<std::string, Value>> s) { Value v; v.type = ValueType::Struct; v.as_struct = std::move(s); return v; }
+    static Value Struct(std::shared_ptr<std::unordered_map<std::string, Value>> s,
+                        std::shared_ptr<StructTypeDef> type = nullptr) {
+        Value v;
+        v.type = ValueType::Struct;
+        v.as_struct = std::move(s);
+        v.as_struct_instance_type = std::move(type);
+        return v;
+    }
     static Value Array(std::shared_ptr<std::vector<Value>> a) { Value v; v.type = ValueType::Array; v.as_array = std::move(a); return v; }
     static Value StructType(std::shared_ptr<StructTypeDef> s) { Value v; v.type = ValueType::StructType; v.as_struct_type = std::move(s); return v; }
 
@@ -65,6 +73,7 @@ struct Closure {
 
 struct StructFieldSpec {
     std::string name;
+    std::shared_ptr<Closure> constraint;
     std::shared_ptr<Closure> default_value;
 };
 
