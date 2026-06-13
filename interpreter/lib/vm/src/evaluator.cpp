@@ -2,8 +2,10 @@
 
 #include "opcodes.h"
 
+#include <algorithm>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -58,6 +60,107 @@ public:
         return value;
     }
 
+    Value evalOperandAt(size_t start, size_t end) {
+        size_t saved_pc = pc;
+        pc = start;
+        Value result = evalOperand();
+        if (pc != end) {
+            throw std::runtime_error("Inline operand boundary mismatch");
+        }
+        pc = saved_pc;
+        return result;
+    }
+
+    static bool valueEquals(const Value& left, const Value& right) {
+        if (left.type != right.type) {
+            return false;
+        }
+
+        switch (left.type) {
+            case ValueType::Null:
+                return true;
+            case ValueType::Int:
+            case ValueType::Bool:
+            case ValueType::Char:
+                return left.as_int == right.as_int;
+            case ValueType::String:
+            case ValueType::Symbol:
+                return left.as_string == right.as_string;
+            case ValueType::StructType:
+                return left.as_struct_type == right.as_struct_type;
+            case ValueType::TypeValue:
+                return left.as_type_value == right.as_type_value;
+            case ValueType::Minted:
+                return left.as_type_value == right.as_type_value && left.as_id == right.as_id;
+            case ValueType::Trait:
+                return left.as_trait == right.as_trait;
+            case ValueType::Closure:
+                return left.as_closure == right.as_closure;
+            case ValueType::NativeFunc:
+                return left.as_native == right.as_native;
+            case ValueType::Signature:
+                return left.as_signature == right.as_signature;
+            case ValueType::EnumeratedSet:
+                if (left.as_set_elements->size() != right.as_set_elements->size()) {
+                    return false;
+                }
+                for (size_t i = 0; i < left.as_set_elements->size(); ++i) {
+                    if (!valueEquals(left.as_set_elements->at(i), right.as_set_elements->at(i))) {
+                        return false;
+                    }
+                }
+                return true;
+            case ValueType::Struct:
+                if (left.as_struct_instance_type != right.as_struct_instance_type ||
+                    left.as_struct->size() != right.as_struct->size()) {
+                    return false;
+                }
+                for (const auto& [name, value] : *left.as_struct) {
+                    auto it = right.as_struct->find(name);
+                    if (it == right.as_struct->end() || !valueEquals(value, it->second)) {
+                        return false;
+                    }
+                }
+                return true;
+            case ValueType::Array:
+                if (left.as_array->size() != right.as_array->size()) {
+                    return false;
+                }
+                for (size_t i = 0; i < left.as_array->size(); ++i) {
+                    if (!valueEquals(left.as_array->at(i), right.as_array->at(i))) {
+                        return false;
+                    }
+                }
+                return true;
+            case ValueType::ConstructedSet:
+                return left.as_constructed_set == right.as_constructed_set;
+            case ValueType::CompositeSet:
+                return left.as_composite_set == right.as_composite_set;
+        }
+        return false;
+    }
+
+    static bool isTruthy(const Value& value) {
+        if (value.type == ValueType::Bool || value.type == ValueType::Int) {
+            return value.as_int != 0;
+        }
+        return false;
+    }
+
+    Value typeOf(const Value& value) {
+        if (value.type == ValueType::Int) return globals.at("int");
+        if (value.type == ValueType::Bool) return globals.at("bool");
+        if (value.type == ValueType::String) return globals.at("string");
+        if (value.type == ValueType::Char) return globals.at("char");
+        if (value.type == ValueType::Symbol) return globals.at("symbol");
+        if (value.type == ValueType::Struct && value.as_struct_instance_type) return Value::StructType(value.as_struct_instance_type);
+        if (value.type == ValueType::StructType || value.type == ValueType::TypeValue) return globals.at("type");
+        if (value.type == ValueType::Closure || value.type == ValueType::NativeFunc) return globals.at("lambda");
+        if (value.type == ValueType::Trait) return globals.at("trait");
+        if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
+        return Value::Symbol("unknown");
+    }
+
     Value evalOperand() {
         OperandType type = static_cast<OperandType>(read8());
         switch (type) {
@@ -71,6 +174,8 @@ public:
                 return Value::Symbol(unit->constant_strings.at(read32()));
             case OperandType::ImmNull:
                 return Value();
+            case OperandType::ImmBool:
+                return Value(read8() != 0);
             case OperandType::Inline:
                 return evalInstruction();
             case OperandType::StackLocal:
@@ -198,14 +303,144 @@ public:
         return call_state.run();
     }
 
-    static bool primitive_constraint_matches(const std::string& constraint_name, const Value& value) {
-        if (constraint_name == "int") return value.type == ValueType::Int;
-        if (constraint_name == "bool") return value.type == ValueType::Bool;
-        if (constraint_name == "string") return value.type == ValueType::String;
-        if (constraint_name == "char") return value.type == ValueType::Char;
-        if (constraint_name == "symbol") return value.type == ValueType::Symbol;
-        if (constraint_name == "any") return true;
+    Value invokeValue(const Value& callee, const std::vector<CallArgument>& args) {
+        if (callee.type == ValueType::NativeFunc) {
+            return (*callee.as_native)(args);
+        }
+        if (callee.type == ValueType::StructType) {
+            return constructStruct(callee.as_struct_type, args);
+        }
+        if (callee.type != ValueType::Closure) {
+            throw std::runtime_error("Type error: target is not callable");
+        }
+
+        std::vector<Value> lowered_args = lower_closure_arguments(*callee.as_closure, args);
+        return invokeClosure(*callee.as_closure, std::move(lowered_args));
+    }
+
+    static bool primitive_constraint_matches(const std::shared_ptr<TypeValueDef>& constraint_type, const Value& value) {
+        if (!constraint_type) {
+            return false;
+        }
+        if (constraint_type->kind != TypeValueDef::Kind::Primitive) {
+            return false;
+        }
+        if (constraint_type->name == "int") return value.type == ValueType::Int;
+        if (constraint_type->name == "bool") return value.type == ValueType::Bool;
+        if (constraint_type->name == "string") return value.type == ValueType::String;
+        if (constraint_type->name == "char") return value.type == ValueType::Char;
+        if (constraint_type->name == "symbol") return value.type == ValueType::Symbol;
+        if (constraint_type->name == "any") return true;
         return false;
+    }
+
+    static void appendUnique(std::vector<Value>& values, const Value& candidate) {
+        auto found = std::find_if(values.begin(), values.end(), [&](const Value& existing) {
+            return valueEquals(existing, candidate);
+        });
+        if (found == values.end()) {
+            values.push_back(candidate);
+        }
+    }
+
+    std::vector<Value> finiteElements(const Value& set) {
+        if (set.type == ValueType::EnumeratedSet) {
+            std::vector<Value> elements;
+            for (const auto& value : *set.as_set_elements) {
+                appendUnique(elements, value);
+            }
+            return elements;
+        }
+
+        if (set.type == ValueType::Array) {
+            return *set.as_array;
+        }
+
+        if (set.type == ValueType::TypeValue &&
+            set.as_type_value &&
+            set.as_type_value->kind == TypeValueDef::Kind::Finite) {
+            std::vector<Value> elements;
+            for (uint64_t i = 0; i < set.as_type_value->finite_count; ++i) {
+                elements.push_back(Value::Minted(set.as_type_value, i));
+            }
+            return elements;
+        }
+
+        if (set.type == ValueType::CompositeSet) {
+            std::vector<Value> left = finiteElements(*set.as_composite_set->left);
+            std::vector<Value> right = finiteElements(*set.as_composite_set->right);
+            if (set.as_composite_set->op == CompositeSetDef::Op::Union) {
+                for (const auto& value : right) {
+                    appendUnique(left, value);
+                }
+                return left;
+            }
+
+            std::vector<Value> result;
+            for (const auto& value : left) {
+                if (isTruthy(belongsTo(*set.as_composite_set->right, value))) {
+                    appendUnique(result, value);
+                }
+            }
+            return result;
+        }
+
+        if (set.type == ValueType::ConstructedSet) {
+            if (!set.as_constructed_set->bound) {
+                throw std::runtime_error("Cannot materialize unbounded constructed set");
+            }
+            Value bound = invokeClosure(*set.as_constructed_set->bound);
+            std::vector<Value> candidates = finiteElements(bound);
+            std::vector<Value> result;
+            for (const auto& candidate : candidates) {
+                if (isTruthy(belongsTo(set, candidate))) {
+                    appendUnique(result, candidate);
+                }
+            }
+            return result;
+        }
+
+        throw std::runtime_error("Set is not finitely enumerable");
+    }
+
+    Value belongsTo(const Value& set, const Value& value) {
+        switch (set.type) {
+            case ValueType::TypeValue:
+                return Value(valueEquals(typeOf(value), set));
+            case ValueType::StructType:
+                return Value(value.type == ValueType::Struct && value.as_struct_instance_type == set.as_struct_type);
+            case ValueType::EnumeratedSet: {
+                for (const auto& element : *set.as_set_elements) {
+                    if (valueEquals(element, value)) {
+                        return Value(true);
+                    }
+                }
+                return Value(false);
+            }
+            case ValueType::ConstructedSet: {
+                if (set.as_constructed_set->bound) {
+                    Value in_bound = belongsTo(invokeClosure(*set.as_constructed_set->bound), value);
+                    if (!isTruthy(in_bound)) {
+                        return Value(false);
+                    }
+                }
+                Value predicate_result = invokeClosure(*set.as_constructed_set->predicate, {value});
+                if (predicate_result.type != ValueType::Bool) {
+                    throw std::runtime_error("Constructed set predicate must evaluate to Bool");
+                }
+                return predicate_result;
+            }
+            case ValueType::CompositeSet: {
+                Value left = belongsTo(*set.as_composite_set->left, value);
+                Value right = belongsTo(*set.as_composite_set->right, value);
+                if (set.as_composite_set->op == CompositeSetDef::Op::Union) {
+                    return Value(isTruthy(left) || isTruthy(right));
+                }
+                return Value(isTruthy(left) && isTruthy(right));
+            }
+            default:
+                throw std::runtime_error("Expected set operand");
+        }
     }
 
     Value enforceConstraint(Value constraint, Value value, const std::string& field_name) {
@@ -213,8 +448,9 @@ public:
             return value;
         }
 
-        if (constraint.type == ValueType::Symbol) {
-            if (!primitive_constraint_matches(constraint.as_string, value)) {
+        if (constraint.type == ValueType::TypeValue) {
+            if (!primitive_constraint_matches(constraint.as_type_value, value) &&
+                !isTruthy(belongsTo(constraint, value))) {
                 throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
             }
             return value;
@@ -353,6 +589,11 @@ public:
                 }
                 return target.as_array->at(static_cast<size_t>(index.as_int));
             }
+            case Opcode::Contains: {
+                Value value = evalOperand();
+                Value set = evalOperand();
+                return belongsTo(set, value);
+            }
             case Opcode::BinaryMath: {
                 BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
                 Value left = evalOperand();
@@ -406,12 +647,7 @@ public:
                 Value cond = evalOperand();
                 uint32_t true_len = read32();
 
-                bool is_true = false;
-                if (cond.type == ValueType::Bool || cond.type == ValueType::Int) {
-                    is_true = cond.as_int != 0;
-                }
-
-                if (is_true) {
+                if (isTruthy(cond)) {
                     Value result = evalOperand();
                     pc += read32();
                     return result;
@@ -427,24 +663,30 @@ public:
             case Opcode::Call: {
                 Value callee = evalOperand();
                 std::vector<CallArgument> args = readCallArguments();
-
-                if (callee.type == ValueType::NativeFunc) {
-                    return (*callee.as_native)(args);
-                }
-                if (callee.type == ValueType::StructType) {
-                    return constructStruct(callee.as_struct_type, args);
-                }
-                if (callee.type != ValueType::Closure) {
-                    throw std::runtime_error("Type error: target is not callable");
-                }
-
-                std::vector<Value> lowered_args = lower_closure_arguments(*callee.as_closure, args);
-                return invokeClosure(*callee.as_closure, std::move(lowered_args));
+                return invokeValue(callee, args);
             }
             case Opcode::Return: {
                 Value result = evalOperand();
                 pc = unit->bytecode.size();
                 return result;
+            }
+            case Opcode::Union: {
+                Value left = evalOperand();
+                Value right = evalOperand();
+                return Value::CompositeSet(std::make_shared<CompositeSetDef>(CompositeSetDef{
+                    std::make_shared<Value>(std::move(left)),
+                    std::make_shared<Value>(std::move(right)),
+                    CompositeSetDef::Op::Union,
+                }));
+            }
+            case Opcode::Intersect: {
+                Value left = evalOperand();
+                Value right = evalOperand();
+                return Value::CompositeSet(std::make_shared<CompositeSetDef>(CompositeSetDef{
+                    std::make_shared<Value>(std::move(left)),
+                    std::make_shared<Value>(std::move(right)),
+                    CompositeSetDef::Op::Intersection,
+                }));
             }
             case Opcode::MakeStructDef: {
                 uint32_t field_count = read32();
@@ -470,6 +712,49 @@ public:
                 }
                 return Value::StructType(std::move(struct_type));
             }
+            case Opcode::MakeEnumSet: {
+                uint32_t element_count = read32();
+                auto elements = std::make_shared<std::vector<Value>>();
+                elements->reserve(element_count);
+                for (uint32_t i = 0; i < element_count; ++i) {
+                    elements->push_back(evalOperand());
+                }
+                return Value::EnumeratedSet(std::move(elements));
+            }
+            case Opcode::MakeConstructedSet: {
+                bool has_bound = read8() != 0;
+                std::shared_ptr<Closure> bound;
+                if (has_bound) {
+                    bound = captureChildClosure(read32());
+                }
+                std::shared_ptr<Closure> predicate = captureChildClosure(read32());
+                return Value::ConstructedSet(std::make_shared<ConstructedSetDef>(ConstructedSetDef{
+                    std::move(bound),
+                    std::move(predicate),
+                }));
+            }
+            case Opcode::MakeSignature: {
+                uint32_t parameter_count = read32();
+                auto signature = std::make_shared<SignatureDef>();
+                signature->parameters.reserve(parameter_count);
+                for (uint32_t i = 0; i < parameter_count; ++i) {
+                    std::string name = unit->constant_strings.at(read32());
+                    bool has_constraint = read8() != 0;
+                    std::shared_ptr<Closure> constraint;
+                    if (has_constraint) {
+                        constraint = captureChildClosure(read32());
+                    }
+                    signature->parameters.push_back(SignatureParameterSpec{
+                        std::move(name),
+                        std::move(constraint),
+                    });
+                }
+                bool has_return_bound = read8() != 0;
+                if (has_return_bound) {
+                    signature->return_bound = captureChildClosure(read32());
+                }
+                return Value::Signature(std::move(signature));
+            }
             case Opcode::MakeAnonStruct: {
                 uint32_t field_count = read32();
                 auto value = std::make_shared<std::unordered_map<std::string, Value>>();
@@ -481,6 +766,19 @@ public:
                     (*value)[name] = evalOperand();
                 }
                 return Value::Struct(std::move(value));
+            }
+            case Opcode::ForEach: {
+                Value iterable = evalOperand();
+                uint32_t slot = read32();
+                uint32_t body_len = read32();
+                size_t body_start = pc;
+                size_t body_end = body_start + body_len;
+                for (const auto& value : finiteElements(iterable)) {
+                    locals.at(slot) = value;
+                    evalOperandAt(body_start, body_end);
+                }
+                pc = body_end;
+                return Value();
             }
             case Opcode::Let: {
                 OperandType dest_type = static_cast<OperandType>(read8());
@@ -502,6 +800,35 @@ public:
                         throw std::runtime_error("Let instruction requires a local or global destination");
                 }
             }
+            case Opcode::Assign: {
+                OperandType dest_type = static_cast<OperandType>(read8());
+
+                switch (dest_type) {
+                    case OperandType::StackLocal: {
+                        uint32_t slot = read32();
+                        Value value = evalOperand();
+                        locals.at(slot) = value;
+                        return value;
+                    }
+                    case OperandType::Capture: {
+                        if (captures == nullptr) {
+                            throw std::runtime_error("Assignment to capture with no closure environment");
+                        }
+                        uint32_t slot = read32();
+                        Value value = evalOperand();
+                        const_cast<std::vector<Value>*>(captures)->at(slot) = value;
+                        return value;
+                    }
+                    case OperandType::Identifier: {
+                        std::string name = unit->constant_strings.at(read32());
+                        Value value = evalOperand();
+                        globals[name] = value;
+                        return value;
+                    }
+                    default:
+                        throw std::runtime_error("Assign instruction requires a local, capture, or global destination");
+                }
+            }
             default:
                 throw std::runtime_error("Unsupported instruction: " + std::to_string(static_cast<int>(op)));
         }
@@ -521,6 +848,24 @@ public:
 Value Evaluator::evaluate(std::shared_ptr<ProgramUnit> unit, std::unordered_map<std::string, Value>& globals, std::ostream& out) {
     ExecutionState state(std::move(unit), globals, out);
     return state.run();
+}
+
+Value Evaluator::construct_struct(std::shared_ptr<StructTypeDef> type,
+                                  const std::vector<CallArgument>& args,
+                                  std::unordered_map<std::string, Value>& globals,
+                                  std::ostream& out) {
+    auto empty_unit = std::make_shared<ProgramUnit>();
+    ExecutionState state(std::move(empty_unit), globals, out);
+    return state.constructStruct(std::move(type), args);
+}
+
+Value Evaluator::invoke_value(const Value& callee,
+                              const std::vector<CallArgument>& args,
+                              std::unordered_map<std::string, Value>& globals,
+                              std::ostream& out) {
+    auto empty_unit = std::make_shared<ProgramUnit>();
+    ExecutionState state(std::move(empty_unit), globals, out);
+    return state.invokeValue(callee, args);
 }
 
 } // namespace chirp::vm

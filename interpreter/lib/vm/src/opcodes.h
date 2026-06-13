@@ -21,6 +21,7 @@ enum class Opcode : uint8_t {
     // Memory & Reference
     GetField = 0x08,
     Index = 0x09,
+    Contains = 0x0A,
 
     // Consolidated Math & Logic
     BinaryMath = 0x0F,
@@ -36,6 +37,10 @@ enum class Opcode : uint8_t {
     If = 0x15,
     MakeStructDef = 0x16,
     MakeAnonStruct = 0x17,
+    MakeEnumSet = 0x18,
+    MakeConstructedSet = 0x19,
+    MakeSignature = 0x1A,
+    ForEach = 0x1B,
 
     Let = 0x1E,
     Assign = 0x1F
@@ -51,6 +56,7 @@ enum class OperandType : uint8_t {
     ImmSymbol   = 0x06,
     ImmNull     = 0x07,
     Capture     = 0x08,
+    ImmBool     = 0x09,
 };
 
 enum class BinaryMathOp : uint8_t {

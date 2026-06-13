@@ -128,3 +128,62 @@ TEST(VmTest, IsStructTypeHostHookWorks) {
                "if (is_struct_type(Point)) 1 else 0;\n"),
         "1\n");
 }
+
+TEST(VmTest, ConstructionArgsHostHookReturnsStructType) {
+    EXPECT_EQ(
+        run_vm("let construction_args = `import(\"types.construction_args\", \"__chirp_boot\"); "
+               "let is_struct_type = `import(\"types.is_struct_type\", \"__chirp_boot\"); "
+               "let Point = struct { x: int, y: int = 4 }; "
+               "if (is_struct_type(construction_args(Point))) 1 else 0;\n"),
+        "1\n");
+}
+
+TEST(VmTest, ConstructHostHookBuildsStructValue) {
+    EXPECT_EQ(
+        run_vm("let construct = `import(\"types.construct\", \"__chirp_boot\"); "
+               "let Point = struct { x: int, y: int = 4 }; "
+               "let p = construct(Point, {x=3}); p.x + p.y;\n"),
+        "7\n");
+}
+
+TEST(VmTest, ConstructHostHookRejectsInvalidBundle) {
+    EXPECT_THROW(
+        run_vm("let construct = `import(\"types.construct\", \"__chirp_boot\"); "
+               "let Point = struct { x: int, y: int }; "
+               "construct(Point, {x=true, y=2});\n"),
+        std::runtime_error);
+}
+
+TEST(VmTest, EnumeratedSetMembershipWorks) {
+    EXPECT_EQ(run_vm("if (2 ∈ {1, 2, 3}) 1 else 0;\n"), "1\n");
+}
+
+TEST(VmTest, ConstructedSetMembershipWorks) {
+    EXPECT_EQ(run_vm("if (2 ∈ {x: int | x < 3}) 1 else 0;\n"), "1\n");
+}
+
+TEST(VmTest, ForLoopCanMutateOuterLocal) {
+    EXPECT_EQ(run_vm("let mut sum = 0; for (x ∈ {1, 2, 3}) do { sum = sum + x; }; sum;\n"), "6\n");
+}
+
+TEST(VmTest, MintFiniteProducesTypedValues) {
+    EXPECT_EQ(
+        run_vm("let mint_finite = `import(\"types.mint_finite\", \"__chirp_boot\"); "
+               "let type_of = `import(\"types.type_of\", \"__chirp_boot\"); "
+               "let same = `import(\"values.same\", \"__chirp_boot\"); "
+               "let minted = mint_finite(2); "
+               "if (same(type_of(minted.values[0]), minted.type)) 1 else 0;\n"),
+        "1\n");
+}
+
+TEST(VmTest, TraitRegistryHooksWork) {
+    EXPECT_EQ(
+        run_vm("let make_trait = `import(\"traits.make\", \"__chirp_boot\"); "
+               "let implement = `import(\"traits.implement\", \"__chirp_boot\"); "
+               "let implements = `import(\"traits.implements\", \"__chirp_boot\"); "
+               "let type_of = `import(\"types.type_of\", \"__chirp_boot\"); "
+               "let MyTrait = make_trait(struct { invoke: () -> int }); "
+               "implement(trait=MyTrait, on=type_of(1), impl={invoke=() => 1}); "
+               "if (implements(MyTrait, type_of(1))) 1 else 0;\n"),
+        "1\n");
+}

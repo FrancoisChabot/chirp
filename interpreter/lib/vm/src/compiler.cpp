@@ -127,6 +127,11 @@ public:
         emitU32(unit->addStringConstant(text));
     }
 
+    void emitBoolOperand(bool value) {
+        unit->emit(static_cast<uint8_t>(OperandType::ImmBool));
+        unit->emit(value ? 1 : 0);
+    }
+
     std::shared_ptr<ProgramUnit> compileExpressionUnit(const frontend::Expr& expr) {
         auto expr_unit = std::make_shared<ProgramUnit>();
         CompilerContext expr_context(env->context);
@@ -137,6 +142,20 @@ public:
         expr_unit->num_locals = expr_context.next_local;
         expr_unit->captures = expr_context.captures;
         return expr_unit;
+    }
+
+    std::shared_ptr<ProgramUnit> compilePredicateUnit(const frontend::NamedBinding& binding, const frontend::Expr& expr) {
+        auto predicate_unit = std::make_shared<ProgramUnit>();
+        CompilerContext predicate_context(env->context);
+        CompilerEnvironment predicate_env(&predicate_context, env, false);
+        predicate_unit->parameter_names.push_back(std::string(binding.name.lexeme));
+        predicate_env.locals.emplace(std::string(binding.name.lexeme), predicate_context.allocateLocal());
+        CompilerVisitor predicate_visitor(predicate_unit, &predicate_env);
+        predicate_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
+        predicate_visitor.emitOperand(expr);
+        predicate_unit->num_locals = predicate_context.next_local;
+        predicate_unit->captures = predicate_context.captures;
+        return predicate_unit;
     }
 
     void emitResolvedVariableOperand(const std::string& name) {
@@ -218,7 +237,28 @@ public:
     }
 
     void visit(const frontend::AssignStmt& stmt) override {
-        throw std::runtime_error("AssignStmt is not supported in the VM yet");
+        auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.target.get());
+        if (ident == nullptr) {
+            throw std::runtime_error("AssignStmt only supports identifier targets in the VM");
+        }
+
+        unit->emit(encodeInstruction(Opcode::Assign, Domain::Generic));
+        VariableRef ref = env->resolve(std::string(ident->name));
+        switch (ref.kind) {
+            case VariableRef::Kind::Local:
+                unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                emitU32(ref.index);
+                break;
+            case VariableRef::Kind::Capture:
+                unit->emit(static_cast<uint8_t>(OperandType::Capture));
+                emitU32(ref.index);
+                break;
+            case VariableRef::Kind::Global:
+                unit->emit(static_cast<uint8_t>(OperandType::Identifier));
+                emitStringIndex(std::string(ident->name));
+                break;
+        }
+        emitOperand(*stmt.value);
     }
 
     void visit(const frontend::IfStmt& stmt) override {
@@ -257,6 +297,92 @@ public:
                     return;
                 }
                 throw std::runtime_error("Dot right-hand side must be an identifier");
+            case frontend::BinaryOp::And:
+                unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+                emitOperand(*expr.left);
+                {
+                    size_t true_len_offset = unit->bytecode.size();
+                    emitU32(0);
+                    size_t true_start = unit->bytecode.size();
+                    emitOperand(*expr.right);
+                    uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
+                    for (int i = 0; i < 4; ++i) {
+                        unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+                    }
+
+                    size_t false_len_offset = unit->bytecode.size();
+                    emitU32(0);
+                    size_t false_start = unit->bytecode.size();
+                    emitBoolOperand(false);
+                    uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
+                    for (int i = 0; i < 4; ++i) {
+                        unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
+                    }
+                }
+                return;
+            case frontend::BinaryOp::Or:
+                unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+                emitOperand(*expr.left);
+                {
+                    size_t true_len_offset = unit->bytecode.size();
+                    emitU32(0);
+                    size_t true_start = unit->bytecode.size();
+                    emitBoolOperand(true);
+                    uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
+                    for (int i = 0; i < 4; ++i) {
+                        unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+                    }
+
+                    size_t false_len_offset = unit->bytecode.size();
+                    emitU32(0);
+                    size_t false_start = unit->bytecode.size();
+                    emitOperand(*expr.right);
+                    uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
+                    for (int i = 0; i < 4; ++i) {
+                        unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
+                    }
+                }
+                return;
+            case frontend::BinaryOp::In:
+                unit->emit(encodeInstruction(Opcode::Contains, Domain::Generic));
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
+                return;
+            case frontend::BinaryOp::NotIn:
+                unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+                unit->emit(encodeInstruction(Opcode::Contains, Domain::Generic));
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
+                {
+                    size_t true_len_offset = unit->bytecode.size();
+                    emitU32(0);
+                    size_t true_start = unit->bytecode.size();
+                    emitBoolOperand(false);
+                    uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
+                    for (int i = 0; i < 4; ++i) {
+                        unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+                    }
+
+                    size_t false_len_offset = unit->bytecode.size();
+                    emitU32(0);
+                    size_t false_start = unit->bytecode.size();
+                    emitBoolOperand(true);
+                    uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
+                    for (int i = 0; i < 4; ++i) {
+                        unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
+                    }
+                }
+                return;
+            case frontend::BinaryOp::Union:
+                unit->emit(encodeInstruction(Opcode::Union, Domain::Generic));
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
+                return;
+            case frontend::BinaryOp::Intersection:
+                unit->emit(encodeInstruction(Opcode::Intersect, Domain::Generic));
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
+                return;
             case frontend::BinaryOp::Eq:
             case frontend::BinaryOp::Neq:
             case frontend::BinaryOp::Lt:
@@ -348,6 +474,29 @@ public:
     }
 
     void visit(const frontend::UnaryExpr& expr) override {
+        if (expr.op == frontend::UnaryOp::Not) {
+            unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+            emitOperand(*expr.right);
+
+            size_t true_len_offset = unit->bytecode.size();
+            emitU32(0);
+            size_t true_start = unit->bytecode.size();
+            emitBoolOperand(false);
+            uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+            }
+
+            size_t false_len_offset = unit->bytecode.size();
+            emitU32(0);
+            size_t false_start = unit->bytecode.size();
+            emitBoolOperand(true);
+            uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
+            }
+            return;
+        }
         throw std::runtime_error("UnaryExpr is not supported in the VM yet");
     }
 
@@ -372,11 +521,22 @@ public:
     }
 
     void visit(const frontend::EnumeratedSetExpr& expr) override {
-        throw std::runtime_error("EnumeratedSetExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::MakeEnumSet, Domain::Generic));
+        emitU32(static_cast<uint32_t>(expr.elements.size()));
+        for (const auto& element : expr.elements) {
+            emitOperand(*element);
+        }
     }
 
     void visit(const frontend::ConstructedSetExpr& expr) override {
-        throw std::runtime_error("ConstructedSetExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::MakeConstructedSet, Domain::Generic));
+        if (expr.binding.type_bound) {
+            unit->emit(1);
+            emitU32(unit->addChildUnit(compileExpressionUnit(*expr.binding.type_bound)));
+        } else {
+            unit->emit(0);
+        }
+        emitU32(unit->addChildUnit(compilePredicateUnit(expr.binding, *expr.condition)));
     }
 
     void visit(const frontend::WhileExpr& expr) override {
@@ -384,11 +544,50 @@ public:
     }
 
     void visit(const frontend::ForExpr& expr) override {
-        throw std::runtime_error("ForExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::ForEach, Domain::Generic));
+        emitOperand(*expr.iterable);
+        uint32_t slot = env->context->allocateLocal();
+        emitU32(slot);
+
+        CompilerEnvironment loop_env(env->context, env, false);
+        loop_env.locals.emplace(std::string(expr.iterator_binding.name.lexeme), slot);
+
+        CompilerEnvironment* saved_env = env;
+        env = &loop_env;
+        try {
+            size_t body_len_offset = unit->bytecode.size();
+            emitU32(0);
+            size_t body_start = unit->bytecode.size();
+            emitOperand(*expr.body);
+            uint32_t body_len = static_cast<uint32_t>(unit->bytecode.size() - body_start);
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[body_len_offset + i] = static_cast<uint8_t>((body_len >> (i * 8)) & 0xFF);
+            }
+            env = saved_env;
+        } catch (...) {
+            env = saved_env;
+            throw;
+        }
     }
 
     void visit(const frontend::SignatureExpr& expr) override {
-        throw std::runtime_error("SignatureExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::MakeSignature, Domain::Generic));
+        emitU32(static_cast<uint32_t>(expr.parameters.size()));
+        for (const auto& param : expr.parameters) {
+            emitStringIndex(std::string(param.name.lexeme));
+            if (param.type_bound) {
+                unit->emit(1);
+                emitU32(unit->addChildUnit(compileExpressionUnit(*param.type_bound)));
+            } else {
+                unit->emit(0);
+            }
+        }
+        if (expr.return_bound) {
+            unit->emit(1);
+            emitU32(unit->addChildUnit(compileExpressionUnit(*expr.return_bound)));
+        } else {
+            unit->emit(0);
+        }
     }
 
     void visit(const frontend::BlockExpr& expr) override {
