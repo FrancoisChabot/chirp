@@ -69,6 +69,7 @@ enum class OperandType : uint8_t {
     ImmU16 = 0x05,
     ImmU32 = 0x06,
     ImmU64 = 0x07,
+    ImmString = 0x08,
 };
 
 enum class BinaryMathOp : uint8_t {

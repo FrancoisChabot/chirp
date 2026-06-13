@@ -1,0 +1,1 @@
+let pub final `print = `import("io.print", "__chirp_boot");

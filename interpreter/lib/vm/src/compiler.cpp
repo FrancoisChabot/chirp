@@ -56,6 +56,18 @@ public:
                     unit->emit((idx >> (i * 8)) & 0xFF);
                 }
             }
+        } else if (auto intrinsic = dynamic_cast<const frontend::IntrinsicExpr*>(&expr)) {
+            unit->emit(static_cast<uint8_t>(OperandType::Identifier));
+            uint32_t idx = unit->addStringConstant(std::string(intrinsic->name));
+            for (int i = 0; i < 4; ++i) {
+                unit->emit((idx >> (i * 8)) & 0xFF);
+            }
+        } else if (auto str = dynamic_cast<const frontend::StringExpr*>(&expr)) {
+            unit->emit(static_cast<uint8_t>(OperandType::ImmString));
+            uint32_t idx = unit->addStringConstant(std::string(str->value));
+            for (int i = 0; i < 4; ++i) {
+                unit->emit((idx >> (i * 8)) & 0xFF);
+            }
         } else {
             unit->emit(static_cast<uint8_t>(OperandType::Inline));
             expr.accept(*this);
@@ -91,10 +103,10 @@ public:
         }
     }
 
-    void visit(const frontend::BreakStmt& stmt) override { throw std::runtime_error("BreakStmt not supported yet"); }
-    void visit(const frontend::AssignStmt& stmt) override { throw std::runtime_error("AssignStmt not supported yet"); }
-    void visit(const frontend::IfStmt& stmt) override { throw std::runtime_error("IfStmt not supported yet"); }
-    void visit(const frontend::DebugStmt& stmt) override { throw std::runtime_error("DebugStmt not supported yet"); }
+    void visit(const frontend::BreakStmt& stmt) override { throw std::runtime_error("Unsupported BreakStmt"); }
+    void visit(const frontend::AssignStmt& stmt) override { throw std::runtime_error("Unsupported AssignStmt"); }
+    void visit(const frontend::IfStmt& stmt) override { throw std::runtime_error("Unsupported IfStmt"); }
+    void visit(const frontend::DebugStmt& stmt) override { throw std::runtime_error("Unsupported DebugStmt"); }
 
     // ASTVisitor
     void visit(const frontend::BinaryExpr& expr) override {
@@ -204,31 +216,25 @@ public:
         throw std::runtime_error("Naked NumberExpr encountered where an instruction was expected.");
     }
     
-    void visit(const frontend::UnaryExpr& expr) override { throw std::runtime_error("Unsupported in simple math mode"); }
+    void visit(const frontend::UnaryExpr& expr) override { throw std::runtime_error("Unsupported UnaryExpr"); }
     void visit(const frontend::GroupingExpr& expr) override { expr.expression->accept(*this); }
-    void visit(const frontend::StringExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::CharExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::IntrinsicExpr& expr) override {
-        unit->emit(encodeInstruction(Opcode::Intrinsic, Domain::Generic));
-        uint32_t idx = unit->addStringConstant(std::string(expr.name));
-        for (int i = 0; i < 4; ++i) {
-            unit->emit((idx >> (i * 8)) & 0xFF);
-        }
-    }
-    void visit(const frontend::SymbolicConstantExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::EnumeratedSetExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::ConstructedSetExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::AnonymousStructLiteralExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::WhileExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::ForExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::SignatureExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::BlockExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::StructExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::IndexExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::ListExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::MatchExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::EnumExpr& expr) override { throw std::runtime_error("Unsupported"); }
-    void visit(const frontend::FStringExpr& expr) override { throw std::runtime_error("Unsupported"); }
+    void visit(const frontend::StringExpr& expr) override { throw std::runtime_error("Cannot use StringExpr as statement"); }
+    void visit(const frontend::CharExpr& expr) override { throw std::runtime_error("Unsupported CharExpr"); }
+    void visit(const frontend::IntrinsicExpr& expr) override { throw std::runtime_error("Cannot use IntrinsicExpr as statement"); }
+    void visit(const frontend::SymbolicConstantExpr& expr) override { throw std::runtime_error("Unsupported: SymbolicConstantExpr"); }
+    void visit(const frontend::EnumeratedSetExpr& expr) override { throw std::runtime_error("Unsupported: EnumeratedSetExpr"); }
+    void visit(const frontend::ConstructedSetExpr& expr) override { throw std::runtime_error("Unsupported: ConstructedSetExpr"); }
+    void visit(const frontend::AnonymousStructLiteralExpr& expr) override { throw std::runtime_error("Unsupported: AnonymousStructLiteralExpr"); }
+    void visit(const frontend::WhileExpr& expr) override { throw std::runtime_error("Unsupported: WhileExpr"); }
+    void visit(const frontend::ForExpr& expr) override { throw std::runtime_error("Unsupported: ForExpr"); }
+    void visit(const frontend::SignatureExpr& expr) override { throw std::runtime_error("Unsupported: SignatureExpr"); }
+    void visit(const frontend::BlockExpr& expr) override { throw std::runtime_error("Unsupported: BlockExpr"); }
+    void visit(const frontend::StructExpr& expr) override { throw std::runtime_error("Unsupported: StructExpr"); }
+    void visit(const frontend::IndexExpr& expr) override { throw std::runtime_error("Unsupported: IndexExpr"); }
+    void visit(const frontend::ListExpr& expr) override { throw std::runtime_error("Unsupported: ListExpr"); }
+    void visit(const frontend::MatchExpr& expr) override { throw std::runtime_error("Unsupported: MatchExpr"); }
+    void visit(const frontend::EnumExpr& expr) override { throw std::runtime_error("Unsupported: EnumExpr"); }
+    void visit(const frontend::FStringExpr& expr) override { throw std::runtime_error("Unsupported: FStringExpr"); }
 };
 
 std::shared_ptr<ProgramUnit> Compiler::compile(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {

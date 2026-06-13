@@ -14,7 +14,24 @@ class VmSession : public backend::Session {
     std::unordered_map<std::string, Value> globals_;
 
 public:
-    VmSession(std::ostream& out) : out_(out) {}
+    VmSession(std::ostream& out) : out_(out) {
+        auto import_fn = [this](const std::vector<Value>& args) -> Value {
+            if (args.size() > 0 && args[0].type == ValueType::String) {
+                if (args[0].as_string == "\"io.print\"") {
+                    return Value([this](const std::vector<Value>& print_args) -> Value {
+                        for (size_t i = 0; i < print_args.size(); ++i) {
+                            if (i > 0) out_ << " ";
+                            out_ << print_args[i].toString();
+                        }
+                        out_ << "\n";
+                        return Value();
+                    });
+                }
+            }
+            throw std::runtime_error("Unsupported native import in VM");
+        };
+        globals_["`import"] = Value(import_fn);
+    }
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override {
         Compiler compiler;

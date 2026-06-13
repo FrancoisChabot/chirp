@@ -50,6 +50,11 @@ public:
         switch (type) {
             case OperandType::ImmU64:
                 return Value(read64());
+            case OperandType::ImmString: {
+                uint32_t idx = read32();
+                std::string str = unit->constant_strings.at(idx);
+                return Value(str);
+            }
             case OperandType::Inline:
                 return evalInstruction();
             case OperandType::StackLocal:
@@ -142,11 +147,6 @@ public:
                 uint32_t idx = read32();
                 return Value(std::make_shared<Closure>(Closure{unit->child_units.at(idx)}));
             }
-            case Opcode::Intrinsic: {
-                uint32_t name_idx = read32();
-                std::string name = unit->constant_strings.at(name_idx);
-                return Value::Intrinsic(name);
-            }
             case Opcode::Call: {
                 Value callee = evalOperand();
                 uint8_t num_args = read8();
@@ -155,16 +155,8 @@ public:
                     args[i] = evalOperand();
                 }
 
-                if (callee.type == ValueType::Intrinsic) {
-                    if (callee.as_intrinsic == "`print") {
-                        for (int i = 0; i < num_args; ++i) {
-                            if (i > 0) out << " ";
-                            out << args[i].toString();
-                        }
-                        out << "\n";
-                        return Value();
-                    }
-                    throw std::runtime_error("Unknown intrinsic: " + callee.as_intrinsic);
+                if (callee.type == ValueType::NativeFunc) {
+                    return (*callee.as_native)(args);
                 }
 
                 if (callee.type != ValueType::Closure) {

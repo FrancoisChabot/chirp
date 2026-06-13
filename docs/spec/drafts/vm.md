@@ -61,7 +61,7 @@ The subroutines execute and write their results *directly* into their final rest
 
 ### Proposed Semantic Instructions (5-bit Opcode Space)
 
-5 bits is *tight*. And we're already bundling binops as instruction groups. But more per-lambda domains, the better. We're definitely going to have to benchmark that though (32-64 root instructions vs 4-8 domains).
+5 bits is *tight*. And we're already bundling binops as instruction groups. But the more per-lambda domains, the better. We're definitely going to have to benchmark that though (32-64 root instructions vs 4-8 domains).
 
 With 5 bits, we have room for exactly 32 base semantics. The VM uses a unified instruction set for both expressions and statements, but it explicitly distinguishes between the two evaluation contexts (expression vs block statement). To reflect this boundary, statement-only operations are pushed to the very end of the opcode range.
 
