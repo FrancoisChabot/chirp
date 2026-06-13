@@ -1,5 +1,6 @@
 #include "chirp/frontend.h"
 #include "chirp/interpreter.h"
+#include "chirp/vm.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -44,6 +45,8 @@ struct Options {
     bool ast_dump = false;
     bool format = false;
     bool test = false;
+    bool vm = false;
+    bool no_boot = false;
     std::optional<std::string> root_dir;
     std::optional<std::string> run_report;
     std::string script_path;
@@ -56,6 +59,8 @@ void printUsage(std::ostream& out) {
         << "  --ast-dump      Parse the input and print its AST.\n"
         << "  --format        Rewrite ASCII operator aliases to Unicode in-place.\n"
         << "  --test          Enable test harness and assertions (`expect` functions).\n"
+        << "  --vm            Use the experimental VM backend instead of the AST interpreter.\n"
+        << "  --no-boot       Skip loading the boot/ directory.\n"
         << "  --root-dir DIR  Load Chirp libraries from DIR, which must contain boot/ and std/.\n"
         << "  --run-report PATH\n"
         << "                  Write a structured JSON report for a script run.\n"
@@ -229,6 +234,7 @@ void loadBoot(chirp::backend::Session& session, const fs::path& boot_dir) {
 }
 
 void loadConfiguredBoot(chirp::backend::Session& session, const Options& options) {
+    if (options.no_boot) return;
     if (auto root_dir = findRootDir(options)) {
         session.set_chirp_root(root_dir->string());
         loadBoot(session, *root_dir / "boot");
@@ -250,7 +256,8 @@ bool runAstDump(const fs::path& path) {
 
 int runFile(const fs::path& path, const Options& options) {
     try {
-        auto session = chirp::interpreter::createSession(std::cout, options.test);
+        auto session = options.vm ? chirp::vm::createSession(std::cout, options.test) 
+                                  : chirp::interpreter::createSession(std::cout, options.test);
         loadConfiguredBoot(*session, options);
         session->execute_source(readFile(path), path.string());
         return 0;
@@ -373,7 +380,8 @@ int runFileWithReport(const fs::path& path, const Options& options) {
     }
 
     try {
-        auto session = chirp::interpreter::createSession(std::cout, options.test);
+        auto session = options.vm ? chirp::vm::createSession(std::cout, options.test) 
+                                  : chirp::interpreter::createSession(std::cout, options.test);
 
         try {
             loadConfiguredBoot(*session, options);
@@ -450,7 +458,8 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
 bool runPrompt(const Options& options) {
     try {
-        auto session = chirp::interpreter::createSession(std::cout, options.test);
+        auto session = options.vm ? chirp::vm::createSession(std::cout, options.test) 
+                                  : chirp::interpreter::createSession(std::cout, options.test);
         loadConfiguredBoot(*session, options);
 
         std::string line;
@@ -499,6 +508,14 @@ std::optional<Options> parseArgs(int argc, char* argv[]) {
         }
         if (arg == "--test") {
             options.test = true;
+            continue;
+        }
+        if (arg == "--vm") {
+            options.vm = true;
+            continue;
+        }
+        if (arg == "--no-boot") {
+            options.no_boot = true;
             continue;
         }
         if (arg == "--root-dir") {
