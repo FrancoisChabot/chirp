@@ -1,0 +1,11 @@
+let work(n, acc) =
+    if (n <= 0) acc
+    else do {
+        let a = acc + n;
+        let b = a + 3;
+        let c = b - 1;
+        let d = c + 5;
+        work(n - 1, d)
+    };
+
+`print(work(400, 0));

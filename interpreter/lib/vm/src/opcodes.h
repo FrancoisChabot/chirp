@@ -9,41 +9,31 @@ enum class Domain : uint8_t {
 };
 
 enum class Opcode : uint8_t {
-    // Top-Level / Variables
-    LoadGlobal = 0x01,
-    StoreGlobal = 0x02,
-    LoadLocal = 0x03,
-    StoreLocal = 0x04,
-
-    // Basic Types
-    ConstInt = 0x0A,
-    ConstString = 0x0B,
+    Eval = 0x00,
+    Block = 0x01,
+    Break = 0x02,
 
     // Functions & Calls
     Call = 0x0C,
     MakeLambda = 0x0D,
-    Return = 0x0F,
+    Return = 0x0E,
 
     // Memory & Reference
     GetField = 0x08,
-    Index = 0x0A,
+    Index = 0x09,
 
     // Consolidated Math & Logic
-    BinaryMath = 0x10,
-    UnaryMath = 0x11,
-    Compare = 0x12,
+    BinaryMath = 0x0F,
+    UnaryMath = 0x10,
+    Compare = 0x11,
 
     // Sets & Ranges
-    Union = 0x13,
-    Intersect = 0x14,
-    MakeRange = 0x15,
-    Block = 0x1A,
+    Union = 0x12,
+    Intersect = 0x13,
+    MakeRange = 0x14,
 
     // Control Flow
-    If = 0x1B,
-    Jump = 0x1C,
-    JumpIfFalse = 0x1C,
-    JumpIfTrue = 0x1D,
+    If = 0x15,
 
     Let = 0x1E,
     Assign = 0x1F
@@ -53,11 +43,12 @@ enum class OperandType : uint8_t {
     Inline      = 0x00,
     StackLocal  = 0x01,
     Identifier  = 0x02,
-    ImmInt      = 0x03,  // Replaces ImmU8/U16/U32/U64
+    ImmInt      = 0x03,
     ImmString   = 0x04,
     ImmChar     = 0x05,
     ImmSymbol   = 0x06,
-    // 0x07 is reserved/available
+    ImmNull     = 0x07,
+    Capture     = 0x08,
 };
 
 enum class BinaryMathOp : uint8_t {

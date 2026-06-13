@@ -1,20 +1,37 @@
 #include "evaluator.h"
+
 #include "opcodes.h"
-#include <stdexcept>
+
 #include <iostream>
+#include <stdexcept>
+#include <utility>
 
 namespace chirp::vm {
+
+namespace {
+
+struct BreakSignal {
+    Value value;
+};
 
 class ExecutionState {
 public:
     std::shared_ptr<ProgramUnit> unit;
     size_t pc = 0;
     std::vector<Value> locals;
+    const std::vector<Value>* captures = nullptr;
     std::unordered_map<std::string, Value>& globals;
     std::ostream& out;
 
-    ExecutionState(std::shared_ptr<ProgramUnit> u, std::unordered_map<std::string, Value>& g, std::ostream& o) 
-        : unit(u), locals(u->num_locals), globals(g), out(o) {}
+    ExecutionState(std::shared_ptr<ProgramUnit> current_unit,
+                   std::unordered_map<std::string, Value>& global_values,
+                   std::ostream& output,
+                   const std::vector<Value>* captured_values = nullptr)
+        : unit(std::move(current_unit)),
+          locals(unit->num_locals),
+          captures(captured_values),
+          globals(global_values),
+          out(output) {}
 
     uint8_t read8() {
         if (pc >= unit->bytecode.size()) {
@@ -23,26 +40,20 @@ public:
         return unit->bytecode[pc++];
     }
 
-    uint16_t read16() {
-        uint16_t val = read8();
-        val |= (static_cast<uint16_t>(read8()) << 8);
-        return val;
-    }
-
     uint32_t read32() {
-        uint32_t val = 0;
+        uint32_t value = 0;
         for (int i = 0; i < 4; ++i) {
-            val |= (static_cast<uint32_t>(read8()) << (i * 8));
+            value |= (static_cast<uint32_t>(read8()) << (i * 8));
         }
-        return val;
+        return value;
     }
 
     uint64_t read64() {
-        uint64_t val = 0;
+        uint64_t value = 0;
         for (int i = 0; i < 8; ++i) {
-            val |= (static_cast<uint64_t>(read8()) << (i * 8));
+            value |= (static_cast<uint64_t>(read8()) << (i * 8));
         }
-        return val;
+        return value;
     }
 
     Value evalOperand() {
@@ -50,29 +61,27 @@ public:
         switch (type) {
             case OperandType::ImmInt:
                 return Value(static_cast<int64_t>(read64()));
-            case OperandType::ImmString: {
-                uint32_t idx = read32();
-                std::string str = unit->constant_strings.at(idx);
-                return Value(str);
-            }
-            case OperandType::ImmChar: {
-                uint32_t val = read32();
-                return Value::Char(val);
-            }
-            case OperandType::ImmSymbol: {
-                uint32_t idx = read32();
-                std::string str = unit->constant_strings.at(idx);
-                return Value::Symbol(str);
-            }
+            case OperandType::ImmString:
+                return Value(unit->constant_strings.at(read32()));
+            case OperandType::ImmChar:
+                return Value::Char(read32());
+            case OperandType::ImmSymbol:
+                return Value::Symbol(unit->constant_strings.at(read32()));
+            case OperandType::ImmNull:
+                return Value();
             case OperandType::Inline:
                 return evalInstruction();
             case OperandType::StackLocal:
-                return locals.at(read8());
+                return locals.at(read32());
+            case OperandType::Capture:
+                if (captures == nullptr) {
+                    throw std::runtime_error("Capture read with no closure environment");
+                }
+                return captures->at(read32());
             case OperandType::Identifier: {
-                uint32_t idx = read32();
-                std::string name = unit->constant_strings.at(idx);
+                std::string name = unit->constant_strings.at(read32());
                 if (globals.contains(name)) {
-                    return globals[name];
+                    return globals.at(name);
                 }
                 throw std::runtime_error("Undefined global variable: " + name);
             }
@@ -82,11 +91,25 @@ public:
     }
 
     Value evalInstruction() {
-        uint8_t inst = read8();
-        Opcode op = decodeOpcode(inst);
-        Domain dom = decodeDomain(inst);
+        Opcode op = decodeOpcode(read8());
+        Domain dom = decodeDomain(unit->bytecode[pc - 1]);
 
         switch (op) {
+            case Opcode::Eval:
+                return evalOperand();
+            case Opcode::Block: {
+                uint32_t num_stmts = read32();
+                try {
+                    for (uint32_t i = 0; i < num_stmts; ++i) {
+                        evalInstruction();
+                    }
+                    return Value();
+                } catch (BreakSignal& signal) {
+                    return std::move(signal.value);
+                }
+            }
+            case Opcode::Break:
+                throw BreakSignal{evalOperand()};
             case Opcode::GetField: {
                 Value target = evalOperand();
                 Value field = evalOperand();
@@ -102,41 +125,41 @@ public:
             case Opcode::Index: {
                 Value target = evalOperand();
                 Value index = evalOperand();
-                if (target.type == ValueType::Array) {
-                    if (index.type != ValueType::Int) {
-                        throw std::runtime_error("Array index must be an integer");
-                    }
-                    if (index.as_int < 0 || index.as_int >= target.as_array->size()) {
-                        throw std::runtime_error("Array index out of bounds");
-                    }
-                    return target.as_array->at(index.as_int);
+                if (target.type != ValueType::Array) {
+                    throw std::runtime_error("Index operation on non-array type");
                 }
-                throw std::runtime_error("Index operation on non-array type");
+                if (index.type != ValueType::Int) {
+                    throw std::runtime_error("Array index must be an integer");
+                }
+                if (index.as_int < 0 || static_cast<size_t>(index.as_int) >= target.as_array->size()) {
+                    throw std::runtime_error("Array index out of bounds");
+                }
+                return target.as_array->at(static_cast<size_t>(index.as_int));
             }
             case Opcode::BinaryMath: {
                 BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
                 Value left = evalOperand();
                 Value right = evalOperand();
 
-                if (dom == Domain::Generic) {
-                    if (left.type != ValueType::Int || right.type != ValueType::Int) {
-                        throw std::runtime_error("Type error: expected integers for math");
-                    }
-                    switch (math_op) {
-                        case BinaryMathOp::Add: return Value(left.as_int + right.as_int);
-                        case BinaryMathOp::Sub: return Value(left.as_int - right.as_int);
-                        case BinaryMathOp::Mul: return Value(left.as_int * right.as_int);
-                        case BinaryMathOp::Div: 
-                            if (right.as_int == 0) throw std::runtime_error("Division by zero");
-                            return Value(left.as_int / right.as_int);
-                        case BinaryMathOp::Mod:
-                            if (right.as_int == 0) throw std::runtime_error("Modulo by zero");
-                            return Value(left.as_int % right.as_int);
-                        default:
-                            throw std::runtime_error("Unknown BinaryMathOp");
-                    }
-                } else {
-                    throw std::runtime_error("Specialized domains not implemented");
+                if (dom != Domain::Generic) {
+                    throw std::runtime_error("Specialized domains are not implemented");
+                }
+                if (left.type != ValueType::Int || right.type != ValueType::Int) {
+                    throw std::runtime_error("Type error: expected integers for math");
+                }
+
+                switch (math_op) {
+                    case BinaryMathOp::Add: return Value(left.as_int + right.as_int);
+                    case BinaryMathOp::Sub: return Value(left.as_int - right.as_int);
+                    case BinaryMathOp::Mul: return Value(left.as_int * right.as_int);
+                    case BinaryMathOp::Div:
+                        if (right.as_int == 0) throw std::runtime_error("Division by zero");
+                        return Value(left.as_int / right.as_int);
+                    case BinaryMathOp::Mod:
+                        if (right.as_int == 0) throw std::runtime_error("Modulo by zero");
+                        return Value(left.as_int % right.as_int);
+                    default:
+                        throw std::runtime_error("Unknown BinaryMathOp");
                 }
             }
             case Opcode::Compare: {
@@ -144,91 +167,113 @@ public:
                 Value left = evalOperand();
                 Value right = evalOperand();
 
-                if (dom == Domain::Generic) {
-                    if (left.type != ValueType::Int || right.type != ValueType::Int) {
-                        throw std::runtime_error("Type error: expected integers for comparison");
-                    }
-                    switch (cmp_op) {
-                        case CompareOp::Eq: return Value(static_cast<bool>(left.as_int == right.as_int));
-                        case CompareOp::Neq: return Value(static_cast<bool>(left.as_int != right.as_int));
-                        case CompareOp::Lt: return Value(static_cast<bool>(left.as_int < right.as_int));
-                        case CompareOp::Lte: return Value(static_cast<bool>(left.as_int <= right.as_int));
-                        case CompareOp::Gt: return Value(static_cast<bool>(left.as_int > right.as_int));
-                        case CompareOp::Gte: return Value(static_cast<bool>(left.as_int >= right.as_int));
-                        default: throw std::runtime_error("Unknown CompareOp");
-                    }
-                } else {
-                    throw std::runtime_error("Specialized domains not implemented");
+                if (dom != Domain::Generic) {
+                    throw std::runtime_error("Specialized domains are not implemented");
+                }
+                if (left.type != ValueType::Int || right.type != ValueType::Int) {
+                    throw std::runtime_error("Type error: expected integers for comparison");
+                }
+
+                switch (cmp_op) {
+                    case CompareOp::Eq: return Value(left.as_int == right.as_int);
+                    case CompareOp::Neq: return Value(left.as_int != right.as_int);
+                    case CompareOp::Lt: return Value(left.as_int < right.as_int);
+                    case CompareOp::Lte: return Value(left.as_int <= right.as_int);
+                    case CompareOp::Gt: return Value(left.as_int > right.as_int);
+                    case CompareOp::Gte: return Value(left.as_int >= right.as_int);
+                    default:
+                        throw std::runtime_error("Unknown CompareOp");
                 }
             }
             case Opcode::If: {
                 Value cond = evalOperand();
-                uint16_t true_len = read16();
-                
-                bool is_true = (cond.type == ValueType::Int && cond.as_int != 0);
+                uint32_t true_len = read32();
+
+                bool is_true = false;
+                if (cond.type == ValueType::Bool || cond.type == ValueType::Int) {
+                    is_true = cond.as_int != 0;
+                }
 
                 if (is_true) {
-                    Value res = evalOperand(); // evaluate true branch
-                    uint16_t false_len = read16(); // read false_len
-                    pc += false_len; // skip false branch
-                    return res;
-                } else {
-                    pc += true_len; // skip true branch
-                    uint16_t false_len = read16(); // read false_len
-                    return evalOperand(); // evaluate false branch
+                    Value result = evalOperand();
+                    pc += read32();
+                    return result;
                 }
+
+                pc += true_len;
+                [[maybe_unused]] uint32_t false_len = read32();
+                return evalOperand();
             }
             case Opcode::MakeLambda: {
-                uint32_t idx = read32();
-                return Value(std::make_shared<Closure>(Closure{unit->child_units.at(idx)}));
+                auto child = unit->child_units.at(read32());
+                std::vector<Value> captured_values;
+                captured_values.reserve(child->captures.size());
+                for (const auto& capture : child->captures) {
+                    switch (capture.kind) {
+                        case CaptureSourceKind::Local:
+                            captured_values.push_back(locals.at(capture.index));
+                            break;
+                        case CaptureSourceKind::Capture:
+                            if (captures == nullptr) {
+                                throw std::runtime_error("Nested capture read with no closure environment");
+                            }
+                            captured_values.push_back(captures->at(capture.index));
+                            break;
+                    }
+                }
+                return Value(std::make_shared<Closure>(Closure{std::move(child), std::move(captured_values)}));
             }
             case Opcode::Call: {
                 Value callee = evalOperand();
-                uint8_t num_args = read8();
+                uint32_t num_args = read32();
                 std::vector<Value> args(num_args);
-                for (int i = 0; i < num_args; ++i) {
+                for (uint32_t i = 0; i < num_args; ++i) {
                     args[i] = evalOperand();
                 }
 
                 if (callee.type == ValueType::NativeFunc) {
                     return (*callee.as_native)(args);
                 }
-
                 if (callee.type != ValueType::Closure) {
                     throw std::runtime_error("Type error: target is not callable");
                 }
 
-                ExecutionState call_state(callee.as_closure->unit, globals, out);
-                // For simplicity, we just pass args into the first N locals.
+                ExecutionState call_state(callee.as_closure->unit, globals, out, &callee.as_closure->captures);
                 for (size_t i = 0; i < args.size() && i < call_state.locals.size(); ++i) {
-                    call_state.locals[i] = args[i];
+                    call_state.locals[i] = std::move(args[i]);
                 }
                 return call_state.run();
             }
-            case Opcode::Block: {
-                uint8_t num_stmts = read8();
-                Value last;
-                for (int i = 0; i < num_stmts; ++i) {
-                    last = evalInstruction();
-                }
-                return last;
+            case Opcode::Return: {
+                Value result = evalOperand();
+                pc = unit->bytecode.size();
+                return result;
             }
             case Opcode::Let: {
-                OperandType ident_type = static_cast<OperandType>(read8());
-                if (ident_type != OperandType::Identifier) {
-                    throw std::runtime_error("Let instruction requires Identifier operand");
+                OperandType dest_type = static_cast<OperandType>(read8());
+
+                switch (dest_type) {
+                    case OperandType::StackLocal: {
+                        uint32_t slot = read32();
+                        Value value = evalOperand();
+                        locals.at(slot) = value;
+                        return value;
+                    }
+                    case OperandType::Identifier: {
+                        std::string name = unit->constant_strings.at(read32());
+                        Value value = evalOperand();
+                        globals[name] = value;
+                        return value;
+                    }
+                    default:
+                        throw std::runtime_error("Let instruction requires a local or global destination");
                 }
-                uint32_t idx = read32();
-                std::string name = unit->constant_strings.at(idx);
-                Value val = evalOperand();
-                globals[name] = val;
-                return val;
             }
             default:
                 throw std::runtime_error("Unsupported instruction: " + std::to_string(static_cast<int>(op)));
         }
     }
-    
+
     Value run() {
         Value last;
         while (pc < unit->bytecode.size()) {
@@ -238,8 +283,10 @@ public:
     }
 };
 
+} // namespace
+
 Value Evaluator::evaluate(std::shared_ptr<ProgramUnit> unit, std::unordered_map<std::string, Value>& globals, std::ostream& out) {
-    ExecutionState state(unit, globals, out);
+    ExecutionState state(std::move(unit), globals, out);
     return state.run();
 }
 

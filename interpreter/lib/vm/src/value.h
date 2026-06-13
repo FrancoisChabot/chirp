@@ -12,13 +12,9 @@ namespace chirp::vm {
 
 class ProgramUnit;
 
-struct Closure {
-    std::shared_ptr<ProgramUnit> unit;
-    // Captures can go here later
-};
-
 struct Value;
 using NativeFunc = std::function<Value(const std::vector<Value>&)>;
+struct Closure;
 
 enum class ValueType { Int, Closure, Null, String, NativeFunc, Char, Symbol, Bool, Struct, Array };
 
@@ -54,6 +50,11 @@ struct Value {
         if (type == ValueType::Array) return "<array>";
         return "null";
     }
+};
+
+struct Closure {
+    std::shared_ptr<ProgramUnit> unit;
+    std::vector<Value> captures;
 };
 
 } // namespace chirp::vm

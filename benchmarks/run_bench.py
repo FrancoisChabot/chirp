@@ -15,9 +15,23 @@ DEFAULT_CHIRP = REPO_ROOT / "build" / "interpreter" / "chirp"
 DEFAULT_CHIRP_ROOT = REPO_ROOT / "lib" / "chirp"
 
 
+def benchmark_names():
+    names = []
+    for child in sorted(BENCH_ROOT.iterdir()):
+        if not child.is_dir():
+            continue
+        if (child / "script.chirp").exists() and (child / "script.py").exists():
+            names.append(child.name)
+    return names
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run Chirp benchmarks against Python baselines.")
-    parser.add_argument("benchmark", help="Benchmark directory name under benchmarks/")
+    parser.add_argument(
+        "benchmark",
+        help='Benchmark directory name under benchmarks/, or "all" to run the full suite.',
+    )
+    parser.add_argument("--list", action="store_true", help="List available benchmarks and exit.")
     parser.add_argument("--runs", type=int, default=5, help="Cold process runs per implementation. Defaults to 5.")
     parser.add_argument("--chirp", default=os.environ.get("CHIRP_BIN", str(DEFAULT_CHIRP)), help="Path to chirp executable.")
     parser.add_argument("--python", default=sys.executable, help="Path to python executable.")
@@ -79,14 +93,10 @@ def print_summary(name, samples):
     )
 
 
-def main():
-    args = parse_args()
-    if args.runs < 1:
-        raise SystemExit("--runs must be at least 1")
-
-    bench_dir = BENCH_ROOT / args.benchmark
+def run_benchmark(benchmark, args):
+    bench_dir = BENCH_ROOT / benchmark
     if not bench_dir.is_dir():
-        raise SystemExit(f"Unknown benchmark: {args.benchmark}")
+        raise SystemExit(f"Unknown benchmark: {benchmark}")
 
     chirp_script = require_file(bench_dir / "script.chirp")
     python_script = require_file(bench_dir / "script.py")
@@ -97,7 +107,7 @@ def main():
     python_env = os.environ.copy()
     python_env["PYTHONDONTWRITEBYTECODE"] = "1"
 
-    print(f"benchmark: {args.benchmark}")
+    print(f"benchmark: {benchmark}")
     print(f"runs:      {args.runs}")
     print()
 
@@ -146,6 +156,48 @@ def main():
         print(f" ratio: {vm_median / python_median:.2f}x vm/python median")
     if vm_median > 0:
         print(f" ratio: {interpreter_median / vm_median:.2f}x interpreter/vm median")
+
+    return {
+        "benchmark": benchmark,
+        "interpreter_median": interpreter_median,
+        "vm_median": vm_median,
+        "python_median": python_median,
+    }
+
+
+def main():
+    args = parse_args()
+    names = benchmark_names()
+
+    if args.list:
+        for name in names:
+            print(name)
+        return
+
+    if args.runs < 1:
+        raise SystemExit("--runs must be at least 1")
+
+    if args.benchmark == "all":
+        results = []
+        for i, benchmark in enumerate(names):
+            if i > 0:
+                print()
+            results.append(run_benchmark(benchmark, args))
+
+        if len(results) > 1:
+            print()
+            print("suite summary:")
+            for result in results:
+                interp_vs_vm = result["interpreter_median"] / result["vm_median"] if result["vm_median"] > 0 else float("inf")
+                vm_vs_python = result["vm_median"] / result["python_median"] if result["python_median"] > 0 else float("inf")
+                print(
+                    f"{result['benchmark']:>12}: "
+                    f"vm/python {vm_vs_python:.2f}x  "
+                    f"interpreter/vm {interp_vs_vm:.2f}x"
+                )
+        return
+
+    run_benchmark(args.benchmark, args)
 
 
 if __name__ == "__main__":

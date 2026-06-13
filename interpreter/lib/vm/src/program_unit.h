@@ -7,6 +7,16 @@
 
 namespace chirp::vm {
 
+enum class CaptureSourceKind : uint8_t {
+    Local,
+    Capture,
+};
+
+struct CaptureSource {
+    CaptureSourceKind kind;
+    uint32_t index;
+};
+
 class ProgramUnit {
 public:
     ProgramUnit() = default;
@@ -16,6 +26,7 @@ public:
     
     std::vector<std::string> constant_strings;
     std::vector<std::shared_ptr<ProgramUnit>> child_units;
+    std::vector<CaptureSource> captures;
 
     void emit(uint8_t byte) {
         bytecode.push_back(byte);
