@@ -24,6 +24,10 @@ enum class Opcode : uint8_t {
     MakeLambda = 0x0D,
     Return = 0x0F,
 
+    // Memory & Reference
+    GetField = 0x08,
+    Index = 0x0A,
+
     // Consolidated Math & Logic
     BinaryMath = 0x10,
     UnaryMath = 0x11,

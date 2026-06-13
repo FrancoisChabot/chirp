@@ -47,7 +47,17 @@ public:
                 } else if (args[0].as_string == "\"types.mint_finite\"" || 
                            args[0].as_string == "\"types.mint_infinite\"" ||
                            args[0].as_string == "\"types.mint_host\"") {
-                    return Value(NativeFunc([](const std::vector<Value>&) -> Value { return Value::Symbol("minted_type"); }));
+                    return Value(NativeFunc([](const std::vector<Value>& func_args) -> Value {
+                        int n = (func_args.size() > 0 && func_args[0].type == ValueType::Int) ? func_args[0].as_int : 0;
+                        auto values_array = std::make_shared<std::vector<Value>>();
+                        for(int i=0; i<n; ++i) {
+                            values_array->push_back(Value::Symbol("minted_" + std::to_string(i)));
+                        }
+                        auto result_struct = std::make_shared<std::unordered_map<std::string, Value>>();
+                        (*result_struct)["type"] = Value::Symbol("minted_type");
+                        (*result_struct)["values"] = Value::Array(values_array);
+                        return Value::Struct(result_struct);
+                    }));
                 }
             }
             throw std::runtime_error("Unsupported native import in VM: " + args[0].toString());

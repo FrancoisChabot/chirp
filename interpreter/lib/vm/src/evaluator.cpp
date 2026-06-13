@@ -87,6 +87,32 @@ public:
         Domain dom = decodeDomain(inst);
 
         switch (op) {
+            case Opcode::GetField: {
+                Value target = evalOperand();
+                Value field = evalOperand();
+                if (target.type != ValueType::Struct) {
+                    throw std::runtime_error("GetField target must be a struct");
+                }
+                auto it = target.as_struct->find(field.as_string);
+                if (it == target.as_struct->end()) {
+                    throw std::runtime_error("Struct missing field: " + field.as_string);
+                }
+                return it->second;
+            }
+            case Opcode::Index: {
+                Value target = evalOperand();
+                Value index = evalOperand();
+                if (target.type == ValueType::Array) {
+                    if (index.type != ValueType::Int) {
+                        throw std::runtime_error("Array index must be an integer");
+                    }
+                    if (index.as_int < 0 || index.as_int >= target.as_array->size()) {
+                        throw std::runtime_error("Array index out of bounds");
+                    }
+                    return target.as_array->at(index.as_int);
+                }
+                throw std::runtime_error("Index operation on non-array type");
+            }
             case Opcode::BinaryMath: {
                 BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
                 Value left = evalOperand();

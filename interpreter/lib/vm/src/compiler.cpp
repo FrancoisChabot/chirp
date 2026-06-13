@@ -137,7 +137,23 @@ public:
                     case frontend::BinaryOp::Mod: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mod)); break;
                     default: break;
                 }
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
                 break;
+            case frontend::BinaryOp::Dot: {
+                unit->emit(encodeInstruction(Opcode::GetField, Domain::Generic));
+                emitOperand(*expr.left);
+                if (auto ident = dynamic_cast<const frontend::IdentifierExpr*>(expr.right.get())) {
+                    unit->emit(static_cast<uint8_t>(OperandType::ImmString));
+                    uint32_t idx = unit->addStringConstant(std::string(ident->name));
+                    for (int i = 0; i < 4; ++i) {
+                        unit->emit((idx >> (i * 8)) & 0xFF);
+                    }
+                } else {
+                    throw std::runtime_error("Dot right hand side must be an identifier");
+                }
+                break;
+            }
             case frontend::BinaryOp::Eq:
             case frontend::BinaryOp::Neq:
             case frontend::BinaryOp::Lt:
@@ -154,13 +170,12 @@ public:
                     case frontend::BinaryOp::Gte: unit->emit(static_cast<uint8_t>(CompareOp::Gte)); break;
                     default: break;
                 }
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
                 break;
             default:
                 throw std::runtime_error("Unsupported binary op in simple math mode");
         }
-
-        emitOperand(*expr.left);
-        emitOperand(*expr.right);
     }
 
     void visit(const frontend::IfExpr& expr) override {
@@ -248,7 +263,12 @@ public:
         }
     }
     void visit(const frontend::StructExpr& expr) override { throw std::runtime_error("Unsupported: StructExpr"); }
-    void visit(const frontend::IndexExpr& expr) override { throw std::runtime_error("Unsupported: IndexExpr"); }
+    void visit(const frontend::IndexExpr& expr) override {
+        unit->emit(encodeInstruction(Opcode::Index, Domain::Generic));
+        emitOperand(*expr.target);
+        if (expr.args.size() != 1) throw std::runtime_error("IndexExpr expects exactly 1 argument");
+        emitOperand(*expr.args[0].value);
+    }
     void visit(const frontend::ListExpr& expr) override { throw std::runtime_error("Unsupported: ListExpr"); }
     void visit(const frontend::MatchExpr& expr) override { throw std::runtime_error("Unsupported: MatchExpr"); }
     void visit(const frontend::EnumExpr& expr) override { throw std::runtime_error("Unsupported: EnumExpr"); }
