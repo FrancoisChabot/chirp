@@ -18,19 +18,41 @@ public:
         auto import_fn = [this](const std::vector<Value>& args) -> Value {
             if (args.size() > 0 && args[0].type == ValueType::String) {
                 if (args[0].as_string == "\"io.print\"") {
-                    return Value([this](const std::vector<Value>& print_args) -> Value {
+                    return Value(NativeFunc([this](const std::vector<Value>& print_args) -> Value {
                         for (size_t i = 0; i < print_args.size(); ++i) {
                             if (i > 0) out_ << " ";
                             out_ << print_args[i].toString();
                         }
                         out_ << "\n";
                         return Value();
-                    });
+                    }));
+                } else if (args[0].as_string == "\"system.register\"") {
+                    return Value(NativeFunc([](const std::vector<Value>&) -> Value { return Value(); }));
+                } else if (args[0].as_string == "\"values.same\"") {
+                    return Value(NativeFunc([](const std::vector<Value>& args) -> Value {
+                        if (args.size() == 2) {
+                            if (args[0].type == args[1].type && args[0].as_int == args[1].as_int && args[0].as_string == args[1].as_string) {
+                                return Value(true);
+                            }
+                        }
+                        return Value(false);
+                    }));
+                } else if (args[0].as_string == "\"types.type_of\"") {
+                    return Value(NativeFunc([](const std::vector<Value>& args) -> Value {
+                        if (args.size() > 0) {
+                            return Value::Symbol("type_" + std::to_string(static_cast<int>(args[0].type)));
+                        }
+                        return Value::Symbol("unknown");
+                    }));
+                } else if (args[0].as_string == "\"types.mint_finite\"" || 
+                           args[0].as_string == "\"types.mint_infinite\"" ||
+                           args[0].as_string == "\"types.mint_host\"") {
+                    return Value(NativeFunc([](const std::vector<Value>&) -> Value { return Value::Symbol("minted_type"); }));
                 }
             }
-            throw std::runtime_error("Unsupported native import in VM");
+            throw std::runtime_error("Unsupported native import in VM: " + args[0].toString());
         };
-        globals_["`import"] = Value(import_fn);
+        globals_["`import"] = Value(NativeFunc(import_fn));
     }
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override {

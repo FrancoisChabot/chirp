@@ -92,7 +92,7 @@ def main():
     python_script = require_file(bench_dir / "script.py")
 
     interpreter_cmd = [args.chirp, "--root-dir", args.root_dir, str(chirp_script)]
-    vm_cmd = [args.chirp, "--vm", "--root-dir", "lib/chirp_vm", str(chirp_script)]
+    vm_cmd = [args.chirp, "--vm", "--root-dir", args.root_dir, str(chirp_script)]
     python_cmd = [args.python, "-B", str(python_script)]
     python_env = os.environ.copy()
     python_env["PYTHONDONTWRITEBYTECODE"] = "1"

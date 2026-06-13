@@ -1,29 +1,27 @@
 #pragma once
-
 #include <cstdint>
 
 namespace chirp::vm {
 
-enum class Opcode : uint8_t {
-    // Control Flow & Scope
-    Block = 0x01,
-    Break = 0x02,
-    If = 0x03,
-    Loop = 0x04,
-    Match = 0x05,
+enum class Domain : uint8_t {
+    Generic = 0b000,
+    // Add specific domains later
+};
 
-    // Memory & Reference
-    Ref = 0x06,
-    Deref = 0x07,
-    GetField = 0x08,
-    SetField = 0x09,
-    Index = 0x0A,
-    SetIndex = 0x0B,
+enum class Opcode : uint8_t {
+    // Top-Level / Variables
+    LoadGlobal = 0x01,
+    StoreGlobal = 0x02,
+    LoadLocal = 0x03,
+    StoreLocal = 0x04,
+
+    // Basic Types
+    ConstInt = 0x0A,
+    ConstString = 0x0B,
 
     // Functions & Calls
     Call = 0x0C,
     MakeLambda = 0x0D,
-    Intrinsic = 0x0E,
     Return = 0x0F,
 
     // Consolidated Math & Logic
@@ -35,76 +33,47 @@ enum class Opcode : uint8_t {
     Union = 0x13,
     Intersect = 0x14,
     MakeRange = 0x15,
-    MakeConstructedSet = 0x16,
+    Block = 0x1A,
 
-    // Data Structures
-    MakeStructDef = 0x17,
-    MakeEnumDef = 0x18,
-    MakeList = 0x19,
-    MakeEnumeratedSet = 0x1A,
-    MakeAnonStruct = 0x1B,
+    // Control Flow
+    If = 0x1B,
+    Jump = 0x1C,
+    JumpIfFalse = 0x1C,
+    JumpIfTrue = 0x1D,
 
-    // Statements
     Let = 0x1E,
-    Assign = 0x1F,
-};
-
-enum class Domain : uint8_t {
-    Generic = 0b000,
-    D1 = 0b001,
-    D2 = 0b010,
-    D3 = 0b011,
-    D4 = 0b100,
-    D5 = 0b101,
-    D6 = 0b110,
-    LocalExt = 0b111,
+    Assign = 0x1F
 };
 
 enum class OperandType : uint8_t {
-    Inline = 0x00,
-    StackLocal = 0x01,
-    Identifier = 0x02,
-    Immediate = 0x03,
-    ImmU8 = 0x04,
-    ImmU16 = 0x05,
-    ImmU32 = 0x06,
-    ImmU64 = 0x07,
-    ImmString = 0x08,
+    Inline      = 0x00,
+    StackLocal  = 0x01,
+    Identifier  = 0x02,
+    ImmInt      = 0x03,  // Replaces ImmU8/U16/U32/U64
+    ImmString   = 0x04,
+    ImmChar     = 0x05,
+    ImmSymbol   = 0x06,
+    // 0x07 is reserved/available
 };
 
 enum class BinaryMathOp : uint8_t {
-    Add = 0x00,
-    Sub = 0x01,
-    Mul = 0x02,
-    Div = 0x03,
-    Mod = 0x04,
-};
-
-enum class UnaryMathOp : uint8_t {
-    Negate = 0x00,
-    Not = 0x01,
-    BitNot = 0x02,
+    Add = 0, Sub = 1, Mul = 2, Div = 3, Mod = 4
 };
 
 enum class CompareOp : uint8_t {
-    Eq = 0x00,
-    Neq = 0x01,
-    Lt = 0x02,
-    Lte = 0x03,
-    Gt = 0x04,
-    Gte = 0x05,
+    Eq = 0, Neq = 1, Lt = 2, Lte = 3, Gt = 4, Gte = 5
 };
 
-inline uint8_t encodeInstruction(Opcode op, Domain domain) {
-    return (static_cast<uint8_t>(op) << 3) | static_cast<uint8_t>(domain);
+inline uint8_t encodeInstruction(Opcode op, Domain dom) {
+    return (static_cast<uint8_t>(op) << 3) | static_cast<uint8_t>(dom);
 }
 
-inline Opcode decodeOpcode(uint8_t inst) {
-    return static_cast<Opcode>(inst >> 3);
+inline Opcode decodeOpcode(uint8_t instr) {
+    return static_cast<Opcode>(instr >> 3);
 }
 
-inline Domain decodeDomain(uint8_t inst) {
-    return static_cast<Domain>(inst & 0b111);
+inline Domain decodeDomain(uint8_t instr) {
+    return static_cast<Domain>(instr & 0b111);
 }
 
 } // namespace chirp::vm

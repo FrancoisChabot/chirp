@@ -48,12 +48,21 @@ public:
     Value evalOperand() {
         OperandType type = static_cast<OperandType>(read8());
         switch (type) {
-            case OperandType::ImmU64:
-                return Value(read64());
+            case OperandType::ImmInt:
+                return Value(static_cast<int64_t>(read64()));
             case OperandType::ImmString: {
                 uint32_t idx = read32();
                 std::string str = unit->constant_strings.at(idx);
                 return Value(str);
+            }
+            case OperandType::ImmChar: {
+                uint32_t val = read32();
+                return Value::Char(val);
+            }
+            case OperandType::ImmSymbol: {
+                uint32_t idx = read32();
+                std::string str = unit->constant_strings.at(idx);
+                return Value::Symbol(str);
             }
             case OperandType::Inline:
                 return evalInstruction();
@@ -114,12 +123,12 @@ public:
                         throw std::runtime_error("Type error: expected integers for comparison");
                     }
                     switch (cmp_op) {
-                        case CompareOp::Eq: return Value(left.as_int == right.as_int ? 1 : 0);
-                        case CompareOp::Neq: return Value(left.as_int != right.as_int ? 1 : 0);
-                        case CompareOp::Lt: return Value(left.as_int < right.as_int ? 1 : 0);
-                        case CompareOp::Lte: return Value(left.as_int <= right.as_int ? 1 : 0);
-                        case CompareOp::Gt: return Value(left.as_int > right.as_int ? 1 : 0);
-                        case CompareOp::Gte: return Value(left.as_int >= right.as_int ? 1 : 0);
+                        case CompareOp::Eq: return Value(static_cast<bool>(left.as_int == right.as_int));
+                        case CompareOp::Neq: return Value(static_cast<bool>(left.as_int != right.as_int));
+                        case CompareOp::Lt: return Value(static_cast<bool>(left.as_int < right.as_int));
+                        case CompareOp::Lte: return Value(static_cast<bool>(left.as_int <= right.as_int));
+                        case CompareOp::Gt: return Value(static_cast<bool>(left.as_int > right.as_int));
+                        case CompareOp::Gte: return Value(static_cast<bool>(left.as_int >= right.as_int));
                         default: throw std::runtime_error("Unknown CompareOp");
                     }
                 } else {
@@ -169,6 +178,14 @@ public:
                     call_state.locals[i] = args[i];
                 }
                 return call_state.run();
+            }
+            case Opcode::Block: {
+                uint8_t num_stmts = read8();
+                Value last;
+                for (int i = 0; i < num_stmts; ++i) {
+                    last = evalInstruction();
+                }
+                return last;
             }
             case Opcode::Let: {
                 OperandType ident_type = static_cast<OperandType>(read8());

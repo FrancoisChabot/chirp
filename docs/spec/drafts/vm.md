@@ -36,16 +36,16 @@ Operand structure is defined on a instruction-per-instruction basis. However, th
 Operand specicifications come in 2 or 3 bits variants. This is driven by the if instruction, which uses a 2-bits operand for the condition, and 3-bits for both branches, for a total of 8. 
 
 ```
-0x00 -> The operand is an inline expression, when comes time to evaluate the operand, it is read as an instruction.
-0x01 -> Stack-local: The operand is read as an index in the current stack frame. This includes arguments. 
-0x02 -> Identifier: The operand is an identifier lookup. The compiler will generate a perfect hash table per Program Unit, ensuring O(1) collision-free runtime resolution of global/module names without chaining overhead.
-0x03 -> Immediate value
+0x00 -> Inline expression. Evaluated dynamically as an instruction.
+0x01 -> Stack-local. Read as an index into the current stack frame.
+0x02 -> Identifier. Used for global/boot name resolution (index into string pool).
 
-// In the 3 bits variant
-0x04 -> immediate uint8
-0x05 -> immediate uint16
-0x06 -> immediate uint32
-0x07 -> immediate uint64
+// Immediate variants
+0x03 -> immediate integer (64-bit)
+0x04 -> immediate string (index into string pool)
+0x05 -> immediate char (32-bit codepoint)
+0x06 -> immediate symbol (index into string pool)
+0x07 -> Reserved
 ```
 
 #### Destination-Driven Evaluation (0x00 Inline Expressions)

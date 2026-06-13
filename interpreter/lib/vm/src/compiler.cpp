@@ -39,7 +39,7 @@ public:
 
     void emitOperand(const frontend::Expr& expr) {
         if (auto num = dynamic_cast<const frontend::NumberExpr*>(&expr)) {
-            unit->emit(static_cast<uint8_t>(OperandType::ImmU64));
+            unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
             uint64_t val = std::stoull(std::string(num->value));
             for (int i = 0; i < 8; ++i) {
                 unit->emit((val >> (i * 8)) & 0xFF);
@@ -65,6 +65,18 @@ public:
         } else if (auto str = dynamic_cast<const frontend::StringExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmString));
             uint32_t idx = unit->addStringConstant(std::string(str->value));
+            for (int i = 0; i < 4; ++i) {
+                unit->emit((idx >> (i * 8)) & 0xFF);
+            }
+        } else if (auto chr = dynamic_cast<const frontend::CharExpr*>(&expr)) {
+            unit->emit(static_cast<uint8_t>(OperandType::ImmChar));
+            uint32_t val = chr->value.length() >= 3 ? chr->value[1] : 0; // simple unescape
+            for (int i = 0; i < 4; ++i) {
+                unit->emit((val >> (i * 8)) & 0xFF);
+            }
+        } else if (auto sym = dynamic_cast<const frontend::SymbolicConstantExpr*>(&expr)) {
+            unit->emit(static_cast<uint8_t>(OperandType::ImmSymbol));
+            uint32_t idx = unit->addStringConstant(std::string(sym->value));
             for (int i = 0; i < 4; ++i) {
                 unit->emit((idx >> (i * 8)) & 0xFF);
             }
@@ -219,16 +231,22 @@ public:
     void visit(const frontend::UnaryExpr& expr) override { throw std::runtime_error("Unsupported UnaryExpr"); }
     void visit(const frontend::GroupingExpr& expr) override { expr.expression->accept(*this); }
     void visit(const frontend::StringExpr& expr) override { throw std::runtime_error("Cannot use StringExpr as statement"); }
-    void visit(const frontend::CharExpr& expr) override { throw std::runtime_error("Unsupported CharExpr"); }
+    void visit(const frontend::CharExpr& expr) override { throw std::runtime_error("Cannot use CharExpr as statement"); }
     void visit(const frontend::IntrinsicExpr& expr) override { throw std::runtime_error("Cannot use IntrinsicExpr as statement"); }
-    void visit(const frontend::SymbolicConstantExpr& expr) override { throw std::runtime_error("Unsupported: SymbolicConstantExpr"); }
+    void visit(const frontend::SymbolicConstantExpr& expr) override { throw std::runtime_error("Cannot use SymbolicConstantExpr as statement"); }
     void visit(const frontend::EnumeratedSetExpr& expr) override { throw std::runtime_error("Unsupported: EnumeratedSetExpr"); }
     void visit(const frontend::ConstructedSetExpr& expr) override { throw std::runtime_error("Unsupported: ConstructedSetExpr"); }
     void visit(const frontend::AnonymousStructLiteralExpr& expr) override { throw std::runtime_error("Unsupported: AnonymousStructLiteralExpr"); }
     void visit(const frontend::WhileExpr& expr) override { throw std::runtime_error("Unsupported: WhileExpr"); }
     void visit(const frontend::ForExpr& expr) override { throw std::runtime_error("Unsupported: ForExpr"); }
     void visit(const frontend::SignatureExpr& expr) override { throw std::runtime_error("Unsupported: SignatureExpr"); }
-    void visit(const frontend::BlockExpr& expr) override { throw std::runtime_error("Unsupported: BlockExpr"); }
+    void visit(const frontend::BlockExpr& expr) override { 
+        unit->emit(encodeInstruction(Opcode::Block, Domain::Generic));
+        unit->emit(static_cast<uint8_t>(expr.statements.size()));
+        for (const auto& stmt : expr.statements) {
+            stmt->accept(*this);
+        }
+    }
     void visit(const frontend::StructExpr& expr) override { throw std::runtime_error("Unsupported: StructExpr"); }
     void visit(const frontend::IndexExpr& expr) override { throw std::runtime_error("Unsupported: IndexExpr"); }
     void visit(const frontend::ListExpr& expr) override { throw std::runtime_error("Unsupported: ListExpr"); }
