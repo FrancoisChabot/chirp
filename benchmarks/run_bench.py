@@ -91,7 +91,8 @@ def main():
     chirp_script = require_file(bench_dir / "script.chirp")
     python_script = require_file(bench_dir / "script.py")
 
-    chirp_cmd = [args.chirp, "--root-dir", args.root_dir, str(chirp_script)]
+    interpreter_cmd = [args.chirp, "--root-dir", args.root_dir, str(chirp_script)]
+    vm_cmd = [args.chirp, "--vm", "--no-boot", str(chirp_script)]
     python_cmd = [args.python, "-B", str(python_script)]
     python_env = os.environ.copy()
     python_env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -100,35 +101,51 @@ def main():
     print(f"runs:      {args.runs}")
     print()
 
-    chirp_samples = []
+    interpreter_samples = []
+    vm_samples = []
     python_samples = []
     expected_stdout = None
 
     for _ in range(args.runs):
-        elapsed, stdout = run_once("chirp", chirp_cmd, REPO_ROOT)
-        chirp_samples.append(elapsed)
+        elapsed, stdout = run_once("interpreter", interpreter_cmd, REPO_ROOT)
+        interpreter_samples.append(elapsed)
         if expected_stdout is None:
             expected_stdout = stdout
         elif stdout != expected_stdout:
-            raise SystemExit("chirp output changed between runs")
+            raise SystemExit("interpreter output changed between runs")
+
+        elapsed, stdout = run_once("vm", vm_cmd, REPO_ROOT)
+        vm_samples.append(elapsed)
+        if stdout != expected_stdout:
+            raise SystemExit(
+                "vm output did not match interpreter output\n"
+                f"expected stdout:\n{expected_stdout}\n"
+                f"vm stdout:\n{stdout}"
+            )
 
         clean_python_cache(bench_dir)
         elapsed, stdout = run_once("python", python_cmd, REPO_ROOT, python_env)
         python_samples.append(elapsed)
         if stdout != expected_stdout:
             raise SystemExit(
-                "python output did not match chirp output\n"
-                f"chirp stdout:\n{expected_stdout}\n"
+                "python output did not match expected output\n"
+                f"expected stdout:\n{expected_stdout}\n"
                 f"python stdout:\n{stdout}"
             )
 
-    print_summary("chirp", chirp_samples)
+    print_summary("interp", interpreter_samples)
+    print_summary("vm", vm_samples)
     print_summary("python", python_samples)
 
-    chirp_median = summarize(chirp_samples)["median"]
+    interpreter_median = summarize(interpreter_samples)["median"]
+    vm_median = summarize(vm_samples)["median"]
     python_median = summarize(python_samples)["median"]
+    
     if python_median > 0:
-        print(f" ratio: {chirp_median / python_median:.2f}x chirp/python median")
+        print(f" ratio: {interpreter_median / python_median:.2f}x interpreter/python median")
+        print(f" ratio: {vm_median / python_median:.2f}x vm/python median")
+    if vm_median > 0:
+        print(f" ratio: {interpreter_median / vm_median:.2f}x interpreter/vm median")
 
 
 if __name__ == "__main__":

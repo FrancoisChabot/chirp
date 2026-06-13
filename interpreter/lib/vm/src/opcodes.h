@@ -23,15 +23,15 @@ enum class Opcode : uint8_t {
     // Functions & Calls
     Call = 0x0C,
     MakeLambda = 0x0D,
-    Return = 0x0E,
+    Intrinsic = 0x0E,
+    Return = 0x0F,
 
     // Consolidated Math & Logic
-    BinaryMath = 0x0F,
-    UnaryMath = 0x10,
-    Compare = 0x11,
+    BinaryMath = 0x10,
+    UnaryMath = 0x11,
+    Compare = 0x12,
 
     // Sets & Ranges
-    BelongsTo = 0x12,
     Union = 0x13,
     Intersect = 0x14,
     MakeRange = 0x15,

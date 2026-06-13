@@ -11,19 +11,22 @@ namespace chirp::vm {
 class VmSession : public backend::Session {
     std::ostream& out_;
     backend::SessionExpectations expectations_;
+    std::unordered_map<std::string, Value> globals_;
 
 public:
     VmSession(std::ostream& out) : out_(out) {}
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override {
         Compiler compiler;
-        ProgramUnit unit = compiler.compile(stmts);
+        auto unit = compiler.compile(stmts);
 
         Evaluator evaluator;
-        Value result = evaluator.evaluate(unit);
+        Value result = evaluator.evaluate(unit, globals_, out_);
         
-        // Print the result of the top-level block/sequence to match expected basic REPL output
-        out_ << result.toString() << "\n";
+        // Only print result if it's not null, since Intrinsic print already printed
+        if (result.type != ValueType::Null) {
+            out_ << result.toString() << "\n";
+        }
     }
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) override {
@@ -42,9 +45,9 @@ public:
         auto stmts = frontend::parse(tokens);
         // Execute but ignore output
         Compiler compiler;
-        ProgramUnit unit = compiler.compile(stmts);
+        auto unit = compiler.compile(stmts);
         Evaluator evaluator;
-        evaluator.evaluate(unit);
+        evaluator.evaluate(unit, globals_, out_);
     }
 
     void set_chirp_root(std::string path) override {
