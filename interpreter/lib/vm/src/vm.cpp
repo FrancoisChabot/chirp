@@ -15,40 +15,54 @@ class VmSession : public backend::Session {
 
 public:
     VmSession(std::ostream& out) : out_(out) {
-        auto import_fn = [this](const std::vector<Value>& args) -> Value {
-            if (args.size() > 0 && args[0].type == ValueType::String) {
-                if (args[0].as_string == "\"io.print\"") {
-                    return Value(NativeFunc([this](const std::vector<Value>& print_args) -> Value {
+        auto import_fn = [this](const std::vector<CallArgument>& args) -> Value {
+            if (!args.empty() && args[0].name.has_value()) {
+                throw std::runtime_error("`import does not support named arguments");
+            }
+            if (!args.empty() && args[0].value.type == ValueType::String) {
+                if (args[0].value.as_string == "\"io.print\"") {
+                    return Value(NativeFunc([this](const std::vector<CallArgument>& print_args) -> Value {
                         for (size_t i = 0; i < print_args.size(); ++i) {
+                            if (print_args[i].name.has_value()) {
+                                throw std::runtime_error("`print does not support named arguments");
+                            }
                             if (i > 0) out_ << " ";
-                            out_ << print_args[i].toString();
+                            out_ << print_args[i].value.toString();
                         }
                         out_ << "\n";
                         return Value();
                     }));
-                } else if (args[0].as_string == "\"system.register\"") {
-                    return Value(NativeFunc([](const std::vector<Value>&) -> Value { return Value(); }));
-                } else if (args[0].as_string == "\"values.same\"") {
-                    return Value(NativeFunc([](const std::vector<Value>& args) -> Value {
-                        if (args.size() == 2) {
-                            if (args[0].type == args[1].type && args[0].as_int == args[1].as_int && args[0].as_string == args[1].as_string) {
+                } else if (args[0].value.as_string == "\"system.register\"") {
+                    return Value(NativeFunc([](const std::vector<CallArgument>&) -> Value { return Value(); }));
+                } else if (args[0].value.as_string == "\"values.same\"") {
+                    return Value(NativeFunc([](const std::vector<CallArgument>& args) -> Value {
+                        if (args.size() == 2 &&
+                            !args[0].name.has_value() &&
+                            !args[1].name.has_value()) {
+                            const Value& left = args[0].value;
+                            const Value& right = args[1].value;
+                            if (left.type == right.type && left.as_int == right.as_int && left.as_string == right.as_string) {
                                 return Value(true);
                             }
                         }
                         return Value(false);
                     }));
-                } else if (args[0].as_string == "\"types.type_of\"") {
-                    return Value(NativeFunc([](const std::vector<Value>& args) -> Value {
-                        if (args.size() > 0) {
-                            return Value::Symbol("type_" + std::to_string(static_cast<int>(args[0].type)));
+                } else if (args[0].value.as_string == "\"types.type_of\"") {
+                    return Value(NativeFunc([](const std::vector<CallArgument>& args) -> Value {
+                        if (!args.empty() && !args[0].name.has_value()) {
+                            return Value::Symbol("type_" + std::to_string(static_cast<int>(args[0].value.type)));
                         }
                         return Value::Symbol("unknown");
                     }));
-                } else if (args[0].as_string == "\"types.mint_finite\"" || 
-                           args[0].as_string == "\"types.mint_infinite\"" ||
-                           args[0].as_string == "\"types.mint_host\"") {
-                    return Value(NativeFunc([](const std::vector<Value>& func_args) -> Value {
-                        int n = (func_args.size() > 0 && func_args[0].type == ValueType::Int) ? func_args[0].as_int : 0;
+                } else if (args[0].value.as_string == "\"types.mint_finite\"" || 
+                           args[0].value.as_string == "\"types.mint_infinite\"" ||
+                           args[0].value.as_string == "\"types.mint_host\"") {
+                    return Value(NativeFunc([](const std::vector<CallArgument>& func_args) -> Value {
+                        int n = (!func_args.empty() &&
+                                 !func_args[0].name.has_value() &&
+                                 func_args[0].value.type == ValueType::Int)
+                            ? static_cast<int>(func_args[0].value.as_int)
+                            : 0;
                         auto values_array = std::make_shared<std::vector<Value>>();
                         for(int i=0; i<n; ++i) {
                             values_array->push_back(Value::Symbol("minted_" + std::to_string(i)));
@@ -60,7 +74,7 @@ public:
                     }));
                 }
             }
-            throw std::runtime_error("Unsupported native import in VM: " + args[0].toString());
+            throw std::runtime_error("Unsupported native import in VM");
         };
         globals_["`import"] = Value(NativeFunc(import_fn));
     }

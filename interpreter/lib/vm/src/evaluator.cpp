@@ -3,7 +3,9 @@
 #include "opcodes.h"
 
 #include <iostream>
+#include <optional>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace chirp::vm {
@@ -88,6 +90,84 @@ public:
             default:
                 throw std::runtime_error("Unsupported operand type in evalOperand");
         }
+    }
+
+    std::vector<CallArgument> readCallArguments() {
+        uint32_t num_args = read32();
+        std::vector<CallArgument> args;
+        args.reserve(num_args);
+        for (uint32_t i = 0; i < num_args; ++i) {
+            bool has_name = read8() != 0;
+            std::optional<std::string> name;
+            if (has_name) {
+                name = unit->constant_strings.at(read32());
+            }
+            args.push_back(CallArgument{std::move(name), evalOperand()});
+        }
+        return args;
+    }
+
+    static void reject_mixed_call_arguments(const std::vector<CallArgument>& args) {
+        bool has_named = false;
+        bool has_positional = false;
+        for (const auto& arg : args) {
+            has_named = has_named || arg.name.has_value();
+            has_positional = has_positional || !arg.name.has_value();
+        }
+        if (has_named && has_positional) {
+            throw std::runtime_error("Cannot mix named and positional arguments");
+        }
+    }
+
+    static std::vector<Value> lower_closure_arguments(const Closure& closure, const std::vector<CallArgument>& args) {
+        reject_mixed_call_arguments(args);
+
+        const auto& parameter_names = closure.unit->parameter_names;
+        std::vector<Value> lowered(parameter_names.size());
+
+        bool has_named = false;
+        for (const auto& arg : args) {
+            has_named = has_named || arg.name.has_value();
+        }
+
+        if (!has_named) {
+            if (args.size() != parameter_names.size()) {
+                throw std::runtime_error(
+                    "Function expected " + std::to_string(parameter_names.size()) +
+                    " arguments, got " + std::to_string(args.size()));
+            }
+            for (size_t i = 0; i < args.size(); ++i) {
+                lowered[i] = args[i].value;
+            }
+            return lowered;
+        }
+
+        std::unordered_map<std::string, size_t> indices;
+        for (size_t i = 0; i < parameter_names.size(); ++i) {
+            indices.emplace(parameter_names[i], i);
+        }
+
+        std::vector<bool> provided(parameter_names.size(), false);
+        for (const auto& arg : args) {
+            const std::string& name = *arg.name;
+            auto found = indices.find(name);
+            if (found == indices.end()) {
+                throw std::runtime_error("Unknown parameter '" + name + "'");
+            }
+            size_t index = found->second;
+            if (provided[index]) {
+                throw std::runtime_error("Duplicate argument for parameter '" + name + "'");
+            }
+            lowered[index] = arg.value;
+            provided[index] = true;
+        }
+
+        for (size_t i = 0; i < parameter_names.size(); ++i) {
+            if (!provided[i]) {
+                throw std::runtime_error("Missing argument for parameter '" + parameter_names[i] + "'");
+            }
+        }
+        return lowered;
     }
 
     Value evalInstruction() {
@@ -225,11 +305,7 @@ public:
             }
             case Opcode::Call: {
                 Value callee = evalOperand();
-                uint32_t num_args = read32();
-                std::vector<Value> args(num_args);
-                for (uint32_t i = 0; i < num_args; ++i) {
-                    args[i] = evalOperand();
-                }
+                std::vector<CallArgument> args = readCallArguments();
 
                 if (callee.type == ValueType::NativeFunc) {
                     return (*callee.as_native)(args);
@@ -238,9 +314,10 @@ public:
                     throw std::runtime_error("Type error: target is not callable");
                 }
 
+                std::vector<Value> lowered_args = lower_closure_arguments(*callee.as_closure, args);
                 ExecutionState call_state(callee.as_closure->unit, globals, out, &callee.as_closure->captures);
-                for (size_t i = 0; i < args.size() && i < call_state.locals.size(); ++i) {
-                    call_state.locals[i] = std::move(args[i]);
+                for (size_t i = 0; i < lowered_args.size() && i < call_state.locals.size(); ++i) {
+                    call_state.locals[i] = std::move(lowered_args[i]);
                 }
                 return call_state.run();
             }

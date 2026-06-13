@@ -25,6 +25,7 @@ public:
     uint32_t num_locals = 0;
     
     std::vector<std::string> constant_strings;
+    std::vector<std::string> parameter_names;
     std::vector<std::shared_ptr<ProgramUnit>> child_units;
     std::vector<CaptureSource> captures;
 

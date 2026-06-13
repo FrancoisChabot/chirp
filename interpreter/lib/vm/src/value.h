@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <functional>
@@ -13,7 +14,8 @@ namespace chirp::vm {
 class ProgramUnit;
 
 struct Value;
-using NativeFunc = std::function<Value(const std::vector<Value>&)>;
+struct CallArgument;
+using NativeFunc = std::function<Value(const std::vector<CallArgument>&)>;
 struct Closure;
 
 enum class ValueType { Int, Closure, Null, String, NativeFunc, Char, Symbol, Bool, Struct, Array };
@@ -55,6 +57,11 @@ struct Value {
 struct Closure {
     std::shared_ptr<ProgramUnit> unit;
     std::vector<Value> captures;
+};
+
+struct CallArgument {
+    std::optional<std::string> name;
+    Value value;
 };
 
 } // namespace chirp::vm

@@ -298,6 +298,7 @@ public:
         CompilerEnvironment lambda_env(&lambda_context, env, false);
 
         for (const auto& param : expr.parameters) {
+            lambda_unit->parameter_names.push_back(std::string(param.name.lexeme));
             lambda_env.locals.emplace(std::string(param.name.lexeme), lambda_context.allocateLocal());
         }
 
@@ -316,6 +317,12 @@ public:
         emitOperand(*expr.callee);
         emitU32(static_cast<uint32_t>(expr.args.size()));
         for (const auto& arg : expr.args) {
+            if (arg.name.has_value()) {
+                unit->emit(1);
+                emitStringIndex(std::string(arg.name->lexeme));
+            } else {
+                unit->emit(0);
+            }
             emitOperand(*arg.value);
         }
     }

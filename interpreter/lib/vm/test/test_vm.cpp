@@ -35,3 +35,23 @@ TEST(VmTest, IfConsumesBooleanConditions) {
 TEST(VmTest, TopLevelRecursiveLambdaStillWorks) {
     EXPECT_EQ(run_vm("let fib = (n) => if (n < 2) n else fib(n-1) + fib(n-2); fib(10);\n"), "55\n");
 }
+
+TEST(VmTest, NamedArgumentsCanBeReordered) {
+    EXPECT_EQ(run_vm("let subtract = (x, y) => x - y; subtract(y=4, x=10);\n"), "6\n");
+}
+
+TEST(VmTest, MixingNamedAndPositionalArgumentsIsRejected) {
+    EXPECT_THROW(run_vm("let sum = (x, y) => x + y; sum(1, y=2);\n"), std::runtime_error);
+}
+
+TEST(VmTest, UnknownNamedArgumentIsRejected) {
+    EXPECT_THROW(run_vm("let sum = (x, y) => x + y; sum(x=1, z=2);\n"), std::runtime_error);
+}
+
+TEST(VmTest, DuplicateNamedArgumentIsRejected) {
+    EXPECT_THROW(run_vm("let sum = (x, y) => x + y; sum(x=1, x=2);\n"), std::runtime_error);
+}
+
+TEST(VmTest, MissingNamedArgumentIsRejected) {
+    EXPECT_THROW(run_vm("let sum = (x, y) => x + y; sum(x=1);\n"), std::runtime_error);
+}
