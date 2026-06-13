@@ -34,6 +34,8 @@ enum class Opcode : uint8_t {
 
     // Control Flow
     If = 0x15,
+    MakeStructDef = 0x16,
+    MakeAnonStruct = 0x17,
 
     Let = 0x1E,
     Assign = 0x1F

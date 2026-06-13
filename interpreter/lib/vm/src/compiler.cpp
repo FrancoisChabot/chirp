@@ -127,6 +127,18 @@ public:
         emitU32(unit->addStringConstant(text));
     }
 
+    std::shared_ptr<ProgramUnit> compileExpressionUnit(const frontend::Expr& expr) {
+        auto expr_unit = std::make_shared<ProgramUnit>();
+        CompilerContext expr_context(env->context);
+        CompilerEnvironment expr_env(&expr_context, env, false);
+        CompilerVisitor expr_visitor(expr_unit, &expr_env);
+        expr_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
+        expr_visitor.emitOperand(expr);
+        expr_unit->num_locals = expr_context.next_local;
+        expr_unit->captures = expr_context.captures;
+        return expr_unit;
+    }
+
     void emitResolvedVariableOperand(const std::string& name) {
         VariableRef ref = env->resolve(name);
         switch (ref.kind) {
@@ -367,10 +379,6 @@ public:
         throw std::runtime_error("ConstructedSetExpr is not supported in the VM yet");
     }
 
-    void visit(const frontend::AnonymousStructLiteralExpr& expr) override {
-        throw std::runtime_error("AnonymousStructLiteralExpr is not supported in the VM yet");
-    }
-
     void visit(const frontend::WhileExpr& expr) override {
         throw std::runtime_error("WhileExpr is not supported in the VM yet");
     }
@@ -402,7 +410,17 @@ public:
     }
 
     void visit(const frontend::StructExpr& expr) override {
-        throw std::runtime_error("StructExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::MakeStructDef, Domain::Generic));
+        emitU32(static_cast<uint32_t>(expr.fields.size()));
+        for (const auto& field : expr.fields) {
+            emitStringIndex(std::string(field.name.lexeme));
+            if (field.initializer) {
+                unit->emit(1);
+                emitU32(unit->addChildUnit(compileExpressionUnit(*field.initializer)));
+            } else {
+                unit->emit(0);
+            }
+        }
     }
 
     void visit(const frontend::IndexExpr& expr) override {
@@ -428,6 +446,18 @@ public:
 
     void visit(const frontend::FStringExpr& expr) override {
         throw std::runtime_error("FStringExpr is not supported in the VM yet");
+    }
+
+    void visit(const frontend::AnonymousStructLiteralExpr& expr) override {
+        unit->emit(encodeInstruction(Opcode::MakeAnonStruct, Domain::Generic));
+        emitU32(static_cast<uint32_t>(expr.fields.size()));
+        for (const auto& field : expr.fields) {
+            if (!field.name.has_value()) {
+                throw std::runtime_error("Anonymous struct literals require named fields");
+            }
+            emitStringIndex(std::string(field.name->lexeme));
+            emitOperand(*field.value);
+        }
     }
 };
 

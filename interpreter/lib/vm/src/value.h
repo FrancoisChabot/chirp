@@ -17,8 +17,9 @@ struct Value;
 struct CallArgument;
 using NativeFunc = std::function<Value(const std::vector<CallArgument>&)>;
 struct Closure;
+struct StructTypeDef;
 
-enum class ValueType { Int, Closure, Null, String, NativeFunc, Char, Symbol, Bool, Struct, Array };
+enum class ValueType { Int, Closure, Null, String, NativeFunc, Char, Symbol, Bool, Struct, Array, StructType };
 
 struct Value {
     ValueType type = ValueType::Null;
@@ -28,6 +29,7 @@ struct Value {
     std::shared_ptr<NativeFunc> as_native;
     std::shared_ptr<std::unordered_map<std::string, Value>> as_struct;
     std::shared_ptr<std::vector<Value>> as_array;
+    std::shared_ptr<StructTypeDef> as_struct_type;
 
     Value() : type(ValueType::Null), as_int(0) {}
     explicit Value(int64_t v) : type(ValueType::Int), as_int(v) {}
@@ -39,6 +41,7 @@ struct Value {
     static Value Symbol(std::string s) { Value v; v.type = ValueType::Symbol; v.as_string = std::move(s); return v; }
     static Value Struct(std::shared_ptr<std::unordered_map<std::string, Value>> s) { Value v; v.type = ValueType::Struct; v.as_struct = std::move(s); return v; }
     static Value Array(std::shared_ptr<std::vector<Value>> a) { Value v; v.type = ValueType::Array; v.as_array = std::move(a); return v; }
+    static Value StructType(std::shared_ptr<StructTypeDef> s) { Value v; v.type = ValueType::StructType; v.as_struct_type = std::move(s); return v; }
 
     std::string toString() const {
         if (type == ValueType::Int) return std::to_string(as_int);
@@ -50,6 +53,7 @@ struct Value {
         if (type == ValueType::Symbol) return "#" + as_string;
         if (type == ValueType::Struct) return "<struct>";
         if (type == ValueType::Array) return "<array>";
+        if (type == ValueType::StructType) return "<struct type>";
         return "null";
     }
 };
@@ -57,6 +61,15 @@ struct Value {
 struct Closure {
     std::shared_ptr<ProgramUnit> unit;
     std::vector<Value> captures;
+};
+
+struct StructFieldSpec {
+    std::string name;
+    std::shared_ptr<Closure> default_value;
+};
+
+struct StructTypeDef {
+    std::vector<StructFieldSpec> fields;
 };
 
 struct CallArgument {

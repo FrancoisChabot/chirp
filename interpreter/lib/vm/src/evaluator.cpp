@@ -170,6 +170,95 @@ public:
         return lowered;
     }
 
+    std::shared_ptr<Closure> captureChildClosure(uint32_t child_index) {
+        auto child = unit->child_units.at(child_index);
+        std::vector<Value> captured_values;
+        captured_values.reserve(child->captures.size());
+        for (const auto& capture : child->captures) {
+            switch (capture.kind) {
+                case CaptureSourceKind::Local:
+                    captured_values.push_back(locals.at(capture.index));
+                    break;
+                case CaptureSourceKind::Capture:
+                    if (captures == nullptr) {
+                        throw std::runtime_error("Nested capture read with no closure environment");
+                    }
+                    captured_values.push_back(captures->at(capture.index));
+                    break;
+            }
+        }
+        return std::make_shared<Closure>(Closure{std::move(child), std::move(captured_values)});
+    }
+
+    Value invokeClosure(const Closure& closure, std::vector<Value> args = {}) {
+        ExecutionState call_state(closure.unit, globals, out, &closure.captures);
+        for (size_t i = 0; i < args.size() && i < call_state.locals.size(); ++i) {
+            call_state.locals[i] = std::move(args[i]);
+        }
+        return call_state.run();
+    }
+
+    static std::vector<CallArgument> require_consistent_argument_style(const std::vector<CallArgument>& args) {
+        reject_mixed_call_arguments(args);
+        return args;
+    }
+
+    Value constructStruct(const StructTypeDef& type_def, const std::vector<CallArgument>& args) {
+        require_consistent_argument_style(args);
+
+        bool has_named = false;
+        for (const auto& arg : args) {
+            has_named = has_named || arg.name.has_value();
+        }
+
+        if (!has_named && args.size() > type_def.fields.size()) {
+            throw std::runtime_error("Too many positional arguments for struct constructor");
+        }
+
+        std::unordered_map<std::string, Value> provided;
+        if (has_named) {
+            for (const auto& arg : args) {
+                const std::string& name = *arg.name;
+                if (provided.contains(name)) {
+                    throw std::runtime_error("Duplicate named argument: " + name);
+                }
+                provided.emplace(name, arg.value);
+            }
+        } else {
+            for (size_t i = 0; i < args.size(); ++i) {
+                provided.emplace(type_def.fields[i].name, args[i].value);
+            }
+        }
+
+        auto instance = std::make_shared<std::unordered_map<std::string, Value>>();
+        for (const auto& pair : provided) {
+            bool found = false;
+            for (const auto& field : type_def.fields) {
+                if (field.name == pair.first) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw std::runtime_error("Unknown field in struct constructor: " + pair.first);
+            }
+        }
+
+        for (const auto& field : type_def.fields) {
+            auto provided_it = provided.find(field.name);
+            if (provided_it != provided.end()) {
+                (*instance)[field.name] = provided_it->second;
+                continue;
+            }
+            if (field.default_value) {
+                (*instance)[field.name] = invokeClosure(*field.default_value);
+                continue;
+            }
+            throw std::runtime_error("Missing required field: " + field.name);
+        }
+        return Value::Struct(instance);
+    }
+
     Value evalInstruction() {
         Opcode op = decodeOpcode(read8());
         Domain dom = decodeDomain(unit->bytecode[pc - 1]);
@@ -285,23 +374,7 @@ public:
                 return evalOperand();
             }
             case Opcode::MakeLambda: {
-                auto child = unit->child_units.at(read32());
-                std::vector<Value> captured_values;
-                captured_values.reserve(child->captures.size());
-                for (const auto& capture : child->captures) {
-                    switch (capture.kind) {
-                        case CaptureSourceKind::Local:
-                            captured_values.push_back(locals.at(capture.index));
-                            break;
-                        case CaptureSourceKind::Capture:
-                            if (captures == nullptr) {
-                                throw std::runtime_error("Nested capture read with no closure environment");
-                            }
-                            captured_values.push_back(captures->at(capture.index));
-                            break;
-                    }
-                }
-                return Value(std::make_shared<Closure>(Closure{std::move(child), std::move(captured_values)}));
+                return Value(captureChildClosure(read32()));
             }
             case Opcode::Call: {
                 Value callee = evalOperand();
@@ -310,21 +383,47 @@ public:
                 if (callee.type == ValueType::NativeFunc) {
                     return (*callee.as_native)(args);
                 }
+                if (callee.type == ValueType::StructType) {
+                    return constructStruct(*callee.as_struct_type, args);
+                }
                 if (callee.type != ValueType::Closure) {
                     throw std::runtime_error("Type error: target is not callable");
                 }
 
                 std::vector<Value> lowered_args = lower_closure_arguments(*callee.as_closure, args);
-                ExecutionState call_state(callee.as_closure->unit, globals, out, &callee.as_closure->captures);
-                for (size_t i = 0; i < lowered_args.size() && i < call_state.locals.size(); ++i) {
-                    call_state.locals[i] = std::move(lowered_args[i]);
-                }
-                return call_state.run();
+                return invokeClosure(*callee.as_closure, std::move(lowered_args));
             }
             case Opcode::Return: {
                 Value result = evalOperand();
                 pc = unit->bytecode.size();
                 return result;
+            }
+            case Opcode::MakeStructDef: {
+                uint32_t field_count = read32();
+                auto struct_type = std::make_shared<StructTypeDef>();
+                struct_type->fields.reserve(field_count);
+                for (uint32_t i = 0; i < field_count; ++i) {
+                    std::string name = unit->constant_strings.at(read32());
+                    bool has_default = read8() != 0;
+                    std::shared_ptr<Closure> default_value;
+                    if (has_default) {
+                        default_value = captureChildClosure(read32());
+                    }
+                    struct_type->fields.push_back(StructFieldSpec{std::move(name), std::move(default_value)});
+                }
+                return Value::StructType(std::move(struct_type));
+            }
+            case Opcode::MakeAnonStruct: {
+                uint32_t field_count = read32();
+                auto value = std::make_shared<std::unordered_map<std::string, Value>>();
+                for (uint32_t i = 0; i < field_count; ++i) {
+                    std::string name = unit->constant_strings.at(read32());
+                    if (value->contains(name)) {
+                        throw std::runtime_error("Duplicate field in anonymous struct literal: " + name);
+                    }
+                    (*value)[name] = evalOperand();
+                }
+                return Value::Struct(std::move(value));
             }
             case Opcode::Let: {
                 OperandType dest_type = static_cast<OperandType>(read8());
