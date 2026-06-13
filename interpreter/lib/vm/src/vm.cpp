@@ -14,6 +14,13 @@ namespace chirp::vm {
 
 namespace {
 
+std::string decode_string_literal(const std::string& value) {
+    if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+        return value.substr(1, value.size() - 2);
+    }
+    return value;
+}
+
 bool value_equals(const Value& left, const Value& right) {
     if (left.type != right.type) {
         return false;
@@ -79,6 +86,8 @@ bool value_equals(const Value& left, const Value& right) {
             return left.as_constructed_set == right.as_constructed_set;
         case ValueType::CompositeSet:
             return left.as_composite_set == right.as_composite_set;
+        case ValueType::Heap:
+            return left.as_heap == right.as_heap;
     }
     return false;
 }
@@ -120,6 +129,7 @@ Value type_of_value(const Value& value, const std::unordered_map<std::string, Va
     if (value.type == ValueType::Closure || value.type == ValueType::NativeFunc) return globals.at("lambda");
     if (value.type == ValueType::Trait) return globals.at("trait");
     if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
+    if (value.type == ValueType::Heap) return Value::Type(value.as_type_value);
     return Value::Symbol("unknown");
 }
 
@@ -169,9 +179,11 @@ class VmSession : public backend::Session {
     std::ostream& out_;
     backend::SessionExpectations expectations_;
     std::unordered_map<std::string, Value> globals_;
+    std::unordered_map<std::string, Value> registry_;
     std::unordered_map<uint64_t, std::unordered_map<std::string, Value>> trait_impls_;
     uint64_t next_type_id_ = 1;
     uint64_t next_trait_id_ = 1;
+    uint64_t next_heap_id_ = 1;
 
 public:
     VmSession(std::ostream& out) : out_(out) {
@@ -184,6 +196,8 @@ public:
         globals_["type"] = create_type("type", TypeValueDef::Kind::Meta);
         globals_["lambda"] = create_type("lambda", TypeValueDef::Kind::Lambda);
         globals_["trait"] = create_type("trait", TypeValueDef::Kind::Trait);
+        globals_["__heap_allocation_type"] = create_type("heap_allocation", TypeValueDef::Kind::Primitive);
+        globals_["__heap_shared_allocation_type"] = create_type("heap_shared_allocation", TypeValueDef::Kind::Primitive);
         globals_["true"] = Value(true);
         globals_["false"] = Value(false);
         globals_["`import"] = Value(NativeFunc(make_import_fn()));
@@ -271,7 +285,14 @@ private:
             }
 
             if (key == "\"system.register\"") {
-                return Value(NativeFunc([](const std::vector<CallArgument>&) -> Value {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& register_args) -> Value {
+                    if (register_args.size() != 2 || register_args[0].name.has_value() || register_args[1].name.has_value()) {
+                        throw std::runtime_error("`register expects two positional arguments");
+                    }
+                    if (register_args[0].value.type != ValueType::String) {
+                        throw std::runtime_error("`register key must be a string");
+                    }
+                    registry_[decode_string_literal(register_args[0].value.as_string)] = register_args[1].value;
                     return Value();
                 }));
             }
@@ -352,6 +373,72 @@ private:
                     (*result_struct)["type"] = type;
                     (*result_struct)["values"] = Value::Array(values_array);
                     return Value::Struct(result_struct);
+                }));
+            }
+
+            if (key == "\"memory.heap_allocation\"") {
+                return globals_.at("__heap_allocation_type");
+            }
+
+            if (key == "\"memory.heap_shared_allocation\"") {
+                return globals_.at("__heap_shared_allocation_type");
+            }
+
+            if (key == "\"memory.heap_create\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
+                    if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
+                        throw std::runtime_error("`heap_create expects one positional argument");
+                    }
+                    auto state = std::make_shared<HeapState>();
+                    state->id = next_heap_id_++;
+                    state->stored = heap_args[0].value;
+                    state->shared = false;
+                    return Value::Heap(std::move(state), globals_.at("__heap_allocation_type").as_type_value);
+                }));
+            }
+
+            if (key == "\"memory.heap_destroy\"") {
+                return Value(NativeFunc([](const std::vector<CallArgument>& heap_args) -> Value {
+                    if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
+                        throw std::runtime_error("`heap_destroy expects one positional argument");
+                    }
+                    if (heap_args[0].value.type != ValueType::Heap || heap_args[0].value.as_heap == nullptr) {
+                        throw std::runtime_error("`heap_destroy expects a heap allocation");
+                    }
+                    heap_args[0].value.as_heap->destroyed = true;
+                    return Value();
+                }));
+            }
+
+            if (key == "\"memory.heap_shared_create\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
+                    if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
+                        throw std::runtime_error("`heap_shared_create expects one positional argument");
+                    }
+                    auto state = std::make_shared<HeapState>();
+                    state->id = next_heap_id_++;
+                    state->stored = heap_args[0].value;
+                    state->shared = true;
+                    state->strong_count = 1;
+                    return Value::Heap(std::move(state), globals_.at("__heap_shared_allocation_type").as_type_value);
+                }));
+            }
+
+            if (key == "\"memory.heap_shared_destroy\"") {
+                return Value(NativeFunc([](const std::vector<CallArgument>& heap_args) -> Value {
+                    if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
+                        throw std::runtime_error("`heap_shared_destroy expects one positional argument");
+                    }
+                    if (heap_args[0].value.type != ValueType::Heap || heap_args[0].value.as_heap == nullptr) {
+                        throw std::runtime_error("`heap_shared_destroy expects a shared heap allocation");
+                    }
+                    if (heap_args[0].value.as_heap->strong_count > 0) {
+                        --heap_args[0].value.as_heap->strong_count;
+                    }
+                    if (heap_args[0].value.as_heap->strong_count == 0) {
+                        heap_args[0].value.as_heap->destroyed = true;
+                    }
+                    return Value();
                 }));
             }
 

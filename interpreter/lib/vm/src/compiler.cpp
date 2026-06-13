@@ -237,28 +237,37 @@ public:
     }
 
     void visit(const frontend::AssignStmt& stmt) override {
-        auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.target.get());
-        if (ident == nullptr) {
-            throw std::runtime_error("AssignStmt only supports identifier targets in the VM");
+        if (auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.target.get())) {
+            unit->emit(encodeInstruction(Opcode::Assign, Domain::Generic));
+            VariableRef ref = env->resolve(std::string(ident->name));
+            switch (ref.kind) {
+                case VariableRef::Kind::Local:
+                    unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                    emitU32(ref.index);
+                    break;
+                case VariableRef::Kind::Capture:
+                    unit->emit(static_cast<uint8_t>(OperandType::Capture));
+                    emitU32(ref.index);
+                    break;
+                case VariableRef::Kind::Global:
+                    unit->emit(static_cast<uint8_t>(OperandType::Identifier));
+                    emitStringIndex(std::string(ident->name));
+                    break;
+            }
+            emitOperand(*stmt.value);
+            return;
         }
 
-        unit->emit(encodeInstruction(Opcode::Assign, Domain::Generic));
-        VariableRef ref = env->resolve(std::string(ident->name));
-        switch (ref.kind) {
-            case VariableRef::Kind::Local:
-                unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
-                emitU32(ref.index);
-                break;
-            case VariableRef::Kind::Capture:
-                unit->emit(static_cast<uint8_t>(OperandType::Capture));
-                emitU32(ref.index);
-                break;
-            case VariableRef::Kind::Global:
-                unit->emit(static_cast<uint8_t>(OperandType::Identifier));
-                emitStringIndex(std::string(ident->name));
-                break;
+        if (auto* unary = dynamic_cast<const frontend::UnaryExpr*>(stmt.target.get())) {
+            if (unary->op == frontend::UnaryOp::Deref) {
+                unit->emit(encodeInstruction(Opcode::StoreDeref, Domain::Generic));
+                emitOperand(*unary->right);
+                emitOperand(*stmt.value);
+                return;
+            }
         }
-        emitOperand(*stmt.value);
+
+        throw std::runtime_error("AssignStmt target is not supported in the VM");
     }
 
     void visit(const frontend::IfStmt& stmt) override {
@@ -495,6 +504,24 @@ public:
             for (int i = 0; i < 4; ++i) {
                 unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
             }
+            return;
+        }
+        if (expr.op == frontend::UnaryOp::Negate) {
+            if (auto* number = dynamic_cast<const frontend::NumberExpr*>(expr.right.get())) {
+                unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
+                emitU64(static_cast<uint64_t>(-std::stoll(std::string(number->value))));
+                return;
+            }
+            unit->emit(encodeInstruction(Opcode::BinaryMath, Domain::Generic));
+            unit->emit(static_cast<uint8_t>(BinaryMathOp::Sub));
+            unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
+            emitU64(0);
+            emitOperand(*expr.right);
+            return;
+        }
+        if (expr.op == frontend::UnaryOp::Deref) {
+            unit->emit(encodeInstruction(Opcode::Deref, Domain::Generic));
+            emitOperand(*expr.right);
             return;
         }
         throw std::runtime_error("UnaryExpr is not supported in the VM yet");

@@ -23,6 +23,7 @@ struct TraitDef;
 struct SignatureDef;
 struct ConstructedSetDef;
 struct CompositeSetDef;
+struct HeapState;
 
 enum class ValueType {
     Int,
@@ -42,7 +43,8 @@ enum class ValueType {
     Signature,
     EnumeratedSet,
     ConstructedSet,
-    CompositeSet
+    CompositeSet,
+    Heap
 };
 
 struct Value {
@@ -62,6 +64,7 @@ struct Value {
     std::shared_ptr<std::vector<Value>> as_set_elements;
     std::shared_ptr<ConstructedSetDef> as_constructed_set;
     std::shared_ptr<CompositeSetDef> as_composite_set;
+    std::shared_ptr<HeapState> as_heap;
 
     Value() : type(ValueType::Null), as_int(0) {}
     explicit Value(int64_t v) : type(ValueType::Int), as_int(v) {}
@@ -109,6 +112,13 @@ struct Value {
         v.as_composite_set = std::move(set);
         return v;
     }
+    static Value Heap(std::shared_ptr<HeapState> heap, std::shared_ptr<TypeValueDef> heap_type) {
+        Value v;
+        v.type = ValueType::Heap;
+        v.as_heap = std::move(heap);
+        v.as_type_value = std::move(heap_type);
+        return v;
+    }
 
     std::string toString() const {
         if (type == ValueType::Int) return std::to_string(as_int);
@@ -128,6 +138,7 @@ struct Value {
         if (type == ValueType::EnumeratedSet) return "<set>";
         if (type == ValueType::ConstructedSet) return "<constructed set>";
         if (type == ValueType::CompositeSet) return "<composite set>";
+        if (type == ValueType::Heap) return "<heap allocation>";
         return "null";
     }
 };
@@ -191,6 +202,14 @@ struct CompositeSetDef {
     std::shared_ptr<Value> left;
     std::shared_ptr<Value> right;
     Op op = Op::Union;
+};
+
+struct HeapState {
+    uint64_t id = 0;
+    Value stored;
+    bool shared = false;
+    bool destroyed = false;
+    uint64_t strong_count = 1;
 };
 
 struct CallArgument {

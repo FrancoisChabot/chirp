@@ -187,3 +187,32 @@ TEST(VmTest, TraitRegistryHooksWork) {
                "if (implements(MyTrait, type_of(1))) 1 else 0;\n"),
         "1\n");
 }
+
+TEST(VmTest, HeapCreateAndDerefWork) {
+    EXPECT_EQ(
+        run_vm("let heap_create = `import(\"memory.heap_create\", \"__chirp_boot\"); "
+               "let p = heap_create(3); *p;\n"),
+        "3\n");
+}
+
+TEST(VmTest, HeapDerefAssignmentWorks) {
+    EXPECT_EQ(
+        run_vm("let heap_create = `import(\"memory.heap_create\", \"__chirp_boot\"); "
+               "let p = heap_create(3); do { *p = 7; }; *p;\n"),
+        "7\n");
+}
+
+TEST(VmTest, SignatureFieldConstraintAcceptsMatchingLambda) {
+    EXPECT_EQ(
+        run_vm("let Iface = struct { deref: (self) -> any }; let x = Iface(deref=(self) => self); 1;\n"),
+        "1\n");
+}
+
+TEST(VmTest, CompositeCallableConstraintAcceptsLambda) {
+    EXPECT_EQ(
+        run_vm("let is_pure = `import(\"compute.is_pure\", \"__chirp_boot\"); "
+               "let pure_fn = { v | is_pure(v) }; "
+               "let Iface = struct { deref: pure_fn ∩ (self) -> any }; "
+               "let x = Iface(deref=(self) => self); 1;\n"),
+        "1\n");
+}

@@ -136,6 +136,8 @@ public:
                 return left.as_constructed_set == right.as_constructed_set;
             case ValueType::CompositeSet:
                 return left.as_composite_set == right.as_composite_set;
+            case ValueType::Heap:
+                return left.as_heap == right.as_heap;
         }
         return false;
     }
@@ -158,6 +160,7 @@ public:
         if (value.type == ValueType::Closure || value.type == ValueType::NativeFunc) return globals.at("lambda");
         if (value.type == ValueType::Trait) return globals.at("trait");
         if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
+        if (value.type == ValueType::Heap) return Value::Type(value.as_type_value);
         return Value::Symbol("unknown");
     }
 
@@ -318,6 +321,27 @@ public:
         return invokeClosure(*callee.as_closure, std::move(lowered_args));
     }
 
+    Value dereferenceValue(const Value& value) {
+        if (value.type == ValueType::Heap) {
+            if (value.as_heap == nullptr || value.as_heap->destroyed) {
+                throw std::runtime_error("Cannot dereference destroyed heap allocation");
+            }
+            return value.as_heap->stored;
+        }
+        throw std::runtime_error("Cannot dereference non-pointer value");
+    }
+
+    Value storeDereference(const Value& pointer, Value new_value) {
+        if (pointer.type == ValueType::Heap) {
+            if (pointer.as_heap == nullptr || pointer.as_heap->destroyed) {
+                throw std::runtime_error("Cannot assign through destroyed heap allocation");
+            }
+            pointer.as_heap->stored = new_value;
+            return new_value;
+        }
+        throw std::runtime_error("Cannot assign through non-pointer value");
+    }
+
     static bool primitive_constraint_matches(const std::shared_ptr<TypeValueDef>& constraint_type, const Value& value) {
         if (!constraint_type) {
             return false;
@@ -409,6 +433,14 @@ public:
                 return Value(valueEquals(typeOf(value), set));
             case ValueType::StructType:
                 return Value(value.type == ValueType::Struct && value.as_struct_instance_type == set.as_struct_type);
+            case ValueType::Signature:
+                if (value.type == ValueType::Closure) {
+                    return Value(value.as_closure->unit->parameter_names.size() == set.as_signature->parameters.size());
+                }
+                if (value.type == ValueType::NativeFunc) {
+                    return Value(true);
+                }
+                return Value(false);
             case ValueType::EnumeratedSet: {
                 for (const auto& element : *set.as_set_elements) {
                     if (valueEquals(element, value)) {
@@ -469,6 +501,19 @@ public:
                 args.push_back(CallArgument{std::optional<std::string>(name), field_value});
             }
             return constructStruct(constraint.as_struct_type, args);
+        }
+
+        switch (constraint.type) {
+            case ValueType::Signature:
+            case ValueType::EnumeratedSet:
+            case ValueType::ConstructedSet:
+            case ValueType::CompositeSet:
+                if (!isTruthy(belongsTo(constraint, value))) {
+                    throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
+                }
+                return value;
+            default:
+                break;
         }
 
         throw std::runtime_error("Struct field '" + field_name + "' has unsupported constraint");
@@ -594,6 +639,8 @@ public:
                 Value set = evalOperand();
                 return belongsTo(set, value);
             }
+            case Opcode::Deref:
+                return dereferenceValue(evalOperand());
             case Opcode::BinaryMath: {
                 BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
                 Value left = evalOperand();
@@ -828,6 +875,11 @@ public:
                     default:
                         throw std::runtime_error("Assign instruction requires a local, capture, or global destination");
                 }
+            }
+            case Opcode::StoreDeref: {
+                Value pointer = evalOperand();
+                Value value = evalOperand();
+                return storeDereference(pointer, std::move(value));
             }
             default:
                 throw std::runtime_error("Unsupported instruction: " + std::to_string(static_cast<int>(op)));

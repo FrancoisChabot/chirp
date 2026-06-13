@@ -22,6 +22,7 @@ enum class Opcode : uint8_t {
     GetField = 0x08,
     Index = 0x09,
     Contains = 0x0A,
+    Deref = 0x0B,
 
     // Consolidated Math & Logic
     BinaryMath = 0x0F,
@@ -41,6 +42,7 @@ enum class Opcode : uint8_t {
     MakeConstructedSet = 0x19,
     MakeSignature = 0x1A,
     ForEach = 0x1B,
+    StoreDeref = 0x1C,
 
     Let = 0x1E,
     Assign = 0x1F
