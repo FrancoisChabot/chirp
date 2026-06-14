@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 namespace chirp::vm {
 
@@ -181,7 +182,7 @@ public:
             emitOperand(*grouping->expression);
         } else if (auto num = dynamic_cast<const frontend::NumberExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-            emitU64(std::stoull(std::string(num->value)));
+            emitU64(std::stoull(std::string(num->value), nullptr, 0));
         } else if (auto ident = dynamic_cast<const frontend::IdentifierExpr*>(&expr)) {
             emitResolvedVariableOperand(std::string(ident->name));
         } else if (auto intrinsic = dynamic_cast<const frontend::IntrinsicExpr*>(&expr)) {
@@ -197,6 +198,7 @@ public:
             unit->emit(static_cast<uint8_t>(OperandType::ImmSymbol));
             emitStringIndex(std::string(sym->value));
         } else {
+            std::cerr << "COMPILER: emitOperand Inline for expr type " << typeid(expr).name() << "\n";
             unit->emit(static_cast<uint8_t>(OperandType::Inline));
             expr.accept(*this);
         }
@@ -421,6 +423,13 @@ public:
                 emitOperand(*expr.left);
                 emitOperand(*expr.right);
                 return;
+            case frontend::BinaryOp::Range:
+            case frontend::BinaryOp::RangeInclusiveEnd:
+                unit->emit(encodeInstruction(Opcode::MakeRange, Domain::Generic));
+                unit->emit(expr.op == frontend::BinaryOp::RangeInclusiveEnd ? 1 : 0);
+                emitOperand(*expr.left);
+                emitOperand(*expr.right);
+                return;
             case frontend::BinaryOp::Eq:
             case frontend::BinaryOp::Neq:
             case frontend::BinaryOp::Lt:
@@ -441,7 +450,7 @@ public:
                 emitOperand(*expr.right);
                 return;
             default:
-                throw std::runtime_error("Unsupported binary op in the VM");
+                throw std::runtime_error("Unsupported binary op in the VM: " + std::to_string(static_cast<int>(expr.op)));
         }
     }
 
@@ -520,9 +529,14 @@ public:
                 break;
             case frontend::UnaryOp::Negate:
                 if (auto* number = dynamic_cast<const frontend::NumberExpr*>(expr.right.get())) {
-                    unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-                    emitU64(static_cast<uint64_t>(-std::stoll(std::string(number->value))));
-                    return;
+                    try {
+                        long long val = std::stoll(std::string(number->value), nullptr, 0);
+                        unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
+                        emitU64(static_cast<uint64_t>(-val));
+                        return;
+                    } catch (...) {
+                        // Fallback to normal negate
+                    }
                 }
                 unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
                 unit->emit(static_cast<uint8_t>(UnaryMathOp::Negate));

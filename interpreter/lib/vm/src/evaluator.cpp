@@ -201,7 +201,7 @@ public:
                 throw std::runtime_error("Undefined global variable: " + name);
             }
             default:
-                throw std::runtime_error("Unsupported operand type in evalOperand");
+                throw std::runtime_error("Unsupported operand type in evalOperand: " + std::to_string(static_cast<int>(type)));
         }
     }
 
@@ -429,6 +429,21 @@ public:
             return result;
         }
 
+        if (set.type == ValueType::Range) {
+            if (set.as_range->start->type != ValueType::Int || set.as_range->end->type != ValueType::Int) {
+                throw std::runtime_error("Can only enumerate integer ranges");
+            }
+            std::vector<Value> elements;
+            int64_t start = set.as_range->start->as_int;
+            int64_t end = set.as_range->end->as_int;
+            if (set.as_range->inclusive_end) {
+                for (int64_t i = start; i <= end; ++i) elements.push_back(Value(i));
+            } else {
+                for (int64_t i = start; i < end; ++i) elements.push_back(Value(i));
+            }
+            return elements;
+        }
+
         throw std::runtime_error("Set is not finitely enumerable");
     }
 
@@ -477,6 +492,19 @@ public:
                     return Value(isTruthy(left) || isTruthy(right));
                 }
                 return Value(isTruthy(left) && isTruthy(right));
+            }
+            case ValueType::Range: {
+                if (value.type != set.as_range->start->type) return Value(false);
+                if (value.type == ValueType::Int) {
+                    bool valid = value.as_int >= set.as_range->start->as_int;
+                    if (set.as_range->inclusive_end) {
+                        valid = valid && value.as_int <= set.as_range->end->as_int;
+                    } else {
+                        valid = valid && value.as_int < set.as_range->end->as_int;
+                    }
+                    return Value(valid);
+                }
+                throw std::runtime_error("Range membership only supported for Int type");
             }
             default:
                 throw std::runtime_error("Expected set operand");
@@ -597,7 +625,12 @@ public:
     }
 
     Value evalInstruction() {
-        Opcode op = decodeOpcode(read8());
+        if (pc >= unit->bytecode.size()) {
+            throw std::runtime_error("PC out of bounds");
+        }
+        Opcode op = decodeOpcode(unit->bytecode[pc]);
+        std::cerr << "TRACE: PC=" << pc << " OP=" << static_cast<int>(op) << "\n";
+        pc++;
         Domain dom = decodeDomain(unit->bytecode[pc - 1]);
 
         switch (op) {
@@ -672,6 +705,12 @@ public:
                 Value value = evalOperand();
                 Value set = evalOperand();
                 return belongsTo(set, value);
+            }
+            case Opcode::MakeRange: {
+                bool inclusive_end = read8() != 0;
+                Value start = evalOperand();
+                Value end = evalOperand();
+                return Value::Range(std::make_shared<Value>(std::move(start)), std::make_shared<Value>(std::move(end)), inclusive_end);
             }
             case Opcode::Deref:
                 return dereferenceValue(evalOperand());

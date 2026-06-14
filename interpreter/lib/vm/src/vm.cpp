@@ -88,6 +88,14 @@ bool value_equals(const Value& left, const Value& right) {
             return left.as_composite_set == right.as_composite_set;
         case ValueType::Heap:
             return left.as_heap == right.as_heap;
+        case ValueType::EnumFamily:
+            return left.as_enum_family == right.as_enum_family;
+        case ValueType::EnumVariant:
+            return left.as_enum_variant == right.as_enum_variant;
+        case ValueType::Range:
+            return value_equals(*left.as_range->start, *right.as_range->start) &&
+                   value_equals(*left.as_range->end, *right.as_range->end) &&
+                   left.as_range->inclusive_end == right.as_range->inclusive_end;
     }
     return false;
 }

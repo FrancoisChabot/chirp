@@ -27,6 +27,12 @@ struct HeapState;
 struct EnumFamilyDef;
 struct EnumVariantDef;
 
+struct RangeDef {
+    std::shared_ptr<Value> start;
+    std::shared_ptr<Value> end;
+    bool inclusive_end;
+};
+
 enum class ValueType {
     Int,
     Closure,
@@ -48,7 +54,8 @@ enum class ValueType {
     CompositeSet,
     Heap,
     EnumFamily,
-    EnumVariant
+    EnumVariant,
+    Range
 };
 
 struct Value {
@@ -71,6 +78,7 @@ struct Value {
     std::shared_ptr<HeapState> as_heap;
     std::shared_ptr<EnumFamilyDef> as_enum_family;
     std::shared_ptr<EnumVariantDef> as_enum_variant;
+    std::shared_ptr<RangeDef> as_range;
 
     Value() : type(ValueType::Null), as_int(0) {}
     explicit Value(int64_t v) : type(ValueType::Int), as_int(v) {}
@@ -137,6 +145,15 @@ struct Value {
         v.as_enum_variant = std::move(variant);
         return v;
     }
+    static Value Range(std::shared_ptr<Value> start, std::shared_ptr<Value> end, bool inclusive_end) {
+        Value v;
+        v.type = ValueType::Range;
+        v.as_range = std::make_shared<RangeDef>();
+        v.as_range->start = std::move(start);
+        v.as_range->end = std::move(end);
+        v.as_range->inclusive_end = inclusive_end;
+        return v;
+    }
 
     std::string toString() const {
         if (type == ValueType::Int) return std::to_string(as_int);
@@ -159,6 +176,7 @@ struct Value {
         if (type == ValueType::Heap) return "<heap allocation>";
         if (type == ValueType::EnumFamily) return "<enum family>";
         if (type == ValueType::EnumVariant) return as_string;
+        if (type == ValueType::Range) return as_range->start->toString() + (as_range->inclusive_end ? "..=" : "..") + as_range->end->toString();
         return "null";
     }
 };
