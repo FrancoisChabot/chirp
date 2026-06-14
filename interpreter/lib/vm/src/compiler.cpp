@@ -534,7 +534,7 @@ public:
     }
 
     void visit(const frontend::EnumeratedSetExpr& expr) override {
-        unit->emit(encodeInstruction(Opcode::MakeEnumSet, Domain::Generic));
+        unit->emit(encodeInstruction(Opcode::MakeEnumeratedSet, Domain::Generic));
         emitU32(static_cast<uint32_t>(expr.elements.size()));
         for (const auto& element : expr.elements) {
             emitOperand(*element);
@@ -553,7 +553,44 @@ public:
     }
 
     void visit(const frontend::WhileExpr& expr) override {
-        throw std::runtime_error("WhileExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::Loop, Domain::Generic));
+        
+        size_t loop_body_len_offset = unit->bytecode.size();
+        emitU32(0);
+        size_t loop_start = unit->bytecode.size();
+        
+        unit->emit(static_cast<uint8_t>(OperandType::Inline));
+        unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+        emitOperand(*expr.condition);
+        
+        size_t true_len_offset = unit->bytecode.size();
+        emitU32(0);
+        size_t true_start = unit->bytecode.size();
+        
+        emitOperand(*expr.body);
+        
+        uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
+        for (int i = 0; i < 4; ++i) {
+            unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+        }
+        
+        size_t false_len_offset = unit->bytecode.size();
+        emitU32(0);
+        size_t false_start = unit->bytecode.size();
+        
+        unit->emit(static_cast<uint8_t>(OperandType::Inline));
+        unit->emit(encodeInstruction(Opcode::Break, Domain::Generic));
+        unit->emit(static_cast<uint8_t>(OperandType::ImmNull));
+        
+        uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
+        for (int i = 0; i < 4; ++i) {
+            unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
+        }
+        
+        uint32_t loop_len = static_cast<uint32_t>(unit->bytecode.size() - loop_start);
+        for (int i = 0; i < 4; ++i) {
+            unit->bytecode[loop_body_len_offset + i] = static_cast<uint8_t>((loop_len >> (i * 8)) & 0xFF);
+        }
     }
 
     void visit(const frontend::ForExpr& expr) override {

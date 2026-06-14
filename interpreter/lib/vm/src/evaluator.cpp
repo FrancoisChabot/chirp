@@ -138,6 +138,11 @@ public:
                 return left.as_composite_set == right.as_composite_set;
             case ValueType::Heap:
                 return left.as_heap == right.as_heap;
+            case ValueType::EnumFamily:
+                return left.as_enum_family->node_id == right.as_enum_family->node_id;
+            case ValueType::EnumVariant:
+                return left.as_enum_variant->enum_node_id == right.as_enum_variant->enum_node_id && 
+                       left.as_enum_variant->index == right.as_enum_variant->index;
         }
         return false;
     }
@@ -429,6 +434,9 @@ public:
 
     Value belongsTo(const Value& set, const Value& value) {
         switch (set.type) {
+            case ValueType::EnumFamily:
+                if (value.type != ValueType::EnumVariant) return Value(false);
+                return Value(value.as_enum_variant->enum_node_id == set.as_enum_family->node_id);
             case ValueType::TypeValue:
                 return Value(valueEquals(typeOf(value), set));
             case ValueType::StructType:
@@ -608,11 +616,37 @@ public:
             }
             case Opcode::Break:
                 throw BreakSignal{evalOperand()};
+            case Opcode::Loop: {
+                uint32_t loop_len = read32();
+                size_t loop_start_pc = pc;
+                try {
+                    while (true) {
+                        pc = loop_start_pc;
+                        evalOperand();
+                    }
+                } catch (BreakSignal& signal) {
+                    pc = loop_start_pc + loop_len;
+                    return std::move(signal.value);
+                }
+            }
             case Opcode::GetField: {
                 Value target = evalOperand();
                 Value field = evalOperand();
+                if (target.type == ValueType::EnumFamily) {
+                    const auto& variants = target.as_enum_family->variants;
+                    for (size_t i = 0; i < variants.size(); ++i) {
+                        if (variants[i] == field.as_string) {
+                            auto variant_def = std::make_shared<EnumVariantDef>();
+                            variant_def->enum_node_id = target.as_enum_family->node_id;
+                            variant_def->variant_name = field.as_string;
+                            variant_def->index = i;
+                            return Value::EnumVariant(std::move(variant_def));
+                        }
+                    }
+                    throw std::runtime_error("Enum missing variant: " + field.as_string);
+                }
                 if (target.type != ValueType::Struct) {
-                    throw std::runtime_error("GetField target must be a struct");
+                    throw std::runtime_error("GetField target must be a struct or enum");
                 }
                 auto it = target.as_struct->find(field.as_string);
                 if (it == target.as_struct->end()) {
@@ -812,7 +846,16 @@ public:
                 }
                 return Value::StructType(std::move(struct_type));
             }
-            case Opcode::MakeEnumSet: {
+            case Opcode::MakeEnumFamily: {
+                auto family_def = std::make_shared<EnumFamilyDef>();
+                family_def->node_id = read64();
+                uint8_t count = read8();
+                for (uint8_t i = 0; i < count; ++i) {
+                    family_def->variants.push_back(unit->constant_strings.at(read32()));
+                }
+                return Value::EnumFamily(std::move(family_def));
+            }
+            case Opcode::MakeEnumeratedSet: {
                 uint32_t element_count = read32();
                 auto elements = std::make_shared<std::vector<Value>>();
                 elements->reserve(element_count);
