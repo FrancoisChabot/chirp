@@ -133,6 +133,15 @@ public:
         unit->emit(value ? 1 : 0);
     }
 
+    void emitIntegerLiteralOperand(const std::string& text, bool negate = false) {
+        uint64_t value = std::stoull(text, nullptr, 0);
+        if (negate) {
+            value = uint64_t{0} - value;
+        }
+        unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
+        emitU64(value);
+    }
+
     std::shared_ptr<ProgramUnit> compileExpressionUnit(const frontend::Expr& expr) {
         auto expr_unit = std::make_shared<ProgramUnit>();
         CompilerContext expr_context(env->context);
@@ -181,8 +190,17 @@ public:
         if (auto grouping = dynamic_cast<const frontend::GroupingExpr*>(&expr)) {
             emitOperand(*grouping->expression);
         } else if (auto num = dynamic_cast<const frontend::NumberExpr*>(&expr)) {
-            unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-            emitU64(std::stoull(std::string(num->value), nullptr, 0));
+            emitIntegerLiteralOperand(std::string(num->value));
+        } else if (auto unary = dynamic_cast<const frontend::UnaryExpr*>(&expr)) {
+            if (unary->op == frontend::UnaryOp::Negate) {
+                if (auto num = dynamic_cast<const frontend::NumberExpr*>(unary->right.get())) {
+                    emitIntegerLiteralOperand(std::string(num->value), true);
+                    return;
+                }
+            }
+            std::cerr << "COMPILER: emitOperand Inline for expr type " << typeid(expr).name() << "\n";
+            unit->emit(static_cast<uint8_t>(OperandType::Inline));
+            expr.accept(*this);
         } else if (auto ident = dynamic_cast<const frontend::IdentifierExpr*>(&expr)) {
             emitResolvedVariableOperand(std::string(ident->name));
         } else if (auto intrinsic = dynamic_cast<const frontend::IntrinsicExpr*>(&expr)) {
@@ -528,16 +546,6 @@ public:
                 emitOperand(*expr.right);
                 break;
             case frontend::UnaryOp::Negate:
-                if (auto* number = dynamic_cast<const frontend::NumberExpr*>(expr.right.get())) {
-                    try {
-                        long long val = std::stoll(std::string(number->value), nullptr, 0);
-                        unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-                        emitU64(static_cast<uint64_t>(-val));
-                        return;
-                    } catch (...) {
-                        // Fallback to normal negate
-                    }
-                }
                 unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
                 unit->emit(static_cast<uint8_t>(UnaryMathOp::Negate));
                 emitOperand(*expr.right);

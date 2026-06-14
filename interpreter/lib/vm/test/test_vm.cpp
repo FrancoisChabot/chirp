@@ -32,6 +32,11 @@ TEST(VmTest, IfConsumesBooleanConditions) {
     EXPECT_EQ(run_vm("if (1 < 2) 3 else 4;\n"), "3\n");
 }
 
+TEST(VmTest, NegativeIntegerLiteralsWorkInOperandContexts) {
+    EXPECT_EQ(run_vm("-128;\n"), "-128\n");
+    EXPECT_EQ(run_vm("-128..=127;\n"), "-128..=127\n");
+}
+
 TEST(VmTest, TopLevelRecursiveLambdaStillWorks) {
     EXPECT_EQ(run_vm("let fib = (n) => if (n < 2) n else fib(n-1) + fib(n-2); fib(10);\n"), "55\n");
 }
