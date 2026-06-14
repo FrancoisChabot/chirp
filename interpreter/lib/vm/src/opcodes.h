@@ -39,9 +39,10 @@ enum class Opcode : uint8_t {
     If = 0x15,
     MakeStructDef = 0x16,
     MakeAnonStruct = 0x17,
-    MakeEnumSet = 0x18,
+    MakeEnumeratedSet = 0x18,
     MakeConstructedSet = 0x19,
     MakeSignature = 0x1A,
+    MakeEnumFamily = 0x1D,
     ForEach = 0x1B,
     StoreDeref = 0x1C,
 

@@ -698,7 +698,12 @@ public:
 
 
     void visit(const frontend::EnumExpr& expr) override {
-        throw std::runtime_error("EnumExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::MakeEnumFamily, Domain::Generic));
+        emitU64(expr.node_id);
+        unit->emit(static_cast<uint8_t>(expr.variants.size()));
+        for (const auto& variant : expr.variants) {
+            emitU32(unit->addStringConstant(variant));
+        }
     }
 
     void visit(const frontend::FStringExpr& expr) override {

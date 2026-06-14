@@ -24,6 +24,8 @@ struct SignatureDef;
 struct ConstructedSetDef;
 struct CompositeSetDef;
 struct HeapState;
+struct EnumFamilyDef;
+struct EnumVariantDef;
 
 enum class ValueType {
     Int,
@@ -44,7 +46,9 @@ enum class ValueType {
     EnumeratedSet,
     ConstructedSet,
     CompositeSet,
-    Heap
+    Heap,
+    EnumFamily,
+    EnumVariant
 };
 
 struct Value {
@@ -65,6 +69,8 @@ struct Value {
     std::shared_ptr<ConstructedSetDef> as_constructed_set;
     std::shared_ptr<CompositeSetDef> as_composite_set;
     std::shared_ptr<HeapState> as_heap;
+    std::shared_ptr<EnumFamilyDef> as_enum_family;
+    std::shared_ptr<EnumVariantDef> as_enum_variant;
 
     Value() : type(ValueType::Null), as_int(0) {}
     explicit Value(int64_t v) : type(ValueType::Int), as_int(v) {}
@@ -119,6 +125,18 @@ struct Value {
         v.as_type_value = std::move(heap_type);
         return v;
     }
+    static Value EnumFamily(std::shared_ptr<EnumFamilyDef> family) {
+        Value v;
+        v.type = ValueType::EnumFamily;
+        v.as_enum_family = std::move(family);
+        return v;
+    }
+    static Value EnumVariant(std::shared_ptr<EnumVariantDef> variant) {
+        Value v;
+        v.type = ValueType::EnumVariant;
+        v.as_enum_variant = std::move(variant);
+        return v;
+    }
 
     std::string toString() const {
         if (type == ValueType::Int) return std::to_string(as_int);
@@ -139,6 +157,8 @@ struct Value {
         if (type == ValueType::ConstructedSet) return "<constructed set>";
         if (type == ValueType::CompositeSet) return "<composite set>";
         if (type == ValueType::Heap) return "<heap allocation>";
+        if (type == ValueType::EnumFamily) return "<enum family>";
+        if (type == ValueType::EnumVariant) return as_string;
         return "null";
     }
 };
@@ -215,6 +235,17 @@ struct HeapState {
 struct CallArgument {
     std::optional<std::string> name;
     Value value;
+};
+
+struct EnumFamilyDef {
+    uint64_t node_id;
+    std::vector<std::string> variants;
+};
+
+struct EnumVariantDef {
+    uint64_t enum_node_id;
+    std::string variant_name;
+    size_t index;
 };
 
 } // namespace chirp::vm
