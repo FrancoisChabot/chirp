@@ -48,7 +48,8 @@ enum class Opcode : uint8_t {
     StoreDeref = 0x1C,
 
     Let = 0x1E,
-    Assign = 0x1F
+    Assign = 0x1F,
+    MakeArray = 0x20
 };
 
 enum class OperandType : uint8_t {

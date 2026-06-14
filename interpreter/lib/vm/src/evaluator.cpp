@@ -864,6 +864,15 @@ public:
                 }
                 return Value::EnumeratedSet(std::move(elements));
             }
+            case Opcode::MakeArray: {
+                uint32_t element_count = read32();
+                auto elements = std::make_shared<std::vector<Value>>();
+                elements->reserve(element_count);
+                for (uint32_t i = 0; i < element_count; ++i) {
+                    elements->push_back(evalOperand());
+                }
+                return Value::Array(std::move(elements));
+            }
             case Opcode::MakeConstructedSet: {
                 bool has_bound = read8() != 0;
                 std::shared_ptr<Closure> bound;
