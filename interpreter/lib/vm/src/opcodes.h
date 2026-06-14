@@ -49,7 +49,8 @@ enum class Opcode : uint8_t {
 
     Let = 0x1E,
     Assign = 0x1F,
-    MakeArray = 0x20
+    MakeArray = 0x20,
+    MakeFString = 0x21
 };
 
 enum class OperandType : uint8_t {

@@ -873,6 +873,15 @@ public:
                 }
                 return Value::Array(std::move(elements));
             }
+            case Opcode::MakeFString: {
+                uint32_t part_count = read32();
+                std::string res;
+                for (uint32_t i = 0; i < part_count; ++i) {
+                    Value part = evalOperand();
+                    res += part.toString();
+                }
+                return Value(res);
+            }
             case Opcode::MakeConstructedSet: {
                 bool has_bound = read8() != 0;
                 std::shared_ptr<Closure> bound;

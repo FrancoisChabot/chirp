@@ -300,7 +300,11 @@ public:
     }
 
     void visit(const frontend::DebugStmt& stmt) override {
-        throw std::runtime_error("DebugStmt is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::Block, Domain::Generic));
+        emitU32(static_cast<uint32_t>(stmt.statements.size()));
+        for (const auto& s : stmt.statements) {
+            s->accept(*this);
+        }
     }
 
     void visit(const frontend::BinaryExpr& expr) override {
@@ -773,7 +777,11 @@ public:
     }
 
     void visit(const frontend::FStringExpr& expr) override {
-        throw std::runtime_error("FStringExpr is not supported in the VM yet");
+        unit->emit(encodeInstruction(Opcode::MakeFString, Domain::Generic));
+        emitU32(static_cast<uint32_t>(expr.parts.size()));
+        for (const auto& part : expr.parts) {
+            emitOperand(*part);
+        }
     }
 
     void visit(const frontend::AnonymousStructLiteralExpr& expr) override {
