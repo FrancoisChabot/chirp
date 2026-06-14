@@ -134,12 +134,8 @@ public:
     }
 
     void emitIntegerLiteralOperand(const std::string& text, bool negate = false) {
-        uint64_t value = std::stoull(text, nullptr, 0);
-        if (negate) {
-            value = uint64_t{0} - value;
-        }
         unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-        emitU64(value);
+        emitStringIndex(negate ? "-" + text : text);
     }
 
     std::shared_ptr<ProgramUnit> compileExpressionUnit(const frontend::Expr& expr) {

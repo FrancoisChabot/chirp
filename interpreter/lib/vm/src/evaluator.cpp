@@ -155,7 +155,7 @@ public:
 
     static bool isTruthy(const Value& value) {
         if (value.type == ValueType::Bool || value.type == ValueType::Int) {
-            return value.as_int != 0;
+            return value.as_int != BigInt(0);
         }
         return false;
     }
@@ -174,6 +174,13 @@ public:
         if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
         if (value.type == ValueType::Heap) return Value::Type(value.as_type_value);
         return Value::Symbol("unknown");
+    }
+
+    static int64_t requireInt64(const BigInt& value, const std::string& message) {
+        if (!value.fits_int64()) {
+            throw std::runtime_error(message);
+        }
+        return value.to_int64();
     }
 
     static std::string typeKey(const Value& type) {
@@ -235,7 +242,7 @@ public:
         OperandType type = static_cast<OperandType>(read8());
         switch (type) {
             case OperandType::ImmInt:
-                return Value(static_cast<int64_t>(read64()));
+                return Value(BigInt(unit->constant_strings.at(read32())));
             case OperandType::ImmString:
                 return Value(unit->constant_strings.at(read32()));
             case OperandType::ImmChar:
@@ -547,8 +554,8 @@ public:
                 throw std::runtime_error("Can only enumerate integer ranges");
             }
             std::vector<Value> elements;
-            int64_t start = set.as_range->start->as_int;
-            int64_t end = set.as_range->end->as_int;
+            int64_t start = requireInt64(set.as_range->start->as_int, "Range bounds must fit in int64");
+            int64_t end = requireInt64(set.as_range->end->as_int, "Range bounds must fit in int64");
             if (set.as_range->inclusive_end) {
                 for (int64_t i = start; i <= end; ++i) elements.push_back(Value(i));
             } else {
@@ -818,10 +825,14 @@ public:
                     if (index.type != ValueType::Int) {
                         throw std::runtime_error("Array index must be an integer");
                     }
-                    if (index.as_int < 0 || static_cast<size_t>(index.as_int) >= target.as_array->size()) {
+                    if (!index.as_int.fits_int64()) {
                         throw std::runtime_error("Array index out of bounds");
                     }
-                    return target.as_array->at(static_cast<size_t>(index.as_int));
+                    int64_t index_value = index.as_int.to_int64();
+                    if (index_value < 0 || static_cast<size_t>(index_value) >= target.as_array->size()) {
+                        throw std::runtime_error("Array index out of bounds");
+                    }
+                    return target.as_array->at(static_cast<size_t>(index_value));
                 }
                 if (const Value* indexable_trait = registeredItem("operators.indexable")) {
                     if (const Value* impl = registeredImplementation(*indexable_trait, typeOf(target))) {
@@ -868,7 +879,7 @@ public:
                         case UnaryMathOp::Negate:
                             return Value(-right.as_int);
                         case UnaryMathOp::Complement:
-                            return Value(~right.as_int);
+                            return Value(~requireInt64(right.as_int, "Type error: integer does not fit in int64 for complement"));
                         default:
                             throw std::runtime_error("Unknown UnaryMathOp");
                     }
@@ -901,10 +912,10 @@ public:
                         case BinaryMathOp::Sub: return Value(left.as_int - right.as_int);
                         case BinaryMathOp::Mul: return Value(left.as_int * right.as_int);
                         case BinaryMathOp::Div:
-                            if (right.as_int == 0) throw std::runtime_error("Division by zero");
+                            if (right.as_int == BigInt(0)) throw std::runtime_error("Division by zero");
                             return Value(left.as_int / right.as_int);
                         case BinaryMathOp::Mod:
-                            if (right.as_int == 0) throw std::runtime_error("Modulo by zero");
+                            if (right.as_int == BigInt(0)) throw std::runtime_error("Modulo by zero");
                             return Value(left.as_int % right.as_int);
                         default:
                             throw std::runtime_error("Unknown BinaryMathOp");

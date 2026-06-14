@@ -14,6 +14,13 @@ namespace chirp::vm {
 
 namespace {
 
+int64_t require_int64(const BigInt& value, const std::string& message) {
+    if (!value.fits_int64()) {
+        throw std::runtime_error(message);
+    }
+    return value.to_int64();
+}
+
 std::string decode_string_literal(const std::string& value) {
     if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
         std::string decoded;
@@ -371,9 +378,9 @@ private:
                         throw std::runtime_error("`write expects 'to' to be an integer file descriptor");
                     }
 
-                    if (write_args[1].value.as_int == 1) {
+                    if (write_args[1].value.as_int == BigInt(1)) {
                         out_ << display_string(write_args[0].value);
-                    } else if (write_args[1].value.as_int == 2) {
+                    } else if (write_args[1].value.as_int == BigInt(2)) {
                         std::cerr << display_string(write_args[0].value);
                     } else {
                         throw std::runtime_error("Unsupported file descriptor for `write");
@@ -484,7 +491,7 @@ private:
                     if (mint_args.empty() || mint_args[0].name.has_value() || mint_args[0].value.type != ValueType::Int) {
                         throw std::runtime_error("`mint_* expects one positional integer argument");
                     }
-                    int64_t count = mint_args[0].value.as_int;
+                    int64_t count = require_int64(mint_args[0].value.as_int, "`mint_* count is out of range");
                     if (count < 0) {
                         throw std::runtime_error("`mint_* count must be non-negative");
                     }
@@ -512,11 +519,11 @@ private:
                         throw std::runtime_error("`exit expects one positional argument");
                     }
                     if (exit_args[0].value.type != ValueType::Int ||
-                        exit_args[0].value.as_int < 0 ||
-                        exit_args[0].value.as_int > 255) {
+                        exit_args[0].value.as_int < BigInt(0) ||
+                        exit_args[0].value.as_int > BigInt(255)) {
                         throw std::runtime_error("`exit expects an integer exit code between 0 and 255");
                     }
-                    throw backend::ScriptExit(static_cast<int>(exit_args[0].value.as_int));
+                    throw backend::ScriptExit(static_cast<int>(exit_args[0].value.as_int.to_int64()));
                 }));
             }
 
@@ -603,7 +610,7 @@ private:
                 }));
             }
 
-            if (key == "\"traits.implement\"") {
+	            if (key == "\"traits.implement\"") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& impl_args) -> Value {
                     if (impl_args.size() != 3) {
                         throw std::runtime_error("`implement expects three named arguments");
@@ -625,7 +632,32 @@ private:
                         throw std::runtime_error("`implement expects trait, on, and impl arguments");
                     }
 
-                    trait_impls_[trait->as_trait->id][type_key(*on)] = *impl;
+                    std::string on_key = type_key(*on);
+                    auto& impls_for_trait = trait_impls_[trait->as_trait->id];
+                    if (impls_for_trait.contains(on_key)) {
+                        throw std::runtime_error("Duplicate implementation for trait/on pair");
+                    }
+
+                    Value interface = trait->as_trait->interface;
+                    Value validated_impl = *impl;
+                    if (interface.type == ValueType::Null) {
+                        if (validated_impl.type != ValueType::Null) {
+                            throw std::runtime_error("Marker trait implementations must be void");
+                        }
+                    } else if (interface.type == ValueType::StructType) {
+                        Evaluator evaluator;
+                        validated_impl = evaluator.construct_struct(
+                            interface.as_struct_type,
+                            require_struct_bundle(validated_impl, "implement"),
+                            globals_,
+                            out_,
+                            &registry_,
+                            &trait_impls_);
+                    } else {
+                        throw std::runtime_error("`implement trait interface must be either void or a struct type");
+                    }
+
+                    impls_for_trait.emplace(std::move(on_key), std::move(validated_impl));
                     return Value();
                 }));
             }
@@ -795,7 +827,7 @@ private:
                     if (expect_args[0].value.type != ValueType::Bool) {
                         throw std::runtime_error("`expect expects a Bool expression");
                     }
-                    if (!expect_args[0].value.as_int) {
+                    if (expect_args[0].value.as_int == BigInt(0)) {
                         throw std::runtime_error("`expect check failed");
                     }
                     return Value();
@@ -846,12 +878,12 @@ private:
                         throw std::runtime_error("`expect_exit expects one positional argument");
                     }
                     if (expect_args[0].value.type != ValueType::Int ||
-                        expect_args[0].value.as_int < 0 ||
-                        expect_args[0].value.as_int > 255) {
+                        expect_args[0].value.as_int < BigInt(0) ||
+                        expect_args[0].value.as_int > BigInt(255)) {
                         throw std::runtime_error("`expect_exit expects an integer exit code between 0 and 255");
                     }
                     expectations_.has_expectations = true;
-                    expectations_.expected_exit = static_cast<int>(expect_args[0].value.as_int);
+                    expectations_.expected_exit = static_cast<int>(expect_args[0].value.as_int.to_int64());
                     return Value();
                 }));
             }
