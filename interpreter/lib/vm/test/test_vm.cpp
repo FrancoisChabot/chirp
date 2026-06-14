@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "chirp/backend.h"
 #include "chirp/vm.h"
 
 #include <sstream>
@@ -12,6 +13,13 @@ std::string run_vm(std::string_view source) {
     auto session = chirp::vm::createSession(out, false);
     session->execute_source(std::string(source), "<test>");
     return out.str();
+}
+
+chirp::backend::SessionExpectations run_vm_expectations(std::string_view source) {
+    std::ostringstream out;
+    auto session = chirp::vm::createSession(out, true);
+    session->execute_source(std::string(source), "<test>");
+    return session->getExpectations();
 }
 
 } // namespace
@@ -35,6 +43,45 @@ TEST(VmTest, IfConsumesBooleanConditions) {
 TEST(VmTest, NegativeIntegerLiteralsWorkInOperandContexts) {
     EXPECT_EQ(run_vm("-128;\n"), "-128\n");
     EXPECT_EQ(run_vm("-128..=127;\n"), "-128..=127\n");
+}
+
+TEST(VmTest, BootIoHooksWork) {
+    EXPECT_EQ(
+        run_vm("let write = `import(\"io.write\", \"__chirp_boot\"); write(\"abc\", 1);\n"),
+        "abc");
+}
+
+TEST(VmTest, BootInputHookUsesInjectedStdin) {
+    EXPECT_EQ(
+        run_vm("let inject_stdin = `import(\"testing.inject_stdin\", \"__chirp_boot\"); "
+               "let input = `import(\"io.input\", \"__chirp_boot\"); "
+               "let same = `import(\"values.same\", \"__chirp_boot\"); "
+               "inject_stdin(\"hello\\n\"); if (same(input(), \"hello\")) 1 else 0;\n"),
+        "1\n");
+}
+
+TEST(VmTest, BootTestingHooksPopulateExpectations) {
+    auto expectations = run_vm_expectations(
+        "let expect = `import(\"testing.expect\", \"__chirp_boot\"); "
+        "let expect_stdout = `import(\"testing.expect_stdout\", \"__chirp_boot\"); "
+        "let expect_exit = `import(\"testing.expect_exit\", \"__chirp_boot\"); "
+        "expect(true); expect_stdout(\"abc\"); expect_exit(7);\n");
+    EXPECT_TRUE(expectations.has_expectations);
+    EXPECT_EQ(expectations.expectation_checks, 1);
+    ASSERT_TRUE(expectations.expected_stdout.has_value());
+    EXPECT_EQ(*expectations.expected_stdout, "abc");
+    ASSERT_TRUE(expectations.expected_exit.has_value());
+    EXPECT_EQ(*expectations.expected_exit, 7);
+}
+
+TEST(VmTest, BootExitHookThrowsScriptExit) {
+    std::ostringstream out;
+    auto session = chirp::vm::createSession(out, false);
+    EXPECT_THROW(
+        session->execute_source(
+            "let exit = `import(\"system.exit\", \"__chirp_boot\"); exit(7);\n",
+            "<test>"),
+        chirp::backend::ScriptExit);
 }
 
 TEST(VmTest, TopLevelRecursiveLambdaStillWorks) {

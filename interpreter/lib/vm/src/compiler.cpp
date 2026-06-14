@@ -198,7 +198,6 @@ public:
                     return;
                 }
             }
-            std::cerr << "COMPILER: emitOperand Inline for expr type " << typeid(expr).name() << "\n";
             unit->emit(static_cast<uint8_t>(OperandType::Inline));
             expr.accept(*this);
         } else if (auto ident = dynamic_cast<const frontend::IdentifierExpr*>(&expr)) {
@@ -216,7 +215,6 @@ public:
             unit->emit(static_cast<uint8_t>(OperandType::ImmSymbol));
             emitStringIndex(std::string(sym->value));
         } else {
-            std::cerr << "COMPILER: emitOperand Inline for expr type " << typeid(expr).name() << "\n";
             unit->emit(static_cast<uint8_t>(OperandType::Inline));
             expr.accept(*this);
         }
@@ -408,6 +406,7 @@ public:
                 return;
             case frontend::BinaryOp::NotIn:
                 unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(OperandType::Inline));
                 unit->emit(encodeInstruction(Opcode::Contains, Domain::Generic));
                 emitOperand(*expr.left);
                 emitOperand(*expr.right);

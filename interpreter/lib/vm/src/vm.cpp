@@ -16,9 +16,76 @@ namespace {
 
 std::string decode_string_literal(const std::string& value) {
     if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
-        return value.substr(1, value.size() - 2);
+        std::string decoded;
+        decoded.reserve(value.size() - 2);
+        for (size_t i = 1; i + 1 < value.size(); ++i) {
+            char ch = value[i];
+            if (ch == '\\' && i + 2 < value.size()) {
+                char escaped = value[++i];
+                switch (escaped) {
+                    case 'n':
+                        decoded.push_back('\n');
+                        break;
+                    case 'r':
+                        decoded.push_back('\r');
+                        break;
+                    case 't':
+                        decoded.push_back('\t');
+                        break;
+                    case '\\':
+                        decoded.push_back('\\');
+                        break;
+                    case '"':
+                        decoded.push_back('"');
+                        break;
+                    default:
+                        decoded.push_back(escaped);
+                        break;
+                }
+                continue;
+            }
+            decoded.push_back(ch);
+        }
+        return decoded;
     }
     return value;
+}
+
+std::string encode_string_literal(const std::string& value) {
+    std::string encoded;
+    encoded.reserve(value.size() + 2);
+    encoded.push_back('"');
+    for (char ch : value) {
+        switch (ch) {
+            case '\\':
+                encoded += "\\\\";
+                break;
+            case '"':
+                encoded += "\\\"";
+                break;
+            case '\n':
+                encoded += "\\n";
+                break;
+            case '\r':
+                encoded += "\\r";
+                break;
+            case '\t':
+                encoded += "\\t";
+                break;
+            default:
+                encoded.push_back(ch);
+                break;
+        }
+    }
+    encoded.push_back('"');
+    return encoded;
+}
+
+std::string display_string(const Value& value) {
+    if (value.type == ValueType::String) {
+        return decode_string_literal(value.as_string);
+    }
+    return value.toString();
 }
 
 bool value_equals(const Value& left, const Value& right) {
@@ -127,6 +194,7 @@ std::string type_key(const Value& type) {
 }
 
 Value type_of_value(const Value& value, const std::unordered_map<std::string, Value>& globals) {
+    if (value.type == ValueType::Null) return globals.at("__void_type");
     if (value.type == ValueType::Int) return globals.at("int");
     if (value.type == ValueType::Bool) return globals.at("bool");
     if (value.type == ValueType::String) return globals.at("string");
@@ -189,17 +257,22 @@ class VmSession : public backend::Session {
     std::unordered_map<std::string, Value> globals_;
     std::unordered_map<std::string, Value> registry_;
     std::unordered_map<uint64_t, std::unordered_map<std::string, Value>> trait_impls_;
+    bool testing_enabled_ = false;
+    bool stdin_injected_ = false;
+    std::string injected_stdin_;
+    size_t stdin_cursor_ = 0;
     uint64_t next_type_id_ = 1;
     uint64_t next_trait_id_ = 1;
     uint64_t next_heap_id_ = 1;
 
 public:
-    VmSession(std::ostream& out) : out_(out) {
+    VmSession(std::ostream& out, bool testing_enabled) : out_(out), testing_enabled_(testing_enabled) {
         globals_["int"] = create_type("int", TypeValueDef::Kind::Primitive);
         globals_["bool"] = create_type("bool", TypeValueDef::Kind::Primitive);
         globals_["string"] = create_type("string", TypeValueDef::Kind::Primitive);
         globals_["char"] = create_type("char", TypeValueDef::Kind::Primitive);
         globals_["symbol"] = create_type("symbol", TypeValueDef::Kind::Primitive);
+        globals_["__void_type"] = create_type("void", TypeValueDef::Kind::Primitive);
         globals_["any"] = create_type("any", TypeValueDef::Kind::Primitive);
         globals_["type"] = create_type("type", TypeValueDef::Kind::Meta);
         globals_["lambda"] = create_type("lambda", TypeValueDef::Kind::Lambda);
@@ -216,7 +289,7 @@ public:
         auto unit = compiler.compile(stmts);
 
         Evaluator evaluator;
-        Value result = evaluator.evaluate(unit, globals_, out_);
+        Value result = evaluator.evaluate(unit, globals_, out_, &registry_, &trait_impls_);
         if (result.type != ValueType::Null) {
             out_ << result.toString() << "\n";
         }
@@ -238,7 +311,7 @@ public:
         Compiler compiler;
         auto unit = compiler.compile(stmts);
         Evaluator evaluator;
-        evaluator.evaluate(unit, globals_, out_);
+        evaluator.evaluate(unit, globals_, out_, &registry_, &trait_impls_);
     }
 
     void set_chirp_root(std::string path) override {
@@ -280,15 +353,58 @@ private:
 
             if (key == "\"io.print\"") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& print_args) -> Value {
-                    for (size_t i = 0; i < print_args.size(); ++i) {
-                        if (print_args[i].name.has_value()) {
-                            throw std::runtime_error("`print does not support named arguments");
-                        }
-                        if (i > 0) out_ << " ";
-                        out_ << print_args[i].value.toString();
+                    if (print_args.size() != 1 || print_args[0].name.has_value()) {
+                        throw std::runtime_error("`print expects one positional argument");
                     }
+                    out_ << display_string(print_args[0].value);
                     out_ << "\n";
                     return Value();
+                }));
+            }
+
+            if (key == "\"io.write\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& write_args) -> Value {
+                    if (write_args.size() != 2 || write_args[0].name.has_value() || write_args[1].name.has_value()) {
+                        throw std::runtime_error("`write expects two positional arguments");
+                    }
+                    if (write_args[1].value.type != ValueType::Int) {
+                        throw std::runtime_error("`write expects 'to' to be an integer file descriptor");
+                    }
+
+                    if (write_args[1].value.as_int == 1) {
+                        out_ << display_string(write_args[0].value);
+                    } else if (write_args[1].value.as_int == 2) {
+                        std::cerr << display_string(write_args[0].value);
+                    } else {
+                        throw std::runtime_error("Unsupported file descriptor for `write");
+                    }
+                    return Value();
+                }));
+            }
+
+            if (key == "\"io.input\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& input_args) -> Value {
+                    if (!input_args.empty()) {
+                        throw std::runtime_error("`input expects zero arguments");
+                    }
+
+                    std::string line;
+                    if (stdin_injected_) {
+                        if (stdin_cursor_ < injected_stdin_.size()) {
+                            size_t found = injected_stdin_.find('\n', stdin_cursor_);
+                            if (found != std::string::npos) {
+                                line = injected_stdin_.substr(stdin_cursor_, found - stdin_cursor_);
+                                stdin_cursor_ = found + 1;
+                            } else {
+                                line = injected_stdin_.substr(stdin_cursor_);
+                                stdin_cursor_ = injected_stdin_.size();
+                            }
+                        }
+                    } else if (!std::getline(std::cin, line)) {
+                        line.clear();
+                    }
+
+                    return Value(encode_string_literal(line));
                 }));
             }
 
@@ -357,7 +473,9 @@ private:
                         type_args[0].value.as_struct_type,
                         require_struct_bundle(type_args[1].value, "construct"),
                         globals_,
-                        out_);
+                        out_,
+                        &registry_,
+                        &trait_impls_);
                 }));
             }
 
@@ -386,6 +504,20 @@ private:
 
             if (key == "\"memory.heap_allocation\"") {
                 return globals_.at("__heap_allocation_type");
+            }
+
+            if (key == "\"system.exit\"") {
+                return Value(NativeFunc([](const std::vector<CallArgument>& exit_args) -> Value {
+                    if (exit_args.size() != 1 || exit_args[0].name.has_value()) {
+                        throw std::runtime_error("`exit expects one positional argument");
+                    }
+                    if (exit_args[0].value.type != ValueType::Int ||
+                        exit_args[0].value.as_int < 0 ||
+                        exit_args[0].value.as_int > 255) {
+                        throw std::runtime_error("`exit expects an integer exit code between 0 and 255");
+                    }
+                    throw backend::ScriptExit(static_cast<int>(exit_args[0].value.as_int));
+                }));
             }
 
             if (key == "\"memory.heap_shared_allocation\"") {
@@ -544,7 +676,9 @@ private:
                         invoke_args[0].value,
                         require_struct_bundle(invoke_args[1].value, "invoke"),
                         globals_,
-                        out_);
+                        out_,
+                        &registry_,
+                        &trait_impls_);
                 }));
             }
 
@@ -633,13 +767,113 @@ private:
                 }));
             }
 
+            if (key == "\"testing.enabled\"") {
+                return Value(testing_enabled_);
+            }
+
+            if (key == "\"testing.inject_stdin\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& inject_args) -> Value {
+                    if (inject_args.size() != 1 || inject_args[0].name.has_value()) {
+                        throw std::runtime_error("`inject_stdin expects one positional argument");
+                    }
+                    if (inject_args[0].value.type != ValueType::String) {
+                        throw std::runtime_error("`inject_stdin expects a string");
+                    }
+                    stdin_injected_ = true;
+                    injected_stdin_ += decode_string_literal(inject_args[0].value.as_string);
+                    return Value();
+                }));
+            }
+
+            if (key == "\"testing.expect\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
+                    if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
+                        throw std::runtime_error("`expect expects one positional argument");
+                    }
+                    expectations_.has_expectations = true;
+                    expectations_.expectation_checks += 1;
+                    if (expect_args[0].value.type != ValueType::Bool) {
+                        throw std::runtime_error("`expect expects a Bool expression");
+                    }
+                    if (!expect_args[0].value.as_int) {
+                        throw std::runtime_error("`expect check failed");
+                    }
+                    return Value();
+                }));
+            }
+
+            if (key == "\"testing.expect_stdout\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
+                    if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
+                        throw std::runtime_error("`expect_stdout expects one positional argument");
+                    }
+                    if (expect_args[0].value.type != ValueType::String) {
+                        throw std::runtime_error("`expect_stdout expects a string");
+                    }
+                    expectations_.has_expectations = true;
+                    std::string expected = decode_string_literal(expect_args[0].value.as_string);
+                    if (!expectations_.expected_stdout.has_value()) {
+                        expectations_.expected_stdout = std::move(expected);
+                    } else {
+                        *expectations_.expected_stdout += expected;
+                    }
+                    return Value();
+                }));
+            }
+
+            if (key == "\"testing.expect_stderr\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
+                    if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
+                        throw std::runtime_error("`expect_stderr expects one positional argument");
+                    }
+                    if (expect_args[0].value.type != ValueType::String) {
+                        throw std::runtime_error("`expect_stderr expects a string");
+                    }
+                    expectations_.has_expectations = true;
+                    std::string expected = decode_string_literal(expect_args[0].value.as_string);
+                    if (!expectations_.expected_stderr.has_value()) {
+                        expectations_.expected_stderr = std::move(expected);
+                    } else {
+                        *expectations_.expected_stderr += expected;
+                    }
+                    return Value();
+                }));
+            }
+
+            if (key == "\"testing.expect_exit\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
+                    if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
+                        throw std::runtime_error("`expect_exit expects one positional argument");
+                    }
+                    if (expect_args[0].value.type != ValueType::Int ||
+                        expect_args[0].value.as_int < 0 ||
+                        expect_args[0].value.as_int > 255) {
+                        throw std::runtime_error("`expect_exit expects an integer exit code between 0 and 255");
+                    }
+                    expectations_.has_expectations = true;
+                    expectations_.expected_exit = static_cast<int>(expect_args[0].value.as_int);
+                    return Value();
+                }));
+            }
+
+            if (key == "\"testing.expect_test_failure\"") {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
+                    if (!expect_args.empty()) {
+                        throw std::runtime_error("`expect_test_failure expects no arguments");
+                    }
+                    expectations_.has_expectations = true;
+                    expectations_.expect_test_failure = true;
+                    return Value();
+                }));
+            }
+
             throw std::runtime_error("Unsupported native import in VM");
         };
     }
 };
 
 std::unique_ptr<chirp::backend::Session> createSession(std::ostream& out, bool testing_enabled) {
-    return std::make_unique<VmSession>(out);
+    return std::make_unique<VmSession>(out, testing_enabled);
 }
 
 } // namespace chirp::vm

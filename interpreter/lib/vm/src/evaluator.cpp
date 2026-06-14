@@ -26,16 +26,22 @@ public:
     const std::vector<Value>* captures = nullptr;
     std::unordered_map<std::string, Value>& globals;
     std::ostream& out;
+    const std::unordered_map<std::string, Value>* registry = nullptr;
+    const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls = nullptr;
 
     ExecutionState(std::shared_ptr<ProgramUnit> current_unit,
                    std::unordered_map<std::string, Value>& global_values,
                    std::ostream& output,
+                   const std::unordered_map<std::string, Value>* registered_values = nullptr,
+                   const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* registered_trait_impls = nullptr,
                    const std::vector<Value>* captured_values = nullptr)
-        : unit(std::move(current_unit)),
+    : unit(std::move(current_unit)),
           locals(unit->num_locals),
           captures(captured_values),
           globals(global_values),
-          out(output) {}
+          out(output),
+          registry(registered_values),
+          trait_impls(registered_trait_impls) {}
 
     uint8_t read8() {
         if (pc >= unit->bytecode.size()) {
@@ -155,6 +161,7 @@ public:
     }
 
     Value typeOf(const Value& value) {
+        if (value.type == ValueType::Null) return globals.at("__void_type");
         if (value.type == ValueType::Int) return globals.at("int");
         if (value.type == ValueType::Bool) return globals.at("bool");
         if (value.type == ValueType::String) return globals.at("string");
@@ -167,6 +174,61 @@ public:
         if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
         if (value.type == ValueType::Heap) return Value::Type(value.as_type_value);
         return Value::Symbol("unknown");
+    }
+
+    static std::string typeKey(const Value& type) {
+        auto pointerKey = [](const void* ptr) {
+            std::ostringstream oss;
+            oss << ptr;
+            return oss.str();
+        };
+        switch (type.type) {
+            case ValueType::TypeValue:
+                return "type:" + pointerKey(type.as_type_value.get());
+            case ValueType::StructType:
+                return "struct:" + pointerKey(type.as_struct_type.get());
+            default:
+                throw std::runtime_error("Expected a type value");
+        }
+    }
+
+    const Value* registeredItem(const std::string& key) const {
+        if (registry == nullptr) {
+            return nullptr;
+        }
+        auto it = registry->find(key);
+        if (it == registry->end()) {
+            return nullptr;
+        }
+        return &it->second;
+    }
+
+    const Value* registeredImplementation(const Value& trait, const Value& subject_type) const {
+        if (trait_impls == nullptr ||
+            trait.type != ValueType::Trait ||
+            (subject_type.type != ValueType::TypeValue && subject_type.type != ValueType::StructType)) {
+            return nullptr;
+        }
+        auto trait_it = trait_impls->find(trait.as_trait->id);
+        if (trait_it == trait_impls->end()) {
+            return nullptr;
+        }
+        auto impl_it = trait_it->second.find(typeKey(subject_type));
+        if (impl_it == trait_it->second.end()) {
+            return nullptr;
+        }
+        return &impl_it->second;
+    }
+
+    const Value* structField(const Value& value, const std::string& name) const {
+        if (value.type != ValueType::Struct || value.as_struct == nullptr) {
+            return nullptr;
+        }
+        auto it = value.as_struct->find(name);
+        if (it == value.as_struct->end()) {
+            return nullptr;
+        }
+        return &it->second;
     }
 
     Value evalOperand() {
@@ -304,11 +366,26 @@ public:
     }
 
     Value invokeClosure(const Closure& closure, std::vector<Value> args = {}) {
-        ExecutionState call_state(closure.unit, globals, out, &closure.captures);
+        ExecutionState call_state(closure.unit, globals, out, registry, trait_impls, &closure.captures);
         for (size_t i = 0; i < args.size() && i < call_state.locals.size(); ++i) {
             call_state.locals[i] = std::move(args[i]);
         }
         return call_state.run();
+    }
+
+    Value buildArgumentStruct(const Value& impl,
+                              const std::string& param_space_field,
+                              const Value& self,
+                              const std::vector<CallArgument>& args) {
+        const Value* param_space_fn = structField(impl, param_space_field);
+        if (param_space_fn == nullptr) {
+            throw std::runtime_error("Trait implementation missing field: " + param_space_field);
+        }
+        Value param_space = invokeValue(*param_space_fn, {CallArgument{std::nullopt, self}});
+        if (param_space.type != ValueType::StructType) {
+            throw std::runtime_error("Trait parameter space must be a struct type");
+        }
+        return constructStruct(param_space.as_struct_type, args);
     }
 
     Value invokeValue(const Value& callee, const std::vector<CallArgument>& args) {
@@ -318,12 +395,26 @@ public:
         if (callee.type == ValueType::StructType) {
             return constructStruct(callee.as_struct_type, args);
         }
-        if (callee.type != ValueType::Closure) {
-            throw std::runtime_error("Type error: target is not callable");
+        if (callee.type == ValueType::Closure) {
+            std::vector<Value> lowered_args = lower_closure_arguments(*callee.as_closure, args);
+            return invokeClosure(*callee.as_closure, std::move(lowered_args));
         }
 
-        std::vector<Value> lowered_args = lower_closure_arguments(*callee.as_closure, args);
-        return invokeClosure(*callee.as_closure, std::move(lowered_args));
+        if (const Value* callable_trait = registeredItem("traits.callable")) {
+            if (const Value* impl = registeredImplementation(*callable_trait, typeOf(callee))) {
+                const Value* invoke_fn = structField(*impl, "invoke");
+                if (invoke_fn == nullptr) {
+                    throw std::runtime_error("Callable implementation missing invoke");
+                }
+                Value params = buildArgumentStruct(*impl, "param_space", callee, args);
+                return invokeValue(*invoke_fn, {
+                    CallArgument{std::nullopt, callee},
+                    CallArgument{std::nullopt, std::move(params)},
+                });
+            }
+        }
+
+        throw std::runtime_error("Type error: target is not callable");
     }
 
     Value dereferenceValue(const Value& value) {
@@ -332,6 +423,15 @@ public:
                 throw std::runtime_error("Cannot dereference destroyed heap allocation");
             }
             return value.as_heap->stored;
+        }
+        if (const Value* dereferenceable_trait = registeredItem("traits.dereferenceable")) {
+            if (const Value* impl = registeredImplementation(*dereferenceable_trait, typeOf(value))) {
+                const Value* deref_fn = structField(*impl, "deref");
+                if (deref_fn == nullptr) {
+                    throw std::runtime_error("Dereferenceable implementation missing deref");
+                }
+                return invokeValue(*deref_fn, {CallArgument{std::nullopt, value}});
+            }
         }
         throw std::runtime_error("Cannot dereference non-pointer value");
     }
@@ -343,6 +443,18 @@ public:
             }
             pointer.as_heap->stored = new_value;
             return new_value;
+        }
+        if (const Value* dereferenceable_mut_trait = registeredItem("traits.dereferenceable_mut")) {
+            if (const Value* impl = registeredImplementation(*dereferenceable_mut_trait, typeOf(pointer))) {
+                const Value* assign_fn = structField(*impl, "deref_assign");
+                if (assign_fn == nullptr) {
+                    throw std::runtime_error("DereferenceableMut implementation missing deref_assign");
+                }
+                return invokeValue(*assign_fn, {
+                    CallArgument{std::nullopt, pointer},
+                    CallArgument{std::nullopt, new_value},
+                });
+            }
         }
         throw std::runtime_error("Cannot assign through non-pointer value");
     }
@@ -359,6 +471,7 @@ public:
         if (constraint_type->name == "string") return value.type == ValueType::String;
         if (constraint_type->name == "char") return value.type == ValueType::Char;
         if (constraint_type->name == "symbol") return value.type == ValueType::Symbol;
+        if (constraint_type->name == "void") return value.type == ValueType::Null;
         if (constraint_type->name == "any") return true;
         return false;
     }
@@ -507,6 +620,18 @@ public:
                 throw std::runtime_error("Range membership only supported for Int type");
             }
             default:
+                if (const Value* set_trait = registeredItem("traits.set")) {
+                    if (const Value* impl = registeredImplementation(*set_trait, typeOf(set))) {
+                        const Value* belongs_fn = structField(*impl, "belongs");
+                        if (belongs_fn == nullptr) {
+                            throw std::runtime_error("Set implementation missing belongs");
+                        }
+                        return invokeValue(*belongs_fn, {
+                            CallArgument{std::nullopt, set},
+                            CallArgument{std::nullopt, value},
+                        });
+                    }
+                }
                 throw std::runtime_error("Expected set operand");
         }
     }
@@ -629,7 +754,6 @@ public:
             throw std::runtime_error("PC out of bounds");
         }
         Opcode op = decodeOpcode(unit->bytecode[pc]);
-        std::cerr << "TRACE: PC=" << pc << " OP=" << static_cast<int>(op) << "\n";
         pc++;
         Domain dom = decodeDomain(unit->bytecode[pc - 1]);
 
@@ -690,16 +814,33 @@ public:
             case Opcode::Index: {
                 Value target = evalOperand();
                 Value index = evalOperand();
-                if (target.type != ValueType::Array) {
-                    throw std::runtime_error("Index operation on non-array type");
+                if (target.type == ValueType::Array) {
+                    if (index.type != ValueType::Int) {
+                        throw std::runtime_error("Array index must be an integer");
+                    }
+                    if (index.as_int < 0 || static_cast<size_t>(index.as_int) >= target.as_array->size()) {
+                        throw std::runtime_error("Array index out of bounds");
+                    }
+                    return target.as_array->at(static_cast<size_t>(index.as_int));
                 }
-                if (index.type != ValueType::Int) {
-                    throw std::runtime_error("Array index must be an integer");
+                if (const Value* indexable_trait = registeredItem("operators.indexable")) {
+                    if (const Value* impl = registeredImplementation(*indexable_trait, typeOf(target))) {
+                        const Value* read_fn = structField(*impl, "read");
+                        if (read_fn == nullptr) {
+                            throw std::runtime_error("Indexable implementation missing read");
+                        }
+                        Value at = buildArgumentStruct(
+                            *impl,
+                            "index_space",
+                            target,
+                            {CallArgument{std::nullopt, index}});
+                        return invokeValue(*read_fn, {
+                            CallArgument{std::nullopt, target},
+                            CallArgument{std::nullopt, std::move(at)},
+                        });
+                    }
                 }
-                if (index.as_int < 0 || static_cast<size_t>(index.as_int) >= target.as_array->size()) {
-                    throw std::runtime_error("Array index out of bounds");
-                }
-                return target.as_array->at(static_cast<size_t>(index.as_int));
+                throw std::runtime_error("Index operation on non-array type");
             }
             case Opcode::Contains: {
                 Value value = evalOperand();
@@ -721,19 +862,30 @@ public:
                 if (math_op == UnaryMathOp::Not) {
                     return Value(!isTruthy(right));
                 }
-                
-                if (right.type != ValueType::Int) {
-                    throw std::runtime_error("Type error: expected integer for unary math");
+
+                if (right.type == ValueType::Int) {
+                    switch (math_op) {
+                        case UnaryMathOp::Negate:
+                            return Value(-right.as_int);
+                        case UnaryMathOp::Complement:
+                            return Value(~right.as_int);
+                        default:
+                            throw std::runtime_error("Unknown UnaryMathOp");
+                    }
                 }
-                
-                switch (math_op) {
-                    case UnaryMathOp::Negate:
-                        return Value(-right.as_int);
-                    case UnaryMathOp::Complement:
-                        return Value(~right.as_int);
-                    default:
-                        throw std::runtime_error("Unknown UnaryMathOp");
+
+                if (math_op == UnaryMathOp::Negate) {
+                    if (const Value* negatable_trait = registeredItem("operators.negatable")) {
+                        if (const Value* impl = registeredImplementation(*negatable_trait, typeOf(right))) {
+                            const Value* neg_fn = structField(*impl, "neg");
+                            if (neg_fn == nullptr) {
+                                throw std::runtime_error("Negatable implementation missing neg");
+                            }
+                            return invokeValue(*neg_fn, {CallArgument{std::nullopt, right}});
+                        }
+                    }
                 }
+                throw std::runtime_error("Type error: expected integer for unary math");
             }
             case Opcode::BinaryMath: {
                 BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
@@ -743,23 +895,61 @@ public:
                 if (dom != Domain::Generic) {
                     throw std::runtime_error("Specialized domains are not implemented");
                 }
-                if (left.type != ValueType::Int || right.type != ValueType::Int) {
-                    throw std::runtime_error("Type error: expected integers for math");
+                if (left.type == ValueType::Int && right.type == ValueType::Int) {
+                    switch (math_op) {
+                        case BinaryMathOp::Add: return Value(left.as_int + right.as_int);
+                        case BinaryMathOp::Sub: return Value(left.as_int - right.as_int);
+                        case BinaryMathOp::Mul: return Value(left.as_int * right.as_int);
+                        case BinaryMathOp::Div:
+                            if (right.as_int == 0) throw std::runtime_error("Division by zero");
+                            return Value(left.as_int / right.as_int);
+                        case BinaryMathOp::Mod:
+                            if (right.as_int == 0) throw std::runtime_error("Modulo by zero");
+                            return Value(left.as_int % right.as_int);
+                        default:
+                            throw std::runtime_error("Unknown BinaryMathOp");
+                    }
                 }
 
+                const char* trait_key = nullptr;
+                const char* method_name = nullptr;
                 switch (math_op) {
-                    case BinaryMathOp::Add: return Value(left.as_int + right.as_int);
-                    case BinaryMathOp::Sub: return Value(left.as_int - right.as_int);
-                    case BinaryMathOp::Mul: return Value(left.as_int * right.as_int);
+                    case BinaryMathOp::Add:
+                        trait_key = "operators.additive";
+                        method_name = "add";
+                        break;
+                    case BinaryMathOp::Sub:
+                        trait_key = "operators.subtractive";
+                        method_name = "sub";
+                        break;
+                    case BinaryMathOp::Mul:
+                        trait_key = "operators.multiplicative";
+                        method_name = "mul";
+                        break;
                     case BinaryMathOp::Div:
-                        if (right.as_int == 0) throw std::runtime_error("Division by zero");
-                        return Value(left.as_int / right.as_int);
+                        trait_key = "operators.divisible";
+                        method_name = "div";
+                        break;
                     case BinaryMathOp::Mod:
-                        if (right.as_int == 0) throw std::runtime_error("Modulo by zero");
-                        return Value(left.as_int % right.as_int);
-                    default:
-                        throw std::runtime_error("Unknown BinaryMathOp");
+                        trait_key = "operators.modulable";
+                        method_name = "mod";
+                        break;
                 }
+
+                if (const Value* trait = registeredItem(trait_key)) {
+                    if (const Value* impl = registeredImplementation(*trait, typeOf(left))) {
+                        const Value* method = structField(*impl, method_name);
+                        if (method == nullptr) {
+                            throw std::runtime_error(std::string("Trait implementation missing field: ") + method_name);
+                        }
+                        return invokeValue(*method, {
+                            CallArgument{std::nullopt, left},
+                            CallArgument{std::nullopt, right},
+                        });
+                    }
+                }
+
+                throw std::runtime_error("Type error: expected integers for math");
             }
             case Opcode::Compare: {
                 CompareOp cmp_op = static_cast<CompareOp>(read8());
@@ -769,20 +959,55 @@ public:
                 if (dom != Domain::Generic) {
                     throw std::runtime_error("Specialized domains are not implemented");
                 }
-                if (left.type != ValueType::Int || right.type != ValueType::Int) {
-                    throw std::runtime_error("Type error: expected integers for comparison");
+                if (left.type == ValueType::Int && right.type == ValueType::Int) {
+                    switch (cmp_op) {
+                        case CompareOp::Eq: return Value(left.as_int == right.as_int);
+                        case CompareOp::Neq: return Value(left.as_int != right.as_int);
+                        case CompareOp::Lt: return Value(left.as_int < right.as_int);
+                        case CompareOp::Lte: return Value(left.as_int <= right.as_int);
+                        case CompareOp::Gt: return Value(left.as_int > right.as_int);
+                        case CompareOp::Gte: return Value(left.as_int >= right.as_int);
+                        default:
+                            throw std::runtime_error("Unknown CompareOp");
+                    }
                 }
 
-                switch (cmp_op) {
-                    case CompareOp::Eq: return Value(left.as_int == right.as_int);
-                    case CompareOp::Neq: return Value(left.as_int != right.as_int);
-                    case CompareOp::Lt: return Value(left.as_int < right.as_int);
-                    case CompareOp::Lte: return Value(left.as_int <= right.as_int);
-                    case CompareOp::Gt: return Value(left.as_int > right.as_int);
-                    case CompareOp::Gte: return Value(left.as_int >= right.as_int);
-                    default:
-                        throw std::runtime_error("Unknown CompareOp");
+                if (cmp_op == CompareOp::Eq) {
+                    return Value(valueEquals(left, right));
                 }
+                if (cmp_op == CompareOp::Neq) {
+                    return Value(!valueEquals(left, right));
+                }
+
+                if (const Value* comparable_trait = registeredItem("operators.comparable")) {
+                    if (const Value* impl = registeredImplementation(*comparable_trait, typeOf(left))) {
+                        const Value* compare_fn = structField(*impl, "compare");
+                        if (compare_fn == nullptr) {
+                            throw std::runtime_error("Comparable implementation missing compare");
+                        }
+                        Value result = invokeValue(*compare_fn, {
+                            CallArgument{std::nullopt, left},
+                            CallArgument{std::nullopt, right},
+                        });
+                        const Value* less = registeredItem("operators.comparable.less");
+                        const Value* equal = registeredItem("operators.comparable.equal");
+                        const Value* greater = registeredItem("operators.comparable.greater");
+                        if (less == nullptr || equal == nullptr || greater == nullptr) {
+                            throw std::runtime_error("Comparable registry is incomplete");
+                        }
+
+                        switch (cmp_op) {
+                            case CompareOp::Lt: return Value(valueEquals(result, *less));
+                            case CompareOp::Lte: return Value(valueEquals(result, *less) || valueEquals(result, *equal));
+                            case CompareOp::Gt: return Value(valueEquals(result, *greater));
+                            case CompareOp::Gte: return Value(valueEquals(result, *greater) || valueEquals(result, *equal));
+                            default:
+                                throw std::runtime_error("Unknown CompareOp");
+                        }
+                    }
+                }
+
+                throw std::runtime_error("Type error: expected integers for comparison");
             }
             case Opcode::If: {
                 Value cond = evalOperand();
@@ -1050,26 +1275,34 @@ public:
 
 } // namespace
 
-Value Evaluator::evaluate(std::shared_ptr<ProgramUnit> unit, std::unordered_map<std::string, Value>& globals, std::ostream& out) {
-    ExecutionState state(std::move(unit), globals, out);
+Value Evaluator::evaluate(std::shared_ptr<ProgramUnit> unit,
+                          std::unordered_map<std::string, Value>& globals,
+                          std::ostream& out,
+                          const std::unordered_map<std::string, Value>* registry,
+                          const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
+    ExecutionState state(std::move(unit), globals, out, registry, trait_impls);
     return state.run();
 }
 
 Value Evaluator::construct_struct(std::shared_ptr<StructTypeDef> type,
                                   const std::vector<CallArgument>& args,
                                   std::unordered_map<std::string, Value>& globals,
-                                  std::ostream& out) {
+                                  std::ostream& out,
+                                  const std::unordered_map<std::string, Value>* registry,
+                                  const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
     auto empty_unit = std::make_shared<ProgramUnit>();
-    ExecutionState state(std::move(empty_unit), globals, out);
+    ExecutionState state(std::move(empty_unit), globals, out, registry, trait_impls);
     return state.constructStruct(std::move(type), args);
 }
 
 Value Evaluator::invoke_value(const Value& callee,
                               const std::vector<CallArgument>& args,
                               std::unordered_map<std::string, Value>& globals,
-                              std::ostream& out) {
+                              std::ostream& out,
+                              const std::unordered_map<std::string, Value>* registry,
+                              const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
     auto empty_unit = std::make_shared<ProgramUnit>();
-    ExecutionState state(std::move(empty_unit), globals, out);
+    ExecutionState state(std::move(empty_unit), globals, out, registry, trait_impls);
     return state.invokeValue(callee, args);
 }
 
