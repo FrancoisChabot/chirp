@@ -26,6 +26,7 @@ public:
 
     std::vector<uint8_t> bytecode;
     uint32_t num_locals = 0;
+    bool is_pure = false;
     
     std::vector<BigInt> constant_ints;
     std::vector<std::string> constant_strings;

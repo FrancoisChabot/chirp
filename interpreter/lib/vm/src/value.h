@@ -19,6 +19,10 @@ class ProgramUnit;
 struct Value;
 struct CallArgument;
 using NativeFunc = std::function<Value(const std::vector<CallArgument>&)>;
+struct NativeFuncDef {
+    NativeFunc func;
+    bool is_pure = true;
+};
 struct Closure;
 struct StructTypeDef;
 struct TypeValueDef {
@@ -73,7 +77,8 @@ enum class ValueType {
     Heap,
     EnumFamily,
     EnumVariant,
-    Range
+    Range,
+    Module
 };
 
 struct Value {
@@ -82,7 +87,7 @@ struct Value {
     uint64_t as_id = 0;
     std::shared_ptr<Closure> as_closure;
     std::string as_string; // Used for String and Symbol
-    std::shared_ptr<NativeFunc> as_native;
+    std::shared_ptr<NativeFuncDef> as_native;
     std::shared_ptr<std::unordered_map<std::string, Value>> as_struct;
     std::shared_ptr<std::vector<Value>> as_array;
     std::shared_ptr<StructTypeDef> as_struct_type;
@@ -98,6 +103,7 @@ struct Value {
     std::shared_ptr<EnumFamilyDef> as_enum_family;
     std::shared_ptr<EnumVariantDef> as_enum_variant;
     std::shared_ptr<RangeDef> as_range;
+    std::shared_ptr<std::unordered_map<std::string, Value>> as_module;
 
     Value() : type(ValueType::Null), as_int(0) {}
     explicit Value(int64_t v) : type(ValueType::Int), as_int(v) {}
@@ -105,7 +111,7 @@ struct Value {
     explicit Value(bool b) : type(ValueType::Bool), as_int(b ? BigInt(1) : BigInt(0)) {}
     explicit Value(std::shared_ptr<Closure> c) : type(ValueType::Closure), as_closure(std::move(c)) {}
     explicit Value(std::string s) : type(ValueType::String), as_string(std::move(s)) {}
-    explicit Value(NativeFunc f) : type(ValueType::NativeFunc), as_native(std::make_shared<NativeFunc>(std::move(f))) {}
+    explicit Value(NativeFunc f, bool pure = true) : type(ValueType::NativeFunc), as_native(std::make_shared<NativeFuncDef>(NativeFuncDef{std::move(f), pure})) {}
     static Value Char(uint32_t c) { Value v; v.type = ValueType::Char; v.as_int = BigInt(static_cast<int64_t>(c)); return v; }
     static Value Symbol(std::string s) { Value v; v.type = ValueType::Symbol; v.as_string = std::move(s); return v; }
     static Value Struct(std::shared_ptr<std::unordered_map<std::string, Value>> s,
@@ -180,6 +186,12 @@ struct Value {
         v.as_range->inclusive_end = inclusive_end;
         return v;
     }
+    static Value Module(std::shared_ptr<std::unordered_map<std::string, Value>> m) {
+        Value v;
+        v.type = ValueType::Module;
+        v.as_module = std::move(m);
+        return v;
+    }
 
     std::string toString() const {
         if (type == ValueType::Int) return as_int.to_string();
@@ -236,6 +248,7 @@ struct Value {
         if (type == ValueType::Heap) return "<heap allocation>";
         if (type == ValueType::EnumFamily) return "<enum family>";
         if (type == ValueType::EnumVariant) return as_string;
+        if (type == ValueType::Module) return "<module>";
         if (type == ValueType::Range) return as_range->start->toString() + (as_range->inclusive_end ? "..=" : "..") + as_range->end->toString();
         return "null";
     }
@@ -244,6 +257,7 @@ struct Value {
 struct Closure {
     std::shared_ptr<ProgramUnit> unit;
     std::vector<Value> captures;
+    std::shared_ptr<std::unordered_map<std::string, Value>> globals;
 };
 
 struct StructFieldSpec {

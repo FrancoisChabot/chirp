@@ -29,13 +29,14 @@ public:
     size_t pc = 0;
     std::vector<BindingSlot> locals;
     const std::vector<Value>* captures = nullptr;
+    std::shared_ptr<std::unordered_map<std::string, Value>> globals_ptr;
     std::unordered_map<std::string, Value>& globals;
     std::ostream& out;
     const std::unordered_map<std::string, Value>* registry = nullptr;
     const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls = nullptr;
 
     ExecutionState(std::shared_ptr<ProgramUnit> current_unit,
-                   std::unordered_map<std::string, Value>& global_values,
+                   std::shared_ptr<std::unordered_map<std::string, Value>> global_values,
                    std::ostream& output,
                    const std::unordered_map<std::string, Value>* registered_values = nullptr,
                    const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* registered_trait_impls = nullptr,
@@ -43,7 +44,8 @@ public:
     : unit(std::move(current_unit)),
           locals(unit->num_locals),
           captures(captured_values),
-          globals(global_values),
+          globals_ptr(std::move(global_values)),
+          globals(*globals_ptr),
           out(output),
           registry(registered_values),
           trait_impls(registered_trait_impls) {}
@@ -289,6 +291,9 @@ public:
     }
 
     void assignLocal(uint32_t slot, Value value) {
+        if (value.type == ValueType::Struct && value.as_struct_instance_type == nullptr) {
+            throw std::runtime_error("Anonymous struct literal requires a concrete struct context");
+        }
         retainOwnedValue(value);
         auto& local = locals.at(slot);
         if (local.initialized) {
@@ -309,6 +314,9 @@ public:
     }
 
     void assignCapture(uint32_t slot, Value value) {
+        if (value.type == ValueType::Struct && value.as_struct_instance_type == nullptr) {
+            throw std::runtime_error("Anonymous struct literal requires a concrete struct context");
+        }
         if (captures == nullptr) {
             throw std::runtime_error("Assignment to capture with no closure environment");
         }
@@ -328,6 +336,9 @@ public:
     }
 
     void assignGlobal(const std::string& name, Value value) {
+        if (value.type == ValueType::Struct && value.as_struct_instance_type == nullptr) {
+            throw std::runtime_error("Anonymous struct literal requires a concrete struct context");
+        }
         retainOwnedValue(value);
         auto found = globals.find(name);
         if (found != globals.end()) {
@@ -479,11 +490,11 @@ public:
             }
             retainOwnedValue(captured_values.back());
         }
-        return std::make_shared<Closure>(Closure{std::move(child), std::move(captured_values)});
+        return std::make_shared<Closure>(Closure{std::move(child), std::move(captured_values), globals_ptr});
     }
 
     Value invokeClosure(const Closure& closure, std::vector<Value> args = {}) {
-        ExecutionState call_state(closure.unit, globals, out, registry, trait_impls, &closure.captures);
+        ExecutionState call_state(closure.unit, closure.globals ? closure.globals : globals_ptr, out, registry, trait_impls, &closure.captures);
         for (size_t i = 0; i < args.size() && i < call_state.locals.size(); ++i) {
             call_state.locals[i].value = std::move(args[i]);
             call_state.locals[i].initialized = true;
@@ -508,7 +519,7 @@ public:
 
     Value invokeValue(const Value& callee, const std::vector<CallArgument>& args) {
         if (callee.type == ValueType::NativeFunc) {
-            return (*callee.as_native)(args);
+            return callee.as_native->func(args);
         }
         if (callee.type == ValueType::StructType) {
             return constructStruct(callee.as_struct_type, args);
@@ -1017,6 +1028,13 @@ public:
                     }
                     throw std::runtime_error("Enum missing variant: " + field.as_string);
                 }
+                if (target.type == ValueType::Module) {
+                    auto it = target.as_module->find(field.as_string);
+                    if (it == target.as_module->end()) {
+                        throw std::runtime_error("Module missing export: " + field.as_string);
+                    }
+                    return it->second;
+                }
                 if (target.type != ValueType::Struct) {
                     throw std::runtime_error("GetField target must be a struct or enum");
                 }
@@ -1059,6 +1077,16 @@ public:
                             static_cast<size_t>(start),
                             static_cast<size_t>(end - start)));
                     }
+                }
+                if (target.type == ValueType::Module) {
+                    if (index.type != ValueType::String) {
+                        throw std::runtime_error("Module index must be a string");
+                    }
+                    auto it = target.as_module->find(index.as_string);
+                    if (it == target.as_module->end()) {
+                        throw std::runtime_error("Module missing export: " + index.as_string);
+                    }
+                    return it->second;
                 }
                 if (target.type == ValueType::Array) {
                     if (index.type != ValueType::Int) {
@@ -1348,7 +1376,11 @@ public:
                 auto elements = std::make_shared<std::vector<Value>>();
                 elements->reserve(element_count);
                 for (uint32_t i = 0; i < element_count; ++i) {
-                    elements->push_back(evalOperand());
+                    Value val = evalOperand();
+                    if (val.type == ValueType::Struct && val.as_struct_instance_type == nullptr) {
+                        throw std::runtime_error("Anonymous struct literal requires a concrete struct context");
+                    }
+                    elements->push_back(std::move(val));
                 }
                 return Value::Array(std::move(elements));
             }
@@ -1528,33 +1560,33 @@ public:
 } // namespace
 
 Value Evaluator::evaluate(std::shared_ptr<ProgramUnit> unit,
-                          std::unordered_map<std::string, Value>& globals,
+                          std::shared_ptr<std::unordered_map<std::string, Value>> globals,
                           std::ostream& out,
                           const std::unordered_map<std::string, Value>* registry,
                           const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
-    ExecutionState state(std::move(unit), globals, out, registry, trait_impls);
+    ExecutionState state(std::move(unit), std::move(globals), out, registry, trait_impls);
     return state.run();
 }
 
 Value Evaluator::construct_struct(std::shared_ptr<StructTypeDef> type,
                                   const std::vector<CallArgument>& args,
-                                  std::unordered_map<std::string, Value>& globals,
+                                  std::shared_ptr<std::unordered_map<std::string, Value>> globals,
                                   std::ostream& out,
                                   const std::unordered_map<std::string, Value>* registry,
                                   const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
     auto empty_unit = std::make_shared<ProgramUnit>();
-    ExecutionState state(std::move(empty_unit), globals, out, registry, trait_impls);
+    ExecutionState state(std::move(empty_unit), std::move(globals), out, registry, trait_impls);
     return state.constructStruct(std::move(type), args);
 }
 
 Value Evaluator::invoke_value(const Value& callee,
                               const std::vector<CallArgument>& args,
-                              std::unordered_map<std::string, Value>& globals,
+                              std::shared_ptr<std::unordered_map<std::string, Value>> globals,
                               std::ostream& out,
                               const std::unordered_map<std::string, Value>* registry,
                               const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
     auto empty_unit = std::make_shared<ProgramUnit>();
-    ExecutionState state(std::move(empty_unit), globals, out, registry, trait_impls);
+    ExecutionState state(std::move(empty_unit), std::move(globals), out, registry, trait_impls);
     return state.invokeValue(callee, args);
 }
 

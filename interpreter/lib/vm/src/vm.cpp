@@ -6,6 +6,8 @@
 #include "evaluator.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -170,6 +172,8 @@ bool value_equals(const Value& left, const Value& right) {
             return value_equals(*left.as_range->start, *right.as_range->start) &&
                    value_equals(*left.as_range->end, *right.as_range->end) &&
                    left.as_range->inclusive_end == right.as_range->inclusive_end;
+        case ValueType::Module:
+            return left.as_module == right.as_module;
     }
     return false;
 }
@@ -258,7 +262,7 @@ std::vector<Value> finite_elements(const Value& set) {
 }
 
 void drop_value_vm(const Value& value,
-                   std::unordered_map<std::string, Value>& globals,
+                   std::shared_ptr<std::unordered_map<std::string, Value>> globals,
                    std::ostream& out,
                    const std::unordered_map<std::string, Value>* registry,
                    const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
@@ -269,7 +273,7 @@ void drop_value_vm(const Value& value,
     if (trait_it == registry->end()) {
         return;
     }
-    Value subject_type = type_of_value(value, globals);
+    Value subject_type = type_of_value(value, *globals);
     if (trait_it->second.type != ValueType::Trait ||
         (subject_type.type != ValueType::TypeValue && subject_type.type != ValueType::StructType)) {
         return;
@@ -305,9 +309,16 @@ void drop_value_vm(const Value& value,
 } // namespace
 
 class VmSession : public backend::Session {
+    struct ModuleCacheEntry {
+        enum class State { Loading, Loaded, Failed };
+        State state = State::Loading;
+        Value value;
+        std::string error;
+    };
+
     std::ostream& out_;
     backend::SessionExpectations expectations_;
-    std::unordered_map<std::string, Value> globals_;
+    std::shared_ptr<std::unordered_map<std::string, Value>> globals_;
     std::unordered_map<std::string, Value> registry_;
     std::unordered_map<uint64_t, std::unordered_map<std::string, Value>> trait_impls_;
     bool testing_enabled_ = false;
@@ -319,29 +330,37 @@ class VmSession : public backend::Session {
     uint64_t next_trait_id_ = 1;
     uint64_t next_heap_id_ = 1;
     std::unordered_set<std::string> global_final_bindings_;
+    std::unordered_map<std::string, bool> global_purity_;
+
+    std::unordered_map<std::string, ModuleCacheEntry> module_cache_;
+    std::optional<std::filesystem::path> chirp_root_;
+    std::vector<std::string> source_stack_;
 
 public:
-    VmSession(std::ostream& out, bool testing_enabled) : out_(out), testing_enabled_(testing_enabled) {
-        globals_["int"] = create_type("int", TypeValueDef::Kind::Primitive);
-        globals_["bool"] = create_type("bool", TypeValueDef::Kind::Primitive);
-        globals_["string"] = create_type("string", TypeValueDef::Kind::Primitive);
-        globals_["char"] = create_type("char", TypeValueDef::Kind::Primitive);
-        globals_["symbol"] = create_type("symbol", TypeValueDef::Kind::Primitive);
-        globals_["EnumVariant"] = create_type("EnumVariant", TypeValueDef::Kind::Primitive);
-        globals_["__void_type"] = create_type("void", TypeValueDef::Kind::Primitive);
-        globals_["any"] = create_type("any", TypeValueDef::Kind::Primitive);
-        globals_["type"] = create_type("Type", TypeValueDef::Kind::Meta);
-        globals_["lambda"] = create_type("lambda", TypeValueDef::Kind::Lambda);
-        globals_["trait"] = create_type("trait", TypeValueDef::Kind::Trait);
-        globals_["__heap_allocation_type"] = create_type("heap_allocation", TypeValueDef::Kind::Primitive);
-        globals_["__heap_shared_allocation_type"] = create_type("heap_shared_allocation", TypeValueDef::Kind::Primitive);
-        globals_["true"] = Value(true);
-        globals_["false"] = Value(false);
-        globals_["`import"] = Value(NativeFunc(make_import_fn()));
+    VmSession(std::ostream& out, bool testing_enabled)
+        : out_(out),
+          testing_enabled_(testing_enabled),
+          globals_(std::make_shared<std::unordered_map<std::string, Value>>()) {
+        (*globals_)["int"] = create_type("int", TypeValueDef::Kind::Primitive);
+        (*globals_)["bool"] = create_type("bool", TypeValueDef::Kind::Primitive);
+        (*globals_)["string"] = create_type("string", TypeValueDef::Kind::Primitive);
+        (*globals_)["char"] = create_type("char", TypeValueDef::Kind::Primitive);
+        (*globals_)["symbol"] = create_type("symbol", TypeValueDef::Kind::Primitive);
+        (*globals_)["EnumVariant"] = create_type("EnumVariant", TypeValueDef::Kind::Primitive);
+        (*globals_)["__void_type"] = create_type("void", TypeValueDef::Kind::Primitive);
+        (*globals_)["any"] = create_type("any", TypeValueDef::Kind::Primitive);
+        (*globals_)["type"] = create_type("Type", TypeValueDef::Kind::Meta);
+        (*globals_)["lambda"] = create_type("lambda", TypeValueDef::Kind::Lambda);
+        (*globals_)["trait"] = create_type("trait", TypeValueDef::Kind::Trait);
+        (*globals_)["__heap_allocation_type"] = create_type("heap_allocation", TypeValueDef::Kind::Primitive);
+        (*globals_)["__heap_shared_allocation_type"] = create_type("heap_shared_allocation", TypeValueDef::Kind::Primitive);
+        (*globals_)["true"] = Value(true);
+        (*globals_)["false"] = Value(false);
+        (*globals_)["`import"] = Value(NativeFunc(make_import_fn()));
     }
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override {
-        Compiler compiler(&global_final_bindings_);
+        Compiler compiler(&global_final_bindings_, &global_purity_);
         auto unit = compiler.compile(stmts);
 
         Evaluator evaluator;
@@ -352,25 +371,47 @@ public:
     }
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) override {
-        execute(stmts);
+        source_stack_.push_back(label);
+        try {
+            execute(stmts);
+            source_stack_.pop_back();
+        } catch (...) {
+            source_stack_.pop_back();
+            throw;
+        }
     }
 
     void execute_source(std::string source, std::string label) override {
-        auto tokens = frontend::tokenize(source);
-        auto stmts = frontend::parse(tokens);
-        execute(stmts, label);
+        source_stack_.push_back(label);
+        try {
+            auto tokens = frontend::tokenize(source);
+            auto stmts = frontend::parse(tokens);
+            execute(stmts);
+            source_stack_.pop_back();
+        } catch (...) {
+            source_stack_.pop_back();
+            throw;
+        }
     }
 
     void execute_boot_source(std::string source, std::string label) override {
-        auto tokens = frontend::tokenize(source);
-        auto stmts = frontend::parse(tokens);
-        Compiler compiler(&global_final_bindings_);
-        auto unit = compiler.compile(stmts);
-        Evaluator evaluator;
-        evaluator.evaluate(unit, globals_, out_, &registry_, &trait_impls_);
+        source_stack_.push_back(label);
+        try {
+            auto tokens = frontend::tokenize(source);
+            auto stmts = frontend::parse(tokens);
+            Compiler compiler(&global_final_bindings_, &global_purity_);
+            auto unit = compiler.compile(stmts);
+            Evaluator evaluator;
+            evaluator.evaluate(unit, globals_, out_, &registry_, &trait_impls_);
+            source_stack_.pop_back();
+        } catch (...) {
+            source_stack_.pop_back();
+            throw;
+        }
     }
 
     void set_chirp_root(std::string path) override {
+        chirp_root_ = std::filesystem::path(path);
     }
 
     backend::SessionExpectations getExpectations() const override {
@@ -378,6 +419,110 @@ public:
     }
 
 private:
+    static bool is_explicit_module_key(const std::string& key) {
+        return key.rfind("./", 0) == 0 ||
+               key.rfind("../", 0) == 0 ||
+               key.rfind("/", 0) == 0;
+    }
+
+    static std::filesystem::path with_chirp_extension(std::filesystem::path path) {
+        if (path.extension().empty()) {
+            path.replace_extension(".chirp");
+        }
+        return path;
+    }
+
+    static std::filesystem::path normalized_absolute_path(const std::filesystem::path& path) {
+        return std::filesystem::absolute(path).lexically_normal();
+    }
+
+    std::filesystem::path current_source_dir() const {
+        if (source_stack_.empty() || source_stack_.back().empty()) {
+            return std::filesystem::current_path();
+        }
+
+        std::filesystem::path source_path(source_stack_.back());
+        if (source_path.filename().string().rfind("<", 0) == 0) {
+            return std::filesystem::current_path();
+        }
+        return normalized_absolute_path(source_path).parent_path();
+    }
+
+    std::filesystem::path resolve_chirp_module_key(const std::string& key) const {
+        if (is_explicit_module_key(key)) {
+            std::filesystem::path path(key);
+            if (path.is_relative()) {
+                path = current_source_dir() / path;
+            }
+            return normalized_absolute_path(with_chirp_extension(path));
+        }
+
+        if (key.rfind("std/", 0) == 0) {
+            if (!chirp_root_.has_value()) {
+                throw std::runtime_error("Cannot resolve std import without an active Chirp root");
+            }
+            std::filesystem::path relative(key.substr(4));
+            return normalized_absolute_path(with_chirp_extension(*chirp_root_ / "std" / relative));
+        }
+
+        throw std::runtime_error("Logical module imports outside 'std/' are not supported yet: " + key);
+    }
+
+    Value evaluate_chirp_module(const std::filesystem::path& path) {
+        std::string identity = path.generic_string();
+        auto found = module_cache_.find(identity);
+        if (found != module_cache_.end()) {
+            if (found->second.state == ModuleCacheEntry::State::Loaded) {
+                return found->second.value;
+            }
+            if (found->second.state == ModuleCacheEntry::State::Failed) {
+                throw std::runtime_error(found->second.error);
+            }
+            throw std::runtime_error("Import cycle detected for module '" + identity + "'");
+        }
+
+        auto [inserted_it, _] = module_cache_.emplace(identity, ModuleCacheEntry{});
+        ModuleCacheEntry& entry = inserted_it->second;
+        entry.state = ModuleCacheEntry::State::Loading;
+
+        try {
+            std::ifstream file(path);
+            if (!file.is_open()) {
+                throw std::runtime_error("Could not open file: " + path.string());
+            }
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            std::string source = buffer.str();
+
+            auto tokens = frontend::tokenize(source);
+            auto stmts = frontend::parse(tokens);
+
+            auto module_globals = std::make_shared<std::unordered_map<std::string, Value>>(*globals_);
+
+            Compiler compiler(&global_final_bindings_, &global_purity_);
+            auto unit = compiler.compile(stmts, true);
+
+            Evaluator evaluator;
+            source_stack_.push_back(path.string());
+            try {
+                evaluator.evaluate(unit, module_globals, out_, &registry_, &trait_impls_);
+                source_stack_.pop_back();
+            } catch (...) {
+                source_stack_.pop_back();
+                throw;
+            }
+
+            entry.value = Value::Module(module_globals);
+            entry.state = ModuleCacheEntry::State::Loaded;
+            return entry.value;
+        } catch (const std::exception& e) {
+            entry.error = path.string() + ": " + e.what();
+            entry.state = ModuleCacheEntry::State::Failed;
+            throw std::runtime_error(entry.error);
+        }
+    }
+
     Value create_type(const std::string& name, TypeValueDef::Kind kind, uint64_t finite_count = 0) {
         auto def = std::make_shared<TypeValueDef>();
         def->kind = kind;
@@ -401,11 +546,35 @@ private:
 
     NativeFunc make_import_fn() {
         return [this](const std::vector<CallArgument>& args) -> Value {
-            if (args.empty() || args[0].name.has_value() || args[0].value.type != ValueType::String) {
-                throw std::runtime_error("`import expects a positional string key");
+            if (args.empty() || args.size() > 2) {
+                throw std::runtime_error("`import expects one or two positional arguments: key and optional format");
+            }
+            for (const auto& arg : args) {
+                if (arg.name.has_value()) {
+                    throw std::runtime_error("`import does not support named arguments");
+                }
+            }
+            if (args[0].value.type != ValueType::String) {
+                throw std::runtime_error("`import expects first argument (key) to be a string");
             }
 
             const std::string& key = args[0].value.as_string;
+            std::string format = "chirp";
+            if (args.size() == 2) {
+                if (args[1].value.type != ValueType::String) {
+                    throw std::runtime_error("`import expects second argument (format) to be a string");
+                }
+                format = args[1].value.as_string;
+            }
+
+            if (format == "chirp") {
+                std::filesystem::path path = resolve_chirp_module_key(key);
+                return evaluate_chirp_module(path);
+            }
+
+            if (format != "__chirp_boot") {
+                throw std::runtime_error("Unsupported `import format \"" + format + "\"");
+            }
 
             if (key == "io.print") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& print_args) -> Value {
@@ -415,7 +584,7 @@ private:
                     out_ << display_string(print_args[0].value);
                     out_ << "\n";
                     return Value();
-                }));
+                }), false);
             }
 
             if (key == "io.write") {
@@ -435,7 +604,7 @@ private:
                         throw std::runtime_error("Unsupported file descriptor for `write");
                     }
                     return Value();
-                }));
+                }), false);
             }
 
             if (key == "io.input") {
@@ -460,8 +629,8 @@ private:
                         line.clear();
                     }
 
-                    return Value(encode_string_literal(line));
-                }));
+                    return Value(line);
+                }), false);
             }
 
             if (key == "system.register") {
@@ -474,7 +643,7 @@ private:
                     }
                     registry_[decode_string_literal(register_args[0].value.as_string)] = register_args[1].value;
                     return Value();
-                }));
+                }), false);
             }
 
             if (key == "values.same") {
@@ -491,7 +660,7 @@ private:
                     if (type_args.size() != 1 || type_args[0].name.has_value()) {
                         throw std::runtime_error("`type_of expects one positional argument");
                     }
-                    return type_of_value(type_args[0].value, globals_);
+                    return type_of_value(type_args[0].value, *globals_);
                 }));
             }
 
@@ -559,7 +728,7 @@ private:
             }
 
             if (key == "memory.heap_allocation") {
-                return globals_.at("__heap_allocation_type");
+                return globals_->at("__heap_allocation_type");
             }
 
             if (key == "system.exit") {
@@ -577,7 +746,7 @@ private:
             }
 
             if (key == "memory.heap_shared_allocation") {
-                return globals_.at("__heap_shared_allocation_type");
+                return globals_->at("__heap_shared_allocation_type");
             }
 
             if (key == "memory.heap_create") {
@@ -589,8 +758,8 @@ private:
                     state->id = next_heap_id_++;
                     state->stored = heap_args[0].value;
                     state->shared = false;
-                    return Value::Heap(std::move(state), globals_.at("__heap_allocation_type").as_type_value);
-                }));
+                    return Value::Heap(std::move(state), globals_->at("__heap_allocation_type").as_type_value);
+                }), false);
             }
 
             if (key == "memory.heap_destroy") {
@@ -608,7 +777,7 @@ private:
                     heap_args[0].value.as_heap->destroyed = true;
                     drop_value_vm(stored, globals_, out_, &registry_, &trait_impls_);
                     return Value();
-                }));
+                }), false);
             }
 
             if (key == "memory.heap_shared_create") {
@@ -623,8 +792,8 @@ private:
                     // Fresh shared allocations are produced as unbound owning temporaries.
                     // The first binding/capture store retains them up to 1.
                     state->strong_count = 0;
-                    return Value::Heap(std::move(state), globals_.at("__heap_shared_allocation_type").as_type_value);
-                }));
+                    return Value::Heap(std::move(state), globals_->at("__heap_shared_allocation_type").as_type_value);
+                }), false);
             }
 
             if (key == "memory.heap_shared_destroy") {
@@ -644,7 +813,7 @@ private:
                         drop_value_vm(stored, globals_, out_, &registry_, &trait_impls_);
                     }
                     return Value();
-                }));
+                }), false);
             }
 
             if (key == "traits.make") {
@@ -777,9 +946,13 @@ private:
                     if (purity_args.size() != 1 || purity_args[0].name.has_value()) {
                         throw std::runtime_error("`is_pure expects one positional argument");
                     }
-                    return Value(
-                        purity_args[0].value.type == ValueType::Closure ||
-                        purity_args[0].value.type == ValueType::NativeFunc);
+                    if (purity_args[0].value.type == ValueType::Closure) {
+                        return Value(purity_args[0].value.as_closure->unit->is_pure);
+                    }
+                    if (purity_args[0].value.type == ValueType::NativeFunc) {
+                        return Value(purity_args[0].value.as_native->is_pure);
+                    }
+                    return Value(false);
                 }));
             }
 
@@ -804,7 +977,7 @@ private:
                     if (lambda_args.size() != 2 || lambda_args[0].name.has_value() || lambda_args[1].name.has_value()) {
                         throw std::runtime_error("`lambda_result_space expects two positional arguments");
                     }
-                    return globals_.at("any");
+                    return globals_->at("any");
                 }));
             }
 
@@ -815,7 +988,7 @@ private:
                     }
                     auto elements = std::make_shared<std::vector<Value>>();
                     for (const auto& element : finite_elements(set_args[0].value)) {
-                        append_unique(*elements, type_of_value(element, globals_));
+                        append_unique(*elements, type_of_value(element, *globals_));
                     }
                     return Value::EnumeratedSet(std::move(elements));
                 }));

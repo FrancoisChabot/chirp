@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <set>
 #include <iostream>
 
 namespace chirp::vm {
@@ -67,6 +68,7 @@ public:
         uint32_t slot;
         bool is_final;
         std::optional<uint32_t> constraint_slot;
+        bool is_pure = false;
     };
     std::unordered_map<std::string, LocalInfo> locals;
 
@@ -116,6 +118,285 @@ public:
     }
 };
 
+    class PurityVisitor : public frontend::ASTVisitor, public frontend::StmtVisitor {
+    public:
+        const CompilerEnvironment* env;
+        const std::unordered_map<std::string, bool>& global_purity;
+        const std::vector<frontend::NamedBinding>& params;
+        std::set<std::string> local_vars;
+        bool is_pure = true;
+        std::string current_lambda_name;
+
+        PurityVisitor(const CompilerEnvironment* e,
+                      const std::unordered_map<std::string, bool>& gp,
+                      const std::vector<frontend::NamedBinding>& p,
+                      const std::string& current_name)
+            : env(e), global_purity(gp), params(p), current_lambda_name(current_name) {}
+
+        void visit(const frontend::CallExpr& expr) override {
+            if (!is_pure) return;
+            std::string name;
+            if (auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(expr.callee.get())) {
+                name = std::string(ident->name);
+            } else if (auto* intrinsic = dynamic_cast<const frontend::IntrinsicExpr*>(expr.callee.get())) {
+                name = std::string(intrinsic->name);
+            } else {
+                is_pure = false; return;
+            }
+
+            if (!current_lambda_name.empty() && name == current_lambda_name) {
+                for (const auto& arg : expr.args) {
+                    if (arg.value) arg.value->accept(*this);
+                }
+                return;
+            }
+
+            bool is_param = false;
+            for (const auto& p : params) {
+                if (std::string(p.name.lexeme) == name) {
+                    is_param = true; break;
+                }
+            }
+            if (is_param) {
+                is_pure = false; return;
+            }
+            if (local_vars.count(name)) {
+                is_pure = false; return;
+            }
+
+            if (name == "print" || name == "io.print" || name == "`print" ||
+                name == "io.write" || name == "`write" ||
+                name == "io.input" || name == "`input" ||
+                name == "system.register" || name == "`register" ||
+                name == "memory.heap_create" || name == "`heap_create" ||
+                name == "memory.heap_destroy" || name == "`heap_destroy" ||
+                name == "memory.heap_shared_create" || name == "`heap_shared_create" ||
+                name == "memory.heap_shared_destroy" || name == "`heap_shared_destroy" ||
+                name == "system.exit" || name == "`exit") {
+                is_pure = false; return;
+            }
+
+            auto gp_it = global_purity.find(name);
+            if (gp_it != global_purity.end()) {
+                if (!gp_it->second) {
+                    is_pure = false;
+                    return;
+                }
+            } else {
+                bool found = false;
+                const CompilerEnvironment* curr = env;
+                while (curr) {
+                    auto it = curr->locals.find(name);
+                    if (it != curr->locals.end()) {
+                        found = true;
+                        if (!it->second.is_pure) {
+                            is_pure = false;
+                        }
+                        break;
+                    }
+                    curr = curr->parent;
+                }
+                if (!found) {
+                    if (name != "is_pure" && name != "compute.is_pure" && name != "`is_pure" &&
+                        name != "import" && name != "`import" &&
+                        name != "values.same" && name != "`same" &&
+                        name != "types.type_of" && name != "`type_of" &&
+                        name != "traits.implements" && name != "`implements" &&
+                        name != "sets.types_in_set" && name != "`types_in_set" &&
+                        name != "sets.enumerable" && name != "`is_enumerable" &&
+                        name != "sets.coextensive" && name != "`coextensive" &&
+                        name != "compute.lambda_param_space" && name != "`lambda_param_space" &&
+                        name != "compute.lambda_result_space" && name != "`lambda_result_space" &&
+                        name != "types.construction_args" && name != "`construction_args" &&
+                        name != "types.construct" && name != "`construct" &&
+                        name != "types.mint_finite" && name != "`mint_finite" &&
+                        name != "types.is_struct_type" && name != "`is_struct_type" &&
+                        name != "traits.make" && name != "`make_trait" &&
+                        name != "traits.interface" && name != "`interface_of" &&
+                        name != "traits.implement" && name != "`implement" &&
+                        name != "traits.implementation" && name != "`implementation" &&
+                        name != "int" && name != "`int" &&
+                        name != "bool" && name != "`bool" &&
+                        name != "string" && name != "`string" &&
+                        name != "char" && name != "`char" &&
+                        name != "symbol" && name != "`symbol" &&
+                        name != "any" && name != "`any" &&
+                        name != "type" && name != "`type" &&
+                        name != "lambda" && name != "`lambda" &&
+                        name != "trait" && name != "`trait" &&
+                        name != "true" && name != "`true" &&
+                        name != "false" && name != "`false") {
+                        is_pure = false; return;
+                    }
+                }
+            }
+
+            for (const auto& arg : expr.args) {
+                if (arg.value) arg.value->accept(*this);
+            }
+        }
+
+        void visit(const frontend::AssignStmt& stmt) override {
+            if (!is_pure) return;
+            auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.target.get());
+            if (!ident) {
+                is_pure = false; return;
+            }
+            std::string name = std::string(ident->name);
+            bool is_local = local_vars.count(name) > 0;
+            if (!is_local) {
+                for (const auto& p : params) {
+                    if (std::string(p.name.lexeme) == name) {
+                        is_local = true; break;
+                    }
+                }
+            }
+            if (!is_local) {
+                is_pure = false; return;
+            }
+            if (stmt.value) stmt.value->accept(*this);
+        }
+
+        void visit(const frontend::LetStmt& stmt) override {
+            if (!is_pure) return;
+            local_vars.insert(std::string(stmt.binding.name.lexeme));
+            if (stmt.binding.initializer) stmt.binding.initializer->accept(*this);
+        }
+
+        void visit(const frontend::ForExpr& expr) override {
+            if (!is_pure) return;
+            local_vars.insert(std::string(expr.iterator_binding.name.lexeme));
+            if (expr.iterable) expr.iterable->accept(*this);
+            if (expr.body) expr.body->accept(*this);
+        }
+
+        void visit(const frontend::IdentifierExpr&) override {}
+        void visit(const frontend::BinaryExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.left) expr.left->accept(*this);
+            if (expr.right) expr.right->accept(*this);
+        }
+        void visit(const frontend::ListExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& e : expr.elements) {
+                if (e) e->accept(*this);
+            }
+        }
+        void visit(const frontend::LambdaExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& param : expr.parameters) {
+                if (param.type_bound) param.type_bound->accept(*this);
+            }
+            if (expr.return_bound) expr.return_bound->accept(*this);
+        }
+        void visit(const frontend::SignatureExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& param : expr.parameters) {
+                if (param.type_bound) param.type_bound->accept(*this);
+            }
+            if (expr.return_bound) expr.return_bound->accept(*this);
+        }
+        void visit(const frontend::StructExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& f : expr.fields) {
+                if (f.initializer) f.initializer->accept(*this);
+            }
+        }
+        void visit(const frontend::ConstructedSetExpr& expr) override {
+            if (!is_pure) return;
+            local_vars.insert(std::string(expr.binding.name.lexeme));
+            if (expr.binding.initializer) expr.binding.initializer->accept(*this);
+            if (expr.binding.type_bound) expr.binding.type_bound->accept(*this);
+            if (expr.condition) expr.condition->accept(*this);
+        }
+        void visit(const frontend::AnonymousStructLiteralExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& field : expr.fields) {
+                if (field.value) field.value->accept(*this);
+            }
+        }
+        void visit(const frontend::BlockExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& s : expr.statements) {
+                if (s) s->accept(*this);
+            }
+        }
+        void visit(const frontend::IfStmt& stmt) override {
+            if (!is_pure) return;
+            if (stmt.condition) stmt.condition->accept(*this);
+            if (stmt.then_branch) stmt.then_branch->accept(*this);
+            if (stmt.else_branch) stmt.else_branch->accept(*this);
+        }
+        void visit(const frontend::ExprStmt& stmt) override {
+            if (!is_pure) return;
+            if (stmt.expression) stmt.expression->accept(*this);
+        }
+        void visit(const frontend::BreakStmt&) override {}
+        void visit(const frontend::DebugStmt&) override {}
+        void visit(const frontend::IntrinsicExpr&) override {}
+        void visit(const frontend::UnaryExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.right) expr.right->accept(*this);
+        }
+        void visit(const frontend::GroupingExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.expression) expr.expression->accept(*this);
+        }
+        void visit(const frontend::NumberExpr&) override {}
+        void visit(const frontend::StringExpr&) override {}
+        void visit(const frontend::FStringExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& part : expr.parts) {
+                if (part) part->accept(*this);
+            }
+        }
+        void visit(const frontend::CharExpr&) override {}
+        void visit(const frontend::SymbolicConstantExpr&) override {}
+        void visit(const frontend::EnumExpr&) override {}
+        void visit(const frontend::EnumeratedSetExpr& expr) override {
+            if (!is_pure) return;
+            for (const auto& e : expr.elements) {
+                if (e) e->accept(*this);
+            }
+        }
+        void visit(const frontend::IfExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.condition) expr.condition->accept(*this);
+            if (expr.then_branch) expr.then_branch->accept(*this);
+            if (expr.else_branch) expr.else_branch->accept(*this);
+        }
+        void visit(const frontend::WhileExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.condition) expr.condition->accept(*this);
+            if (expr.body) expr.body->accept(*this);
+        }
+        void visit(const frontend::IndexExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.target) expr.target->accept(*this);
+            for (const auto& a : expr.args) {
+                if (a.value) a.value->accept(*this);
+            }
+        }
+        void visit(const frontend::MatchExpr& expr) override {
+            if (!is_pure) return;
+            if (expr.subject) expr.subject->accept(*this);
+            for (const auto& arm : expr.arms) {
+                if (arm.body) arm.body->accept(*this);
+            }
+        }
+    };
+
+    bool determinePurity(const frontend::LambdaExpr& lambda,
+                         const CompilerEnvironment* env,
+                         const std::unordered_map<std::string, bool>& global_purity,
+                         const std::string& current_name) {
+        PurityVisitor visitor(env, global_purity, lambda.parameters, current_name);
+        if (lambda.body) {
+            lambda.body->accept(visitor);
+        }
+        return visitor.is_pure;
+    }
+
 class CompilerVisitor : public frontend::ASTVisitor, public frontend::StmtVisitor {
 public:
     struct CleanupScope {
@@ -127,9 +408,14 @@ public:
     std::vector<CleanupScope> cleanup_scopes;
     std::vector<size_t> break_targets;
     std::unordered_set<std::string>* global_final_bindings;
+    std::unordered_map<std::string, bool>* global_purity;
+    std::string current_binding_name;
+    std::vector<std::string> public_globals;
 
-    CompilerVisitor(std::shared_ptr<ProgramUnit> current_unit, CompilerEnvironment* current_env, std::unordered_set<std::string>* global_finals = nullptr)
-        : unit(std::move(current_unit)), env(current_env), global_final_bindings(global_finals) {}
+    CompilerVisitor(std::shared_ptr<ProgramUnit> current_unit, CompilerEnvironment* current_env,
+                    std::unordered_set<std::string>* global_finals = nullptr,
+                    std::unordered_map<std::string, bool>* global_purity_map = nullptr)
+        : unit(std::move(current_unit)), env(current_env), global_final_bindings(global_finals), global_purity(global_purity_map) {}
 
     void compileStatements(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
         for (const auto& stmt : stmts) {
@@ -346,6 +632,19 @@ public:
             throw std::runtime_error("Identifier '" + name + "' cannot shadow final binding");
         }
 
+        std::string old_binding_name = current_binding_name;
+        current_binding_name = name;
+
+        bool is_initializer_pure = false;
+        std::unordered_map<std::string, bool> dummy_purity;
+        if (auto lambda = dynamic_cast<const frontend::LambdaExpr*>(stmt.binding.initializer.get())) {
+            is_initializer_pure = determinePurity(*lambda, env, global_purity ? *global_purity : dummy_purity, name);
+        } else {
+            PurityVisitor visitor(env, global_purity ? *global_purity : dummy_purity, {}, name);
+            stmt.binding.initializer->accept(visitor);
+            is_initializer_pure = visitor.is_pure;
+        }
+
         std::optional<uint32_t> constraint_slot;
         if (stmt.binding.type_bound) {
             if (env->top_level_scope) {
@@ -368,13 +667,19 @@ public:
             if (stmt.binding.is_final && global_final_bindings) {
                 global_final_bindings->insert(name);
             }
+            if (global_purity) {
+                (*global_purity)[name] = is_initializer_pure;
+            }
+            if (stmt.is_public) {
+                public_globals.push_back(name);
+            }
             unit->emit(static_cast<uint8_t>(OperandType::Identifier));
             emitStringIndex(name);
         } else {
             uint32_t slot = env->context->allocateLocal();
             unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
             emitU32(slot);
-            env->locals.emplace(name, CompilerEnvironment::LocalInfo{slot, stmt.binding.is_final, constraint_slot});
+            env->locals.emplace(name, CompilerEnvironment::LocalInfo{slot, stmt.binding.is_final, constraint_slot, is_initializer_pure});
             recordCleanupBinding({VariableRef::Kind::Local, slot});
         }
 
@@ -392,6 +697,8 @@ public:
         } else {
             emitOperand(*stmt.binding.initializer);
         }
+
+        current_binding_name = old_binding_name;
     }
 
     void visit(const frontend::BreakStmt& stmt) override {
@@ -704,6 +1011,9 @@ public:
 
     void visit(const frontend::LambdaExpr& expr) override {
         auto lambda_unit = std::make_shared<ProgramUnit>();
+        std::unordered_map<std::string, bool> dummy_purity;
+        lambda_unit->is_pure = determinePurity(expr, env, global_purity ? *global_purity : dummy_purity, current_binding_name);
+
         CompilerContext lambda_context(env->context);
         CompilerEnvironment lambda_env(&lambda_context, env, false);
 
@@ -719,9 +1029,55 @@ public:
             lambda_env.locals.emplace(name, CompilerEnvironment::LocalInfo{lambda_context.allocateLocal(), param.is_final});
         }
 
-        CompilerVisitor lambda_visitor(lambda_unit, &lambda_env, global_final_bindings);
-        lambda_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
-        lambda_visitor.emitOperand(*expr.body);
+        CompilerVisitor lambda_visitor(lambda_unit, &lambda_env, global_final_bindings, global_purity);
+
+        // Compile and enforce return constraint setup
+        std::optional<uint32_t> return_constraint_slot;
+        if (expr.return_bound) {
+            return_constraint_slot = lambda_context.allocateLocal();
+            lambda_unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
+            lambda_unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+            lambda_visitor.emitU32(*return_constraint_slot);
+            lambda_visitor.emitOperand(*expr.return_bound);
+        }
+
+        // Compile and enforce parameter constraints
+        for (const auto& param : expr.parameters) {
+            if (param.type_bound) {
+                std::string name(param.name.lexeme);
+                auto local = lambda_env.locals.find(name);
+                uint32_t slot = local->second.slot;
+
+                uint32_t constraint_slot = lambda_context.allocateLocal();
+                lambda_unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
+                lambda_unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                lambda_visitor.emitU32(constraint_slot);
+                lambda_visitor.emitOperand(*param.type_bound);
+
+                lambda_unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
+                lambda_unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                lambda_visitor.emitU32(slot);
+                lambda_unit->emit(static_cast<uint8_t>(OperandType::Inline));
+                lambda_unit->emit(encodeInstruction(Opcode::EnforceConstraint, Domain::Generic));
+                lambda_unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                lambda_visitor.emitU32(constraint_slot);
+                lambda_unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                lambda_visitor.emitU32(slot);
+            }
+        }
+
+        if (expr.return_bound) {
+            lambda_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
+            lambda_unit->emit(static_cast<uint8_t>(OperandType::Inline));
+            lambda_unit->emit(encodeInstruction(Opcode::EnforceConstraint, Domain::Generic));
+            lambda_unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+            lambda_visitor.emitU32(*return_constraint_slot);
+            lambda_visitor.emitOperand(*expr.body);
+        } else {
+            lambda_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
+            lambda_visitor.emitOperand(*expr.body);
+        }
+
         lambda_unit->num_locals = lambda_context.next_local;
         lambda_unit->captures = lambda_context.captures;
 
@@ -1057,12 +1413,29 @@ public:
 
 } // namespace
 
-std::shared_ptr<ProgramUnit> Compiler::compile(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
+std::shared_ptr<ProgramUnit> Compiler::compile(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, bool is_module) {
     auto unit = std::make_shared<ProgramUnit>();
     CompilerContext root_context(nullptr, true);
     CompilerEnvironment root_env(&root_context, nullptr, true);
-    CompilerVisitor visitor(unit, &root_env, global_final_bindings_);
+    CompilerVisitor visitor(unit, &root_env, global_final_bindings_, global_purity_);
     visitor.compileStatements(stmts);
+    if (is_module) {
+        unit->emit(encodeInstruction(Opcode::MakeAnonStruct, Domain::Generic));
+        uint32_t size = static_cast<uint32_t>(visitor.public_globals.size());
+        for (int i = 0; i < 4; ++i) {
+            unit->emit((size >> (i * 8)) & 0xFF);
+        }
+        for (const auto& name : visitor.public_globals) {
+            uint32_t name_idx = unit->addStringConstant(name);
+            for (int i = 0; i < 4; ++i) {
+                unit->emit((name_idx >> (i * 8)) & 0xFF);
+            }
+            unit->emit(static_cast<uint8_t>(OperandType::Identifier));
+            for (int i = 0; i < 4; ++i) {
+                unit->emit((name_idx >> (i * 8)) & 0xFF);
+            }
+        }
+    }
     unit->num_locals = root_context.next_local;
     return unit;
 }
