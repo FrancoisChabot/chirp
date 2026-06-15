@@ -66,6 +66,7 @@ public:
     struct LocalInfo {
         uint32_t slot;
         bool is_final;
+        std::optional<uint32_t> constraint_slot;
     };
     std::unordered_map<std::string, LocalInfo> locals;
 
@@ -339,6 +340,22 @@ public:
             throw std::runtime_error("Identifier '" + name + "' cannot shadow final binding");
         }
 
+        std::optional<uint32_t> constraint_slot;
+        if (stmt.binding.type_bound) {
+            if (env->top_level_scope) {
+                unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(OperandType::Identifier));
+                emitStringIndex("__chirp_constraint_" + name);
+                emitOperand(*stmt.binding.type_bound);
+            } else {
+                constraint_slot = env->context->allocateLocal();
+                unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                emitU32(*constraint_slot);
+                emitOperand(*stmt.binding.type_bound);
+            }
+        }
+
         unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
 
         if (env->top_level_scope) {
@@ -351,11 +368,24 @@ public:
             uint32_t slot = env->context->allocateLocal();
             unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
             emitU32(slot);
-            env->locals.emplace(name, CompilerEnvironment::LocalInfo{slot, stmt.binding.is_final});
+            env->locals.emplace(name, CompilerEnvironment::LocalInfo{slot, stmt.binding.is_final, constraint_slot});
             recordCleanupBinding({VariableRef::Kind::Local, slot});
         }
 
-        emitOperand(*stmt.binding.initializer);
+        if (stmt.binding.type_bound) {
+            unit->emit(static_cast<uint8_t>(OperandType::Inline));
+            if (env->top_level_scope) {
+                unit->emit(encodeInstruction(Opcode::EnforceGlobalConstraint, Domain::Generic));
+                emitStringIndex(name);
+            } else {
+                unit->emit(encodeInstruction(Opcode::EnforceConstraint, Domain::Generic));
+                unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                emitU32(*constraint_slot);
+            }
+            emitOperand(*stmt.binding.initializer);
+        } else {
+            emitOperand(*stmt.binding.initializer);
+        }
     }
 
     void visit(const frontend::BreakStmt& stmt) override {
@@ -367,9 +397,50 @@ public:
     }
 
     void visit(const frontend::AssignStmt& stmt) override {
+        auto emitRHS = [&]() {
+            if (stmt.op.type != frontend::token_type::equal) {
+                unit->emit(static_cast<uint8_t>(OperandType::Inline));
+                unit->emit(encodeInstruction(Opcode::BinaryMath, Domain::Generic));
+                switch (stmt.op.type) {
+                    case frontend::token_type::plus_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Add)); break;
+                    case frontend::token_type::minus_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Sub)); break;
+                    case frontend::token_type::star_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mul)); break;
+                    case frontend::token_type::slash_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Div)); break;
+                    case frontend::token_type::percent_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mod)); break;
+                    default: throw std::runtime_error("Unsupported assignment operator");
+                }
+                emitOperand(*stmt.target);
+                emitOperand(*stmt.value);
+            } else {
+                emitOperand(*stmt.value);
+            }
+        };
+
         if (auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.target.get())) {
+            std::string name(ident->name);
+            VariableRef ref = env->resolve(name);
+
+            if (env->isFinal(name, global_final_bindings)) {
+                throw std::runtime_error("Cannot assign to final identifier '" + name + "'");
+            }
+
             unit->emit(encodeInstruction(Opcode::Assign, Domain::Generic));
-            VariableRef ref = env->resolve(std::string(ident->name));
+
+            bool has_constraint = false;
+            std::optional<uint32_t> constraint_slot;
+            bool is_global = false;
+
+            if (ref.kind == VariableRef::Kind::Local) {
+                auto local = env->locals.find(name);
+                if (local != env->locals.end() && local->second.constraint_slot) {
+                    has_constraint = true;
+                    constraint_slot = local->second.constraint_slot;
+                }
+            } else if (ref.kind == VariableRef::Kind::Global) {
+                has_constraint = true;
+                is_global = true;
+            }
+
             switch (ref.kind) {
                 case VariableRef::Kind::Local:
                     unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
@@ -381,10 +452,24 @@ public:
                     break;
                 case VariableRef::Kind::Global:
                     unit->emit(static_cast<uint8_t>(OperandType::Identifier));
-                    emitStringIndex(std::string(ident->name));
+                    emitStringIndex(name);
                     break;
             }
-            emitOperand(*stmt.value);
+
+            if (has_constraint) {
+                unit->emit(static_cast<uint8_t>(OperandType::Inline));
+                if (is_global) {
+                    unit->emit(encodeInstruction(Opcode::EnforceGlobalConstraint, Domain::Generic));
+                    emitStringIndex(name);
+                } else {
+                    unit->emit(encodeInstruction(Opcode::EnforceConstraint, Domain::Generic));
+                    unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
+                    emitU32(*constraint_slot);
+                }
+                emitRHS();
+            } else {
+                emitRHS();
+            }
             return;
         }
 
@@ -392,7 +477,7 @@ public:
             if (unary->op == frontend::UnaryOp::Deref) {
                 unit->emit(encodeInstruction(Opcode::StoreDeref, Domain::Generic));
                 emitOperand(*unary->right);
-                emitOperand(*stmt.value);
+                emitRHS();
                 return;
             }
         }

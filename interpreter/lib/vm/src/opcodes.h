@@ -51,7 +51,9 @@ enum class Opcode : uint8_t {
     Assign = 0x1F,
     MakeArray = 0x20,
     MakeFString = 0x21,
-    DropBinding = 0x22
+    DropBinding = 0x22,
+    EnforceConstraint = 0x23,
+    EnforceGlobalConstraint = 0x24
 };
 
 enum class OperandType : uint8_t {

@@ -1426,6 +1426,29 @@ public:
                 Value value = evalOperand();
                 return storeDereference(pointer, std::move(value));
             }
+            case Opcode::EnforceConstraint: {
+                Value constraint = evalOperand();
+                Value value = evalOperand();
+                if (constraint.type != ValueType::Null) {
+                    Value result = belongsTo(constraint, value);
+                    if (!isTruthy(result)) {
+                        throw std::runtime_error("Constraint violation");
+                    }
+                }
+                return value;
+            }
+            case Opcode::EnforceGlobalConstraint: {
+                std::string name = unit->constant_strings.at(read32());
+                Value value = evalOperand();
+                auto found = globals.find("__chirp_constraint_" + name);
+                if (found != globals.end() && found->second.type != ValueType::Null) {
+                    Value result = belongsTo(found->second, value);
+                    if (!isTruthy(result)) {
+                        throw std::runtime_error("Constraint violation");
+                    }
+                }
+                return value;
+            }
             default:
                 throw std::runtime_error("Unsupported instruction: " + std::to_string(static_cast<int>(op)));
         }
