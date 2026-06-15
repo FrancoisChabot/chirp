@@ -26,6 +26,7 @@ struct TraitDef;
 struct SignatureDef;
 struct ConstructedSetDef;
 struct CompositeSetDef;
+struct ComplementSetDef;
 struct HeapState;
 struct EnumFamilyDef;
 struct EnumVariantDef;
@@ -55,6 +56,7 @@ enum class ValueType {
     EnumeratedSet,
     ConstructedSet,
     CompositeSet,
+    ComplementSet,
     Heap,
     EnumFamily,
     EnumVariant,
@@ -78,6 +80,7 @@ struct Value {
     std::shared_ptr<std::vector<Value>> as_set_elements;
     std::shared_ptr<ConstructedSetDef> as_constructed_set;
     std::shared_ptr<CompositeSetDef> as_composite_set;
+    std::shared_ptr<ComplementSetDef> as_complement_set;
     std::shared_ptr<HeapState> as_heap;
     std::shared_ptr<EnumFamilyDef> as_enum_family;
     std::shared_ptr<EnumVariantDef> as_enum_variant;
@@ -128,6 +131,12 @@ struct Value {
         Value v;
         v.type = ValueType::CompositeSet;
         v.as_composite_set = std::move(set);
+        return v;
+    }
+    static Value ComplementSet(std::shared_ptr<ComplementSetDef> set) {
+        Value v;
+        v.type = ValueType::ComplementSet;
+        v.as_complement_set = std::move(set);
         return v;
     }
     static Value Heap(std::shared_ptr<HeapState> heap, std::shared_ptr<TypeValueDef> heap_type) {
@@ -199,7 +208,7 @@ struct Value {
             s.push_back('\'');
             return s;
         }
-        if (type == ValueType::Symbol) return "#" + as_string;
+        if (type == ValueType::Symbol) return as_string;
         if (type == ValueType::Struct) return "<struct>";
         if (type == ValueType::Array) return "<array>";
         if (type == ValueType::StructType) return "<struct type>";
@@ -208,8 +217,9 @@ struct Value {
         if (type == ValueType::Trait) return "<trait>";
         if (type == ValueType::Signature) return "<signature>";
         if (type == ValueType::EnumeratedSet) return "<set>";
-        if (type == ValueType::ConstructedSet) return "<constructed set>";
-        if (type == ValueType::CompositeSet) return "<composite set>";
+        if (type == ValueType::ConstructedSet) return "<set>";
+        if (type == ValueType::CompositeSet) return "<set>";
+        if (type == ValueType::ComplementSet) return "<set>";
         if (type == ValueType::Heap) return "<heap allocation>";
         if (type == ValueType::EnumFamily) return "<enum family>";
         if (type == ValueType::EnumVariant) return as_string;
@@ -277,6 +287,10 @@ struct CompositeSetDef {
     std::shared_ptr<Value> left;
     std::shared_ptr<Value> right;
     Op op = Op::Union;
+};
+
+struct ComplementSetDef {
+    std::shared_ptr<Value> inner;
 };
 
 struct HeapState {

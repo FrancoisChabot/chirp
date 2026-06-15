@@ -797,6 +797,13 @@ public:
                 }
                 return Value(false);
             }
+            case ValueType::ComplementSet: {
+                Value inner_result = belongsTo(*set.as_complement_set->inner, value);
+                if (inner_result.type != ValueType::Bool) {
+                    throw std::runtime_error("Complement inner set must evaluate to Bool");
+                }
+                return Value(!isTruthy(inner_result));
+            }
             case ValueType::ConstructedSet: {
                 if (set.as_constructed_set->bound) {
                     Value in_bound = belongsTo(invokeClosure(*set.as_constructed_set->bound), value);
@@ -1118,6 +1125,13 @@ public:
                         }
                     }
                 }
+                
+                if (op == Opcode::Complement) {
+                    auto comp = std::make_shared<ComplementSetDef>();
+                    comp->inner = std::make_shared<Value>(right);
+                    return Value::ComplementSet(comp);
+                }
+
                 throw std::runtime_error("Type error: expected integer for unary math");
             }
             case Opcode::Add:
