@@ -165,7 +165,40 @@ struct Value {
         if (type == ValueType::Closure) return "<closure>";
         if (type == ValueType::String) return as_string;
         if (type == ValueType::NativeFunc) return "<native fn>";
-        if (type == ValueType::Char) return std::string(1, static_cast<char>(as_int.to_int64())); // Simplified
+        if (type == ValueType::Char) {
+            uint32_t cp = static_cast<uint32_t>(as_int.to_int64());
+            std::string s;
+            s.push_back('\'');
+            if (cp == '\\') s += "\\\\";
+            else if (cp == '\'') s += "\\'";
+            else if (cp == '\n') s += "\\n";
+            else if (cp == '\r') s += "\\r";
+            else if (cp == '\t') s += "\\t";
+            else if (cp == '\0') s += "\\0";
+            else if (cp < 32 || cp == 127) {
+                char buf[16];
+                snprintf(buf, sizeof(buf), "\\u%04x", cp);
+                s += buf;
+            } else {
+                if (cp < 0x80) {
+                    s.push_back(static_cast<char>(cp));
+                } else if (cp < 0x800) {
+                    s.push_back(static_cast<char>(0xc0 | (cp >> 6)));
+                    s.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+                } else if (cp < 0x10000) {
+                    s.push_back(static_cast<char>(0xe0 | (cp >> 12)));
+                    s.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f)));
+                    s.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+                } else {
+                    s.push_back(static_cast<char>(0xf0 | (cp >> 18)));
+                    s.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3f)));
+                    s.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f)));
+                    s.push_back(static_cast<char>(0x80 | (cp & 0x3f)));
+                }
+            }
+            s.push_back('\'');
+            return s;
+        }
         if (type == ValueType::Symbol) return "#" + as_string;
         if (type == ValueType::Struct) return "<struct>";
         if (type == ValueType::Array) return "<array>";

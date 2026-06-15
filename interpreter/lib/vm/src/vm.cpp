@@ -404,7 +404,7 @@ private:
 
             const std::string& key = args[0].value.as_string;
 
-            if (key == "\"io.print\"") {
+            if (key == "io.print") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& print_args) -> Value {
                     if (print_args.size() != 1 || print_args[0].name.has_value()) {
                         throw std::runtime_error("`print expects one positional argument");
@@ -415,7 +415,7 @@ private:
                 }));
             }
 
-            if (key == "\"io.write\"") {
+            if (key == "io.write") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& write_args) -> Value {
                     if (write_args.size() != 2 || write_args[0].name.has_value() || write_args[1].name.has_value()) {
                         throw std::runtime_error("`write expects two positional arguments");
@@ -435,7 +435,7 @@ private:
                 }));
             }
 
-            if (key == "\"io.input\"") {
+            if (key == "io.input") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& input_args) -> Value {
                     if (!input_args.empty()) {
                         throw std::runtime_error("`input expects zero arguments");
@@ -461,7 +461,7 @@ private:
                 }));
             }
 
-            if (key == "\"system.register\"") {
+            if (key == "system.register") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& register_args) -> Value {
                     if (register_args.size() != 2 || register_args[0].name.has_value() || register_args[1].name.has_value()) {
                         throw std::runtime_error("`register expects two positional arguments");
@@ -474,7 +474,7 @@ private:
                 }));
             }
 
-            if (key == "\"values.same\"") {
+            if (key == "values.same") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& same_args) -> Value {
                     if (same_args.size() != 2 || same_args[0].name.has_value() || same_args[1].name.has_value()) {
                         throw std::runtime_error("`same expects two positional arguments");
@@ -483,7 +483,7 @@ private:
                 }));
             }
 
-            if (key == "\"types.type_of\"") {
+            if (key == "types.type_of") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& type_args) -> Value {
                     if (type_args.size() != 1 || type_args[0].name.has_value()) {
                         throw std::runtime_error("`type_of expects one positional argument");
@@ -492,7 +492,7 @@ private:
                 }));
             }
 
-            if (key == "\"types.is_struct_type\"") {
+            if (key == "types.is_struct_type") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& type_args) -> Value {
                     if (type_args.size() != 1 || type_args[0].name.has_value()) {
                         throw std::runtime_error("`is_struct_type expects one positional argument");
@@ -501,7 +501,7 @@ private:
                 }));
             }
 
-            if (key == "\"types.construction_args\"") {
+            if (key == "types.construction_args") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& type_args) -> Value {
                     if (type_args.size() != 1 || type_args[0].name.has_value()) {
                         throw std::runtime_error("`construction_args expects one positional argument");
@@ -513,7 +513,7 @@ private:
                 }));
             }
 
-            if (key == "\"types.construct\"") {
+            if (key == "types.construct") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& type_args) -> Value {
                     if (type_args.size() != 2 || type_args[0].name.has_value() || type_args[1].name.has_value()) {
                         throw std::runtime_error("`construct expects two positional arguments");
@@ -532,7 +532,7 @@ private:
                 }));
             }
 
-            if (key == "\"types.mint_finite\"" || key == "\"types.mint_infinite\"" || key == "\"types.mint_host\"") {
+            if (key == "types.mint_finite" || key == "types.mint_infinite" || key == "types.mint_host") {
                 return Value(NativeFunc([this, key](const std::vector<CallArgument>& mint_args) -> Value {
                     if (mint_args.empty() || mint_args[0].name.has_value() || mint_args[0].value.type != ValueType::Int) {
                         throw std::runtime_error("`mint_* expects one positional integer argument");
@@ -542,7 +542,7 @@ private:
                         throw std::runtime_error("`mint_* count must be non-negative");
                     }
 
-                    uint64_t finite_count = key == "\"types.mint_finite\"" ? static_cast<uint64_t>(count) : 0;
+                    uint64_t finite_count = key == "types.mint_finite" ? static_cast<uint64_t>(count) : 0;
                     Value type = create_type("minted_type_" + std::to_string(next_type_id_), TypeValueDef::Kind::Finite, finite_count);
                     auto values_array = std::make_shared<std::vector<Value>>();
                     for (uint64_t i = 0; i < finite_count; ++i) {
@@ -555,11 +555,11 @@ private:
                 }));
             }
 
-            if (key == "\"memory.heap_allocation\"") {
+            if (key == "memory.heap_allocation") {
                 return globals_.at("__heap_allocation_type");
             }
 
-            if (key == "\"system.exit\"") {
+            if (key == "system.exit") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& exit_args) -> Value {
                     if (exit_args.size() != 1 || exit_args[0].name.has_value()) {
                         throw std::runtime_error("`exit expects one positional argument");
@@ -573,11 +573,11 @@ private:
                 }));
             }
 
-            if (key == "\"memory.heap_shared_allocation\"") {
+            if (key == "memory.heap_shared_allocation") {
                 return globals_.at("__heap_shared_allocation_type");
             }
 
-            if (key == "\"memory.heap_create\"") {
+            if (key == "memory.heap_create") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
                     if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
                         throw std::runtime_error("`heap_create expects one positional argument");
@@ -590,7 +590,7 @@ private:
                 }));
             }
 
-            if (key == "\"memory.heap_destroy\"") {
+            if (key == "memory.heap_destroy") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
                     if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
                         throw std::runtime_error("`heap_destroy expects one positional argument");
@@ -608,7 +608,7 @@ private:
                 }));
             }
 
-            if (key == "\"memory.heap_shared_create\"") {
+            if (key == "memory.heap_shared_create") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
                     if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
                         throw std::runtime_error("`heap_shared_create expects one positional argument");
@@ -624,7 +624,7 @@ private:
                 }));
             }
 
-            if (key == "\"memory.heap_shared_destroy\"") {
+            if (key == "memory.heap_shared_destroy") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
                     if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
                         throw std::runtime_error("`heap_shared_destroy expects one positional argument");
@@ -644,7 +644,7 @@ private:
                 }));
             }
 
-            if (key == "\"traits.make\"") {
+            if (key == "traits.make") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& trait_args) -> Value {
                     if (trait_args.size() != 1 || trait_args[0].name.has_value()) {
                         throw std::runtime_error("`make_trait expects one positional argument");
@@ -656,7 +656,7 @@ private:
                 }));
             }
 
-            if (key == "\"traits.interface\"") {
+            if (key == "traits.interface") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& trait_args) -> Value {
                     if (trait_args.size() != 1 || trait_args[0].name.has_value() || trait_args[0].value.type != ValueType::Trait) {
                         throw std::runtime_error("`interface_of expects one trait argument");
@@ -665,7 +665,7 @@ private:
                 }));
             }
 
-	            if (key == "\"traits.implement\"") {
+	            if (key == "traits.implement") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& impl_args) -> Value {
                     if (impl_args.size() != 3) {
                         throw std::runtime_error("`implement expects three named arguments");
@@ -717,7 +717,7 @@ private:
                 }));
             }
 
-            if (key == "\"traits.implements\"") {
+            if (key == "traits.implements") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& impl_args) -> Value {
                     if (impl_args.size() != 2 || impl_args[0].name.has_value() || impl_args[1].name.has_value()) {
                         throw std::runtime_error("`implements expects two positional arguments");
@@ -733,7 +733,7 @@ private:
                 }));
             }
 
-            if (key == "\"traits.implementation\"") {
+            if (key == "traits.implementation") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& impl_args) -> Value {
                     if (impl_args.size() != 2 || impl_args[0].name.has_value() || impl_args[1].name.has_value()) {
                         throw std::runtime_error("`implementation expects two positional arguments");
@@ -753,7 +753,7 @@ private:
                 }));
             }
 
-            if (key == "\"compute.invoke\"") {
+            if (key == "compute.invoke") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& invoke_args) -> Value {
                     if (invoke_args.size() != 2 || invoke_args[0].name.has_value() || invoke_args[1].name.has_value()) {
                         throw std::runtime_error("`invoke expects two positional arguments");
@@ -769,7 +769,7 @@ private:
                 }));
             }
 
-            if (key == "\"compute.is_pure\"") {
+            if (key == "compute.is_pure") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& purity_args) -> Value {
                     if (purity_args.size() != 1 || purity_args[0].name.has_value()) {
                         throw std::runtime_error("`is_pure expects one positional argument");
@@ -780,7 +780,7 @@ private:
                 }));
             }
 
-            if (key == "\"compute.lambda_param_space\"") {
+            if (key == "compute.lambda_param_space") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& lambda_args) -> Value {
                     if (lambda_args.size() != 1 || lambda_args[0].name.has_value()) {
                         throw std::runtime_error("`lambda_param_space expects one positional argument");
@@ -796,7 +796,7 @@ private:
                 }));
             }
 
-            if (key == "\"compute.lambda_result_space\"") {
+            if (key == "compute.lambda_result_space") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& lambda_args) -> Value {
                     if (lambda_args.size() != 2 || lambda_args[0].name.has_value() || lambda_args[1].name.has_value()) {
                         throw std::runtime_error("`lambda_result_space expects two positional arguments");
@@ -805,7 +805,7 @@ private:
                 }));
             }
 
-            if (key == "\"sets.types_in_set\"") {
+            if (key == "sets.types_in_set") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& set_args) -> Value {
                     if (set_args.size() != 1 || set_args[0].name.has_value()) {
                         throw std::runtime_error("`types_in_set expects one positional argument");
@@ -818,7 +818,7 @@ private:
                 }));
             }
 
-            if (key == "\"sets.enumerable\"") {
+            if (key == "sets.enumerable") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& set_args) -> Value {
                     if (set_args.size() != 1 || set_args[0].name.has_value()) {
                         throw std::runtime_error("`is_enumerable expects one positional argument");
@@ -832,7 +832,7 @@ private:
                 }));
             }
 
-            if (key == "\"sets.coextensive\"") {
+            if (key == "sets.coextensive") {
                 return Value(NativeFunc([](const std::vector<CallArgument>& set_args) -> Value {
                     if (set_args.size() != 2 || set_args[0].name.has_value() || set_args[1].name.has_value()) {
                         throw std::runtime_error("`coextensive expects two positional arguments");
@@ -854,11 +854,11 @@ private:
                 }));
             }
 
-            if (key == "\"testing.enabled\"") {
+            if (key == "testing.enabled") {
                 return Value(testing_enabled_);
             }
 
-            if (key == "\"testing.inject_stdin\"") {
+            if (key == "testing.inject_stdin") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& inject_args) -> Value {
                     if (inject_args.size() != 1 || inject_args[0].name.has_value()) {
                         throw std::runtime_error("`inject_stdin expects one positional argument");
@@ -872,7 +872,7 @@ private:
                 }));
             }
 
-            if (key == "\"testing.expect\"") {
+            if (key == "testing.expect") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
                     if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
                         throw std::runtime_error("`expect expects one positional argument");
@@ -889,7 +889,7 @@ private:
                 }));
             }
 
-            if (key == "\"testing.expect_stdout\"") {
+            if (key == "testing.expect_stdout") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
                     if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
                         throw std::runtime_error("`expect_stdout expects one positional argument");
@@ -908,7 +908,7 @@ private:
                 }));
             }
 
-            if (key == "\"testing.expect_stderr\"") {
+            if (key == "testing.expect_stderr") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
                     if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
                         throw std::runtime_error("`expect_stderr expects one positional argument");
@@ -927,7 +927,7 @@ private:
                 }));
             }
 
-            if (key == "\"testing.expect_exit\"") {
+            if (key == "testing.expect_exit") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
                     if (expect_args.size() != 1 || expect_args[0].name.has_value()) {
                         throw std::runtime_error("`expect_exit expects one positional argument");
@@ -943,7 +943,7 @@ private:
                 }));
             }
 
-            if (key == "\"testing.expect_test_failure\"") {
+            if (key == "testing.expect_test_failure") {
                 return Value(NativeFunc([this](const std::vector<CallArgument>& expect_args) -> Value {
                     if (!expect_args.empty()) {
                         throw std::runtime_error("`expect_test_failure expects no arguments");
@@ -954,7 +954,7 @@ private:
                 }));
             }
 
-            throw std::runtime_error("Unsupported native import in VM");
+            throw std::runtime_error("Unsupported native import in VM: " + key);
         };
     }
 };

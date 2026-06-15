@@ -306,10 +306,11 @@ public:
             emitResolvedVariableOperand(std::string(intrinsic->name));
         } else if (auto str = dynamic_cast<const frontend::StringExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmString));
-            emitStringIndex(std::string(str->value));
+            emitStringIndex(frontend::decode_quoted_literal(std::string(str->value)));
         } else if (auto chr = dynamic_cast<const frontend::CharExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmChar));
-            uint32_t value = chr->value.length() >= 3 ? static_cast<unsigned char>(chr->value[1]) : 0;
+            std::string decoded = frontend::decode_quoted_literal(std::string(chr->value));
+            uint32_t value = frontend::decode_utf8_char(decoded);
             emitU32(value);
         } else if (auto sym = dynamic_cast<const frontend::SymbolicConstantExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmSymbol));

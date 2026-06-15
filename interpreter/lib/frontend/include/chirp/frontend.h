@@ -608,4 +608,10 @@ std::string print_ast(const Expr& expr);
 std::string print_ast(const Stmt& stmt);
 std::string print_ast(const std::vector<std::unique_ptr<Stmt>>& stmts);
 
+int hex_value(char c);
+void append_utf8(std::string& out, uint32_t codepoint);
+std::string decode_quoted_literal(std::string_view literal);
+std::string decode_fstring_part(std::string_view literal, token_type t);
+uint32_t decode_utf8_char(std::string_view str);
+
 } // namespace chirp::frontend

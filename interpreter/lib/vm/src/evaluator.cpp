@@ -605,6 +605,58 @@ public:
         }
     }
 
+    Value evaluateCompare(CompareOp cmp_op, const Value& left, const Value& right) {
+        if ((left.type == ValueType::Int && right.type == ValueType::Int) ||
+            (left.type == ValueType::Char && right.type == ValueType::Char)) {
+            switch (cmp_op) {
+                case CompareOp::Eq: return Value(left.as_int == right.as_int);
+                case CompareOp::Neq: return Value(left.as_int != right.as_int);
+                case CompareOp::Lt: return Value(left.as_int < right.as_int);
+                case CompareOp::Lte: return Value(left.as_int <= right.as_int);
+                case CompareOp::Gt: return Value(left.as_int > right.as_int);
+                case CompareOp::Gte: return Value(left.as_int >= right.as_int);
+                default:
+                    throw std::runtime_error("Unknown CompareOp");
+            }
+        }
+
+        if (cmp_op == CompareOp::Eq) {
+            return Value(valueEquals(left, right));
+        }
+        if (cmp_op == CompareOp::Neq) {
+            return Value(!valueEquals(left, right));
+        }
+
+        if (const Value* comparable_trait = registeredItem("operators.comparable")) {
+            if (const Value* impl = registeredImplementation(*comparable_trait, typeOf(left))) {
+                const Value* compare_fn = structField(*impl, "compare");
+                if (compare_fn == nullptr) {
+                    throw std::runtime_error("Comparable implementation missing compare");
+                }
+                Value result = invokeValue(*compare_fn, {
+                    CallArgument{std::nullopt, left},
+                    CallArgument{std::nullopt, right},
+                });
+                const Value* less = registeredItem("operators.comparable.less");
+                const Value* equal = registeredItem("operators.comparable.equal");
+                const Value* greater = registeredItem("operators.comparable.greater");
+                if (less == nullptr || equal == nullptr || greater == nullptr) {
+                    throw std::runtime_error("Comparable registry is incomplete");
+                }
+
+                switch (cmp_op) {
+                    case CompareOp::Lt: return Value(valueEquals(result, *less));
+                    case CompareOp::Lte: return Value(valueEquals(result, *less) || valueEquals(result, *equal));
+                    case CompareOp::Gt: return Value(valueEquals(result, *greater));
+                    case CompareOp::Gte: return Value(valueEquals(result, *greater) || valueEquals(result, *equal));
+                    default:
+                        throw std::runtime_error("Unknown CompareOp");
+                }
+            }
+        }
+        throw std::runtime_error("Types cannot be compared");
+    }
+
     std::vector<Value> finiteElements(const Value& set) {
         if (set.type == ValueType::EnumeratedSet) {
             std::vector<Value> elements;
@@ -663,18 +715,29 @@ public:
         }
 
         if (set.type == ValueType::Range) {
-            if (set.as_range->start->type != ValueType::Int || set.as_range->end->type != ValueType::Int) {
-                throw std::runtime_error("Can only enumerate integer ranges");
+            if (set.as_range->start->type == ValueType::Int && set.as_range->end->type == ValueType::Int) {
+                std::vector<Value> elements;
+                int64_t start = requireInt64(set.as_range->start->as_int, "Range bounds must fit in int64");
+                int64_t end = requireInt64(set.as_range->end->as_int, "Range bounds must fit in int64");
+                if (set.as_range->inclusive_end) {
+                    for (int64_t i = start; i <= end; ++i) elements.push_back(Value(i));
+                } else {
+                    for (int64_t i = start; i < end; ++i) elements.push_back(Value(i));
+                }
+                return elements;
             }
-            std::vector<Value> elements;
-            int64_t start = requireInt64(set.as_range->start->as_int, "Range bounds must fit in int64");
-            int64_t end = requireInt64(set.as_range->end->as_int, "Range bounds must fit in int64");
-            if (set.as_range->inclusive_end) {
-                for (int64_t i = start; i <= end; ++i) elements.push_back(Value(i));
-            } else {
-                for (int64_t i = start; i < end; ++i) elements.push_back(Value(i));
+            if (set.as_range->start->type == ValueType::Char && set.as_range->end->type == ValueType::Char) {
+                std::vector<Value> elements;
+                uint32_t start = static_cast<uint32_t>(set.as_range->start->as_int.to_int64());
+                uint32_t end = static_cast<uint32_t>(set.as_range->end->as_int.to_int64());
+                if (set.as_range->inclusive_end) {
+                    for (uint32_t i = start; i <= end; ++i) elements.push_back(Value::Char(i));
+                } else {
+                    for (uint32_t i = start; i < end; ++i) elements.push_back(Value::Char(i));
+                }
+                return elements;
             }
-            return elements;
+            throw std::runtime_error("Can only enumerate integer and char ranges");
         }
 
         throw std::runtime_error("Set is not finitely enumerable");
@@ -728,16 +791,12 @@ public:
             }
             case ValueType::Range: {
                 if (value.type != set.as_range->start->type) return Value(false);
-                if (value.type == ValueType::Int) {
-                    bool valid = value.as_int >= set.as_range->start->as_int;
-                    if (set.as_range->inclusive_end) {
-                        valid = valid && value.as_int <= set.as_range->end->as_int;
-                    } else {
-                        valid = valid && value.as_int < set.as_range->end->as_int;
-                    }
-                    return Value(valid);
-                }
-                throw std::runtime_error("Range membership only supported for Int type");
+                
+                bool gte = isTruthy(evaluateCompare(CompareOp::Gte, value, *set.as_range->start));
+                bool lte = set.as_range->inclusive_end
+                             ? isTruthy(evaluateCompare(CompareOp::Lte, value, *set.as_range->end))
+                             : isTruthy(evaluateCompare(CompareOp::Lt, value, *set.as_range->end));
+                return Value(gte && lte);
             }
             default:
                 if (const Value* set_trait = registeredItem("traits.set")) {
@@ -1103,55 +1162,7 @@ public:
                 if (dom != Domain::Generic) {
                     throw std::runtime_error("Specialized domains are not implemented");
                 }
-                if (left.type == ValueType::Int && right.type == ValueType::Int) {
-                    switch (cmp_op) {
-                        case CompareOp::Eq: return Value(left.as_int == right.as_int);
-                        case CompareOp::Neq: return Value(left.as_int != right.as_int);
-                        case CompareOp::Lt: return Value(left.as_int < right.as_int);
-                        case CompareOp::Lte: return Value(left.as_int <= right.as_int);
-                        case CompareOp::Gt: return Value(left.as_int > right.as_int);
-                        case CompareOp::Gte: return Value(left.as_int >= right.as_int);
-                        default:
-                            throw std::runtime_error("Unknown CompareOp");
-                    }
-                }
-
-                if (cmp_op == CompareOp::Eq) {
-                    return Value(valueEquals(left, right));
-                }
-                if (cmp_op == CompareOp::Neq) {
-                    return Value(!valueEquals(left, right));
-                }
-
-                if (const Value* comparable_trait = registeredItem("operators.comparable")) {
-                    if (const Value* impl = registeredImplementation(*comparable_trait, typeOf(left))) {
-                        const Value* compare_fn = structField(*impl, "compare");
-                        if (compare_fn == nullptr) {
-                            throw std::runtime_error("Comparable implementation missing compare");
-                        }
-                        Value result = invokeValue(*compare_fn, {
-                            CallArgument{std::nullopt, left},
-                            CallArgument{std::nullopt, right},
-                        });
-                        const Value* less = registeredItem("operators.comparable.less");
-                        const Value* equal = registeredItem("operators.comparable.equal");
-                        const Value* greater = registeredItem("operators.comparable.greater");
-                        if (less == nullptr || equal == nullptr || greater == nullptr) {
-                            throw std::runtime_error("Comparable registry is incomplete");
-                        }
-
-                        switch (cmp_op) {
-                            case CompareOp::Lt: return Value(valueEquals(result, *less));
-                            case CompareOp::Lte: return Value(valueEquals(result, *less) || valueEquals(result, *equal));
-                            case CompareOp::Gt: return Value(valueEquals(result, *greater));
-                            case CompareOp::Gte: return Value(valueEquals(result, *greater) || valueEquals(result, *equal));
-                            default:
-                                throw std::runtime_error("Unknown CompareOp");
-                        }
-                    }
-                }
-
-                throw std::runtime_error("Type error: expected integers for comparison");
+                return evaluateCompare(cmp_op, left, right);
             }
             case Opcode::If: {
                 Value cond = evalOperand();
