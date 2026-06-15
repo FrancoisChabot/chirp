@@ -160,7 +160,7 @@ public:
 
     void emitIntegerLiteralOperand(const std::string& text, bool negate = false) {
         unit->emit(static_cast<uint8_t>(OperandType::ImmInt));
-        emitStringIndex(negate ? "-" + text : text);
+        emitU32(unit->addIntConstant(BigInt(negate ? "-" + text : text)));
     }
 
     std::shared_ptr<ProgramUnit> compileExpressionUnit(const frontend::Expr& expr) {

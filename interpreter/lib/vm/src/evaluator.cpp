@@ -351,7 +351,7 @@ public:
         OperandType type = static_cast<OperandType>(read8());
         switch (type) {
             case OperandType::ImmInt:
-                return Value(BigInt(unit->constant_strings.at(read32())));
+                return Value(unit->constant_ints.at(read32()));
             case OperandType::ImmString:
                 return Value(unit->constant_strings.at(read32()));
             case OperandType::ImmChar:
