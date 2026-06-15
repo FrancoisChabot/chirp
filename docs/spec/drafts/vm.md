@@ -99,11 +99,17 @@ With 6 bits, we have room for 64 base semantics. The VM uses a unified instructi
 - `MakeLambda` (0x0D): Constructs a closure from a program unit, capturing necessary environment.
 - `Return` (0x0E): Exits the current program unit (lambda) with a value.
 
-#### 4. Consolidated Math & Logic
-*Note: These instructions require an extra postfix byte/bits to specify the exact operation. Logical `&&` and `||` are usually desugared to `If`.*
-- `BinaryMath` (0x0F): E.g., `+`, `-`, `*`, `/`, `%`.
-- `UnaryMath` (0x10): E.g., `-` (negate), `!` (not), `~`.
+#### 4. Math, Logic & Comparison
+*Note: Compare requires an extra postfix byte/bits to specify the exact operation. Logical `&&` and `||` are usually desugared to `If`.*
+- `Add` (0x0F)
+- `Sub` (0x10)
 - `Compare` (0x11): E.g., `==`, `!=`, `<`, `<=`, `>`, `>=`.
+- `Mul` (0x25)
+- `Div` (0x26)
+- `Mod` (0x27)
+- `Not` (0x28)
+- `Negate` (0x29)
+- `Complement` (0x2A)
 
 #### 5. Sets & Ranges
 - `BelongsTo` (0x12) (`∈`)

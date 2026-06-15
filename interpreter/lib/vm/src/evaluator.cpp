@@ -1058,26 +1058,27 @@ public:
             }
             case Opcode::Deref:
                 return dereferenceValue(evalOperand());
-            case Opcode::UnaryMath: {
-                UnaryMathOp math_op = static_cast<UnaryMathOp>(read8());
+            case Opcode::Not:
+            case Opcode::Negate:
+            case Opcode::Complement: {
                 Value right = evalOperand();
                 
-                if (math_op == UnaryMathOp::Not) {
+                if (op == Opcode::Not) {
                     return Value(!isTruthy(right));
                 }
 
                 if (right.type == ValueType::Int) {
-                    switch (math_op) {
-                        case UnaryMathOp::Negate:
+                    switch (op) {
+                        case Opcode::Negate:
                             return Value(-right.as_int);
-                        case UnaryMathOp::Complement:
+                        case Opcode::Complement:
                             return Value(~requireInt64(right.as_int, "Type error: integer does not fit in int64 for complement"));
                         default:
-                            throw std::runtime_error("Unknown UnaryMathOp");
+                            throw std::runtime_error("Unknown unary math op");
                     }
                 }
 
-                if (math_op == UnaryMathOp::Negate) {
+                if (op == Opcode::Negate) {
                     if (const Value* negatable_trait = registeredItem("operators.negatable")) {
                         if (const Value* impl = registeredImplementation(*negatable_trait, typeOf(right))) {
                             const Value* neg_fn = structField(*impl, "neg");
@@ -1090,8 +1091,11 @@ public:
                 }
                 throw std::runtime_error("Type error: expected integer for unary math");
             }
-            case Opcode::BinaryMath: {
-                BinaryMathOp math_op = static_cast<BinaryMathOp>(read8());
+            case Opcode::Add:
+            case Opcode::Sub:
+            case Opcode::Mul:
+            case Opcode::Div:
+            case Opcode::Mod: {
                 Value left = evalOperand();
                 Value right = evalOperand();
 
@@ -1099,43 +1103,45 @@ public:
                     throw std::runtime_error("Specialized domains are not implemented");
                 }
                 if (left.type == ValueType::Int && right.type == ValueType::Int) {
-                    switch (math_op) {
-                        case BinaryMathOp::Add: return Value(left.as_int + right.as_int);
-                        case BinaryMathOp::Sub: return Value(left.as_int - right.as_int);
-                        case BinaryMathOp::Mul: return Value(left.as_int * right.as_int);
-                        case BinaryMathOp::Div:
+                    switch (op) {
+                        case Opcode::Add: return Value(left.as_int + right.as_int);
+                        case Opcode::Sub: return Value(left.as_int - right.as_int);
+                        case Opcode::Mul: return Value(left.as_int * right.as_int);
+                        case Opcode::Div:
                             if (right.as_int == BigInt(0)) throw std::runtime_error("Division by zero");
                             return Value(left.as_int / right.as_int);
-                        case BinaryMathOp::Mod:
+                        case Opcode::Mod:
                             if (right.as_int == BigInt(0)) throw std::runtime_error("Modulo by zero");
                             return Value(left.as_int % right.as_int);
                         default:
-                            throw std::runtime_error("Unknown BinaryMathOp");
+                            throw std::runtime_error("Unknown BinaryOp");
                     }
                 }
 
                 const char* trait_key = nullptr;
                 const char* method_name = nullptr;
-                switch (math_op) {
-                    case BinaryMathOp::Add:
+                switch (op) {
+                    case Opcode::Add:
                         trait_key = "operators.additive";
                         method_name = "add";
                         break;
-                    case BinaryMathOp::Sub:
+                    case Opcode::Sub:
                         trait_key = "operators.subtractive";
                         method_name = "sub";
                         break;
-                    case BinaryMathOp::Mul:
+                    case Opcode::Mul:
                         trait_key = "operators.multiplicative";
                         method_name = "mul";
                         break;
-                    case BinaryMathOp::Div:
+                    case Opcode::Div:
                         trait_key = "operators.divisible";
                         method_name = "div";
                         break;
-                    case BinaryMathOp::Mod:
+                    case Opcode::Mod:
                         trait_key = "operators.modulable";
                         method_name = "mod";
+                        break;
+                    default:
                         break;
                 }
 

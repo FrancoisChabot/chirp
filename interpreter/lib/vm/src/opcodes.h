@@ -26,9 +26,9 @@ enum class Opcode : uint8_t {
     Contains = 0x0A,
     Deref = 0x0B,
 
-    // Consolidated Math & Logic
-    BinaryMath = 0x0F,
-    UnaryMath = 0x10,
+    // Math & Logic
+    Add = 0x0F,
+    Sub = 0x10,
     Compare = 0x11,
 
     // Sets & Ranges
@@ -53,7 +53,15 @@ enum class Opcode : uint8_t {
     MakeFString = 0x21,
     DropBinding = 0x22,
     EnforceConstraint = 0x23,
-    EnforceGlobalConstraint = 0x24
+    EnforceGlobalConstraint = 0x24,
+
+    // Additional Math Opcodes
+    Mul = 0x25,
+    Div = 0x26,
+    Mod = 0x27,
+    Not = 0x28,
+    Negate = 0x29,
+    Complement = 0x2A
 };
 
 enum class OperandType : uint8_t {
@@ -67,14 +75,6 @@ enum class OperandType : uint8_t {
     ImmNull     = 0x07,
     Capture     = 0x08,
     ImmBool     = 0x09,
-};
-
-enum class BinaryMathOp : uint8_t {
-    Add = 0, Sub = 1, Mul = 2, Div = 3, Mod = 4
-};
-
-enum class UnaryMathOp : uint8_t {
-    Not = 0, Negate = 1, Complement = 2
 };
 
 enum class CompareOp : uint8_t {

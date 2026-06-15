@@ -401,13 +401,12 @@ public:
         auto emitRHS = [&]() {
             if (stmt.op.type != frontend::token_type::equal) {
                 unit->emit(static_cast<uint8_t>(OperandType::Inline));
-                unit->emit(encodeInstruction(Opcode::BinaryMath, Domain::Generic));
                 switch (stmt.op.type) {
-                    case frontend::token_type::plus_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Add)); break;
-                    case frontend::token_type::minus_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Sub)); break;
-                    case frontend::token_type::star_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mul)); break;
-                    case frontend::token_type::slash_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Div)); break;
-                    case frontend::token_type::percent_equal: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mod)); break;
+                    case frontend::token_type::plus_equal: unit->emit(encodeInstruction(Opcode::Add, Domain::Generic)); break;
+                    case frontend::token_type::minus_equal: unit->emit(encodeInstruction(Opcode::Sub, Domain::Generic)); break;
+                    case frontend::token_type::star_equal: unit->emit(encodeInstruction(Opcode::Mul, Domain::Generic)); break;
+                    case frontend::token_type::slash_equal: unit->emit(encodeInstruction(Opcode::Div, Domain::Generic)); break;
+                    case frontend::token_type::percent_equal: unit->emit(encodeInstruction(Opcode::Mod, Domain::Generic)); break;
                     default: throw std::runtime_error("Unsupported assignment operator");
                 }
                 emitOperand(*stmt.target);
@@ -537,13 +536,12 @@ public:
             case frontend::BinaryOp::Mul:
             case frontend::BinaryOp::Div:
             case frontend::BinaryOp::Mod:
-                unit->emit(encodeInstruction(Opcode::BinaryMath, Domain::Generic));
                 switch (expr.op) {
-                    case frontend::BinaryOp::Add: unit->emit(static_cast<uint8_t>(BinaryMathOp::Add)); break;
-                    case frontend::BinaryOp::Sub: unit->emit(static_cast<uint8_t>(BinaryMathOp::Sub)); break;
-                    case frontend::BinaryOp::Mul: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mul)); break;
-                    case frontend::BinaryOp::Div: unit->emit(static_cast<uint8_t>(BinaryMathOp::Div)); break;
-                    case frontend::BinaryOp::Mod: unit->emit(static_cast<uint8_t>(BinaryMathOp::Mod)); break;
+                    case frontend::BinaryOp::Add: unit->emit(encodeInstruction(Opcode::Add, Domain::Generic)); break;
+                    case frontend::BinaryOp::Sub: unit->emit(encodeInstruction(Opcode::Sub, Domain::Generic)); break;
+                    case frontend::BinaryOp::Mul: unit->emit(encodeInstruction(Opcode::Mul, Domain::Generic)); break;
+                    case frontend::BinaryOp::Div: unit->emit(encodeInstruction(Opcode::Div, Domain::Generic)); break;
+                    case frontend::BinaryOp::Mod: unit->emit(encodeInstruction(Opcode::Mod, Domain::Generic)); break;
                     default: break;
                 }
                 emitOperand(*expr.left);
@@ -752,18 +750,15 @@ public:
     void visit(const frontend::UnaryExpr& expr) override {
         switch (expr.op) {
             case frontend::UnaryOp::Not:
-                unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
-                unit->emit(static_cast<uint8_t>(UnaryMathOp::Not));
+                unit->emit(encodeInstruction(Opcode::Not, Domain::Generic));
                 emitOperand(*expr.right);
                 break;
             case frontend::UnaryOp::Negate:
-                unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
-                unit->emit(static_cast<uint8_t>(UnaryMathOp::Negate));
+                unit->emit(encodeInstruction(Opcode::Negate, Domain::Generic));
                 emitOperand(*expr.right);
                 break;
             case frontend::UnaryOp::Complement:
-                unit->emit(encodeInstruction(Opcode::UnaryMath, Domain::Generic));
-                unit->emit(static_cast<uint8_t>(UnaryMathOp::Complement));
+                unit->emit(encodeInstruction(Opcode::Complement, Domain::Generic));
                 emitOperand(*expr.right);
                 break;
             case frontend::UnaryOp::Deref:
