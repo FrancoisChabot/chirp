@@ -178,6 +178,7 @@ public:
         if (value.type == ValueType::Trait) return globals.at("trait");
         if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
         if (value.type == ValueType::Heap) return Value::Type(value.as_type_value);
+        if (value.type == ValueType::EnumVariant) return globals.at("EnumVariant");
         return Value::Symbol("unknown");
     }
 
@@ -627,6 +628,20 @@ public:
             return Value(!valueEquals(left, right));
         }
 
+        if (left.type == ValueType::EnumVariant && right.type == ValueType::EnumVariant) {
+            if (left.as_enum_variant->enum_node_id == right.as_enum_variant->enum_node_id) {
+                switch (cmp_op) {
+                    case CompareOp::Lt: return Value(left.as_enum_variant->index < right.as_enum_variant->index);
+                    case CompareOp::Lte: return Value(left.as_enum_variant->index <= right.as_enum_variant->index);
+                    case CompareOp::Gt: return Value(left.as_enum_variant->index > right.as_enum_variant->index);
+                    case CompareOp::Gte: return Value(left.as_enum_variant->index >= right.as_enum_variant->index);
+                    default: break;
+                }
+            } else {
+                throw std::runtime_error("Cannot order variants from different enum families");
+            }
+        }
+
         if (const Value* comparable_trait = registeredItem("operators.comparable")) {
             if (const Value* impl = registeredImplementation(*comparable_trait, typeOf(left))) {
                 const Value* compare_fn = structField(*impl, "compare");
@@ -658,6 +673,18 @@ public:
     }
 
     std::vector<Value> finiteElements(const Value& set) {
+        if (set.type == ValueType::EnumFamily) {
+            std::vector<Value> elements;
+            for (size_t i = 0; i < set.as_enum_family->variants.size(); ++i) {
+                auto variant_def = std::make_shared<EnumVariantDef>();
+                variant_def->enum_node_id = set.as_enum_family->node_id;
+                variant_def->variant_name = set.as_enum_family->variants[i];
+                variant_def->index = i;
+                elements.push_back(Value::EnumVariant(std::move(variant_def)));
+            }
+            return elements;
+        }
+
         if (set.type == ValueType::EnumeratedSet) {
             std::vector<Value> elements;
             for (const auto& value : *set.as_set_elements) {
@@ -748,6 +775,8 @@ public:
             case ValueType::EnumFamily:
                 if (value.type != ValueType::EnumVariant) return Value(false);
                 return Value(value.as_enum_variant->enum_node_id == set.as_enum_family->node_id);
+            case ValueType::EnumVariant:
+                return Value(valueEquals(set, value));
             case ValueType::TypeValue:
                 return Value(valueEquals(typeOf(value), set));
             case ValueType::StructType:
@@ -811,7 +840,7 @@ public:
                         });
                     }
                 }
-                throw std::runtime_error("Expected set operand");
+                throw std::runtime_error("Expected set operand: set type " + std::to_string(static_cast<int>(set.type)) + " value type " + std::to_string(static_cast<int>(value.type)));
         }
     }
 

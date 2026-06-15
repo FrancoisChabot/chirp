@@ -46,6 +46,8 @@ make_type_a_self_set(int);
 make_type_a_self_set(char);
 make_type_a_self_set(string);
 make_type_a_self_set(symbol);
+let _dummy_enum = enum { A };
+make_type_a_self_set(`type_of(_dummy_enum.A));
 make_type_a_self_set(`type_of(void));
 make_type_a_self_set(`type_of(undecided));
 

@@ -213,6 +213,7 @@ Value type_of_value(const Value& value, const std::unordered_map<std::string, Va
     if (value.type == ValueType::Trait) return globals.at("trait");
     if (value.type == ValueType::Minted) return Value::Type(value.as_type_value);
     if (value.type == ValueType::Heap) return Value::Type(value.as_type_value);
+    if (value.type == ValueType::EnumVariant) return globals.at("EnumVariant");
     return Value::Symbol("unknown");
 }
 
@@ -325,6 +326,7 @@ public:
         globals_["string"] = create_type("string", TypeValueDef::Kind::Primitive);
         globals_["char"] = create_type("char", TypeValueDef::Kind::Primitive);
         globals_["symbol"] = create_type("symbol", TypeValueDef::Kind::Primitive);
+        globals_["EnumVariant"] = create_type("EnumVariant", TypeValueDef::Kind::Primitive);
         globals_["__void_type"] = create_type("void", TypeValueDef::Kind::Primitive);
         globals_["any"] = create_type("any", TypeValueDef::Kind::Primitive);
         globals_["type"] = create_type("type", TypeValueDef::Kind::Meta);
