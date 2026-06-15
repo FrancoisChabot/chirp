@@ -976,13 +976,15 @@ public:
             case Opcode::Eval:
                 return evalOperand();
             case Opcode::Block: {
-                uint32_t num_stmts = read32();
+                uint32_t block_len = read32();
+                size_t end_pc = pc + block_len;
                 try {
-                    for (uint32_t i = 0; i < num_stmts; ++i) {
+                    while (pc < end_pc) {
                         evalInstruction();
                     }
                     return Value();
                 } catch (BreakSignal& signal) {
+                    pc = end_pc;
                     return std::move(signal.value);
                 }
             }

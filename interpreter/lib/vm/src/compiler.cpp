@@ -306,7 +306,12 @@ public:
             emitResolvedVariableOperand(std::string(intrinsic->name));
         } else if (auto str = dynamic_cast<const frontend::StringExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmString));
-            emitStringIndex(frontend::decode_quoted_literal(std::string(str->value)));
+            frontend::token_type t = str->diagnostic_token.type;
+            if (t == frontend::token_type::fstring_head || t == frontend::token_type::fstring_middle || t == frontend::token_type::fstring_tail || t == frontend::token_type::fstring_literal) {
+                emitStringIndex(frontend::decode_fstring_part(std::string(str->value), t));
+            } else {
+                emitStringIndex(frontend::decode_quoted_literal(std::string(str->value)));
+            }
         } else if (auto chr = dynamic_cast<const frontend::CharExpr*>(&expr)) {
             unit->emit(static_cast<uint8_t>(OperandType::ImmChar));
             std::string decoded = frontend::decode_quoted_literal(std::string(chr->value));
@@ -924,10 +929,10 @@ public:
             for (const auto& stmt : expr.statements) {
                 stmt->accept(*this);
             }
-            uint32_t stmt_count = static_cast<uint32_t>(expr.statements.size() + cleanup_scopes.back().bindings.size());
             emitCleanupScope(cleanup_scopes.back());
+            uint32_t block_len = static_cast<uint32_t>(unit->bytecode.size() - (stmt_count_offset + 4));
             for (int i = 0; i < 4; ++i) {
-                unit->bytecode[stmt_count_offset + i] = static_cast<uint8_t>((stmt_count >> (i * 8)) & 0xFF);
+                unit->bytecode[stmt_count_offset + i] = static_cast<uint8_t>((block_len >> (i * 8)) & 0xFF);
             }
             env = saved_env;
         } catch (...) {
