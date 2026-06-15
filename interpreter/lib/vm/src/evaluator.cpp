@@ -856,43 +856,21 @@ public:
             return value;
         }
 
-        if (constraint.type == ValueType::TypeValue) {
-            if (!primitive_constraint_matches(constraint.as_type_value, value) &&
-                !isTruthy(belongsTo(constraint, value))) {
-                throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
-            }
-            return value;
-        }
-
         if (constraint.type == ValueType::StructType) {
-            if (value.type != ValueType::Struct) {
-                throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
-            }
-            if (value.as_struct_instance_type == constraint.as_struct_type) {
-                return value;
-            }
-            std::vector<CallArgument> args;
-            args.reserve(value.as_struct->size());
-            for (const auto& [name, field_value] : *value.as_struct) {
-                args.push_back(CallArgument{std::optional<std::string>(name), field_value});
-            }
-            return constructStruct(constraint.as_struct_type, args);
-        }
-
-        switch (constraint.type) {
-            case ValueType::Signature:
-            case ValueType::EnumeratedSet:
-            case ValueType::ConstructedSet:
-            case ValueType::CompositeSet:
-                if (!isTruthy(belongsTo(constraint, value))) {
-                    throw std::runtime_error("Struct field '" + field_name + "' constraint failure");
+            if (value.type == ValueType::Struct && value.as_struct_instance_type == nullptr) {
+                std::vector<CallArgument> args;
+                args.reserve(value.as_struct->size());
+                for (const auto& [name, field_value] : *value.as_struct) {
+                    args.push_back(CallArgument{std::optional<std::string>(name), field_value});
                 }
-                return value;
-            default:
-                break;
+                return constructStruct(constraint.as_struct_type, args);
+            }
         }
 
-        throw std::runtime_error("Struct field '" + field_name + "' has unsupported constraint");
+        if (!isTruthy(belongsTo(constraint, value))) {
+            throw std::runtime_error("Constraint failure for '" + field_name + "'");
+        }
+        return value;
     }
 
     static std::vector<CallArgument> require_consistent_argument_style(const std::vector<CallArgument>& args) {
@@ -1491,23 +1469,14 @@ public:
             case Opcode::EnforceConstraint: {
                 Value constraint = evalOperand();
                 Value value = evalOperand();
-                if (constraint.type != ValueType::Null) {
-                    Value result = belongsTo(constraint, value);
-                    if (!isTruthy(result)) {
-                        throw std::runtime_error("Constraint violation");
-                    }
-                }
-                return value;
+                return enforceConstraint(constraint, std::move(value), "local binding");
             }
             case Opcode::EnforceGlobalConstraint: {
                 std::string name = unit->constant_strings.at(read32());
                 Value value = evalOperand();
                 auto found = globals.find("__chirp_constraint_" + name);
                 if (found != globals.end() && found->second.type != ValueType::Null) {
-                    Value result = belongsTo(found->second, value);
-                    if (!isTruthy(result)) {
-                        throw std::runtime_error("Constraint violation");
-                    }
+                    return enforceConstraint(found->second, std::move(value), name);
                 }
                 return value;
             }
