@@ -1986,7 +1986,7 @@ private:
                 std::vector<Value> values;
                 values.reserve(static_cast<size_t>(count));
                 for (int64_t i = 0; i < count; ++i) {
-                    values.push_back(Value::make_minted(minted_type, next_mint_id_++));
+                    values.push_back(Value::make_minted(minted_type, static_cast<uint64_t>(i)));
                 }
 
                 std::vector<OrderedStructFieldSpec> fields = {

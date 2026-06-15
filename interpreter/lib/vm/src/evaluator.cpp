@@ -1029,6 +1029,37 @@ public:
             case Opcode::Index: {
                 Value target = evalOperand();
                 Value index = evalOperand();
+                if (index.type == ValueType::Range) {
+                    // Range-based slicing for arrays and strings
+                    if (target.type != ValueType::Array && target.type != ValueType::String) {
+                        throw std::runtime_error("Only list and string slicing are supported");
+                    }
+                    if (index.as_range->start->type != ValueType::Int ||
+                        index.as_range->end->type != ValueType::Int) {
+                        throw std::runtime_error("Slice range must have integer bounds");
+                    }
+                    int64_t start = index.as_range->start->as_int.to_int64();
+                    int64_t end = index.as_range->end->as_int.to_int64();
+                    if (index.as_range->inclusive_end) {
+                        end++;
+                    }
+                    int64_t size = target.type == ValueType::Array
+                        ? static_cast<int64_t>(target.as_array->size())
+                        : static_cast<int64_t>(target.as_string.size());
+                    if (start < 0 || end < start || end > size) {
+                        throw std::runtime_error("Slice range out of bounds");
+                    }
+                    if (target.type == ValueType::Array) {
+                        auto sliced = std::make_shared<std::vector<Value>>(
+                            target.as_array->begin() + start,
+                            target.as_array->begin() + end);
+                        return Value::Array(std::move(sliced));
+                    } else {
+                        return Value(target.as_string.substr(
+                            static_cast<size_t>(start),
+                            static_cast<size_t>(end - start)));
+                    }
+                }
                 if (target.type == ValueType::Array) {
                     if (index.type != ValueType::Int) {
                         throw std::runtime_error("Array index must be an integer");

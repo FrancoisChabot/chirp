@@ -704,7 +704,7 @@ std::string Value::toString() const {
         return ss.str();
     }
     if (isMinted()) {
-        return "<mint " + std::to_string(asMintedId()) + ">";
+        return "<" + std::string(type_->name()) + " " + std::to_string(asMintedId()) + ">";
     }
     if (isTrait()) {
         return "<trait " + std::to_string(asTraitId()) + ">";

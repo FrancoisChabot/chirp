@@ -21,7 +21,20 @@ struct CallArgument;
 using NativeFunc = std::function<Value(const std::vector<CallArgument>&)>;
 struct Closure;
 struct StructTypeDef;
-struct TypeValueDef;
+struct TypeValueDef {
+    enum class Kind {
+        Primitive,
+        Meta,
+        Lambda,
+        Trait,
+        Finite,
+    };
+
+    Kind kind = Kind::Primitive;
+    std::string name;
+    uint64_t id = 0;
+    uint64_t finite_count = 0;
+};
 struct TraitDef;
 struct SignatureDef;
 struct ConstructedSetDef;
@@ -212,8 +225,8 @@ struct Value {
         if (type == ValueType::Struct) return "<struct>";
         if (type == ValueType::Array) return "<array>";
         if (type == ValueType::StructType) return "<struct type>";
-        if (type == ValueType::TypeValue) return "<type>";
-        if (type == ValueType::Minted) return "<minted>";
+        if (type == ValueType::TypeValue) return as_type_value->name;
+        if (type == ValueType::Minted) return "<" + as_type_value->name + " " + std::to_string(as_id) + ">";
         if (type == ValueType::Trait) return "<trait>";
         if (type == ValueType::Signature) return "<signature>";
         if (type == ValueType::EnumeratedSet) return "<set>";
@@ -243,20 +256,7 @@ struct StructTypeDef {
     std::vector<StructFieldSpec> fields;
 };
 
-struct TypeValueDef {
-    enum class Kind {
-        Primitive,
-        Meta,
-        Lambda,
-        Trait,
-        Finite,
-    };
 
-    Kind kind = Kind::Primitive;
-    std::string name;
-    uint64_t id = 0;
-    uint64_t finite_count = 0;
-};
 
 struct TraitDef {
     uint64_t id = 0;

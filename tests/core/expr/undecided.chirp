@@ -1,6 +1,6 @@
 `expect_exit(0);
 
-`expect_stdout("<mint 2>\n");
+`expect_stdout("<MintType(1) 0>\n");
 `print(undecided);
 `expect(undecided == undecided);
 `expect(!(undecided != undecided));

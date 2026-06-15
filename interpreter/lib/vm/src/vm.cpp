@@ -315,6 +315,7 @@ class VmSession : public backend::Session {
     std::string injected_stdin_;
     size_t stdin_cursor_ = 0;
     uint64_t next_type_id_ = 1;
+    uint64_t next_mint_type_id_ = 1;
     uint64_t next_trait_id_ = 1;
     uint64_t next_heap_id_ = 1;
     std::unordered_set<std::string> global_final_bindings_;
@@ -329,7 +330,7 @@ public:
         globals_["EnumVariant"] = create_type("EnumVariant", TypeValueDef::Kind::Primitive);
         globals_["__void_type"] = create_type("void", TypeValueDef::Kind::Primitive);
         globals_["any"] = create_type("any", TypeValueDef::Kind::Primitive);
-        globals_["type"] = create_type("type", TypeValueDef::Kind::Meta);
+        globals_["type"] = create_type("Type", TypeValueDef::Kind::Meta);
         globals_["lambda"] = create_type("lambda", TypeValueDef::Kind::Lambda);
         globals_["trait"] = create_type("trait", TypeValueDef::Kind::Trait);
         globals_["__heap_allocation_type"] = create_type("heap_allocation", TypeValueDef::Kind::Primitive);
@@ -545,7 +546,7 @@ private:
                     }
 
                     uint64_t finite_count = key == "types.mint_finite" ? static_cast<uint64_t>(count) : 0;
-                    Value type = create_type("minted_type_" + std::to_string(next_type_id_), TypeValueDef::Kind::Finite, finite_count);
+                    Value type = create_type("MintType(" + std::to_string(next_mint_type_id_++) + ")", TypeValueDef::Kind::Finite, finite_count);
                     auto values_array = std::make_shared<std::vector<Value>>();
                     for (uint64_t i = 0; i < finite_count; ++i) {
                         values_array->push_back(Value::Minted(type.as_type_value, i));
