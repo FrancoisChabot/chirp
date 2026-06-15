@@ -1,4 +1,3 @@
-`expect_exit(1);
 
 do {
     let true = false;

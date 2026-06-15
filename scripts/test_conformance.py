@@ -47,15 +47,12 @@ def get_thread_info():
             temp_files_registry.append(report_path)
     return thread_local.report_path, thread_local.runner_id
 
-def run_test(chirp_bin, file_path, timeout_seconds):
+def run_test(chirp_bin, chirp_args, file_path, timeout_seconds):
     report_path, runner_id = get_thread_info()
     
     # Truncate the report file to prevent reading stale data from a previous test run on this thread
-    try:
-        with open(report_path, 'w') as f:
-            pass
-    except OSError as e:
-        return False, f"Could not truncate report file {report_path}: {e}", False, runner_id
+    if os.path.exists(report_path):
+        open(report_path, 'w').close()
     
     expected_stdout = None
     expected_stderr = None
@@ -64,7 +61,7 @@ def run_test(chirp_bin, file_path, timeout_seconds):
 
     try:
         result = subprocess.run(
-            [chirp_bin, "--test", "--run-report", report_path, file_path],
+            [chirp_bin] + chirp_args + ["--test", "--run-report", report_path, file_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -96,8 +93,8 @@ def run_test(chirp_bin, file_path, timeout_seconds):
     except subprocess.TimeoutExpired:
         return False, f"Execution timed out after {timeout_seconds} seconds", expect_test_failure, runner_id
     
-    is_syntax_test = "/syntax/" in file_path.replace(os.sep, "/")
-    if is_syntax_test:
+    is_static_failure_test = "/static_failure/" in file_path.replace(os.sep, "/")
+    if is_static_failure_test:
         expected_exit = 1
 
     if expected_exit is None:
@@ -113,10 +110,10 @@ def run_test(chirp_bin, file_path, timeout_seconds):
         if actual_stderr:
             failures.append(f"Stderr output:\n{actual_stderr.strip()}")
 
-    if is_syntax_test:
+    if is_static_failure_test:
         actual_outcome = report.get("outcome")
-        if actual_outcome != "syntax_failure":
-            failures.append(f"Run outcome mismatch: expected syntax_failure, got {actual_outcome!r}")
+        if actual_outcome not in ("syntax_failure", "evaluation_failure"):
+            failures.append(f"Run outcome mismatch: expected static failure, got {actual_outcome!r}")
             
     if expected_stdout is not None and actual_stdout != expected_stdout:
         failures.append(f"Stdout mismatch:\n  Expected: {safe_repr(expected_stdout)}\n  Actual:   {safe_repr(actual_stdout)}")
@@ -165,7 +162,7 @@ def parse_args():
         help="Path to the Chirp executable under test"
     )
     
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
     
     # Process jobs parameter
     if args.jobs == "auto":
@@ -176,10 +173,10 @@ def parse_args():
     else:
         jobs = 1
         
-    return args.chirp_bin, args.filter, jobs, args.suite, args.timeout
+    return args.chirp_bin, unknown, args.filter, jobs, args.suite, args.timeout
 
 def main():
-    chirp_bin, test_filter, jobs, suite_dir, timeout_seconds = parse_args()
+    chirp_bin, chirp_args, test_filter, jobs, suite_dir, timeout_seconds = parse_args()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
     
@@ -222,7 +219,7 @@ def main():
         if jobs > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
                 future_to_name = {
-                    executor.submit(run_test, chirp_bin, test_file, timeout_seconds): os.path.relpath(test_file, tests_dir)
+                    executor.submit(run_test, chirp_bin, chirp_args, test_file, timeout_seconds): os.path.relpath(test_file, tests_dir)
                     for test_file in test_files
                 }
                 
@@ -256,7 +253,7 @@ def main():
                 name = os.path.relpath(test_file, tests_dir)
                 runner_id = "?"
                 try:
-                    passed, detail, expect_test_failure, runner_id = run_test(chirp_bin, test_file, timeout_seconds)
+                    passed, detail, expect_test_failure, runner_id = run_test(chirp_bin, chirp_args, test_file, timeout_seconds)
                     if passed:
                         if expect_test_failure:
                             print_test_status("[XPASS]", name, COLOR_RED, " (Unexpectedly passed; please remove `expect_test_failure;)")

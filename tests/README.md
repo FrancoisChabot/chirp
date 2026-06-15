@@ -24,7 +24,7 @@ let value = 1 + 2;
 ```
 
 ### Directory-Based Routing
-To verify syntactical, lexical, or parse-phase failures, place the test script in a directory whose path contains `/syntax/` (e.g. `tests/syntax/`). 
+To verify syntactical, lexical, or static failures, place the test script in a directory whose path contains `/static_failure/` (e.g. `tests/core/static_failure/`). 
 * The test runner automatically expects these files to fail parsing (yielding a `syntax_failure` outcome and exiting with code `1`).
 
 ### Supported Directives

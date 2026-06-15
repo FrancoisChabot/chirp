@@ -316,6 +316,7 @@ class VmSession : public backend::Session {
     uint64_t next_type_id_ = 1;
     uint64_t next_trait_id_ = 1;
     uint64_t next_heap_id_ = 1;
+    std::unordered_set<std::string> global_final_bindings_;
 
 public:
     VmSession(std::ostream& out, bool testing_enabled) : out_(out), testing_enabled_(testing_enabled) {
@@ -337,7 +338,7 @@ public:
     }
 
     void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override {
-        Compiler compiler;
+        Compiler compiler(&global_final_bindings_);
         auto unit = compiler.compile(stmts);
 
         Evaluator evaluator;
@@ -360,7 +361,7 @@ public:
     void execute_boot_source(std::string source, std::string label) override {
         auto tokens = frontend::tokenize(source);
         auto stmts = frontend::parse(tokens);
-        Compiler compiler;
+        Compiler compiler(&global_final_bindings_);
         auto unit = compiler.compile(stmts);
         Evaluator evaluator;
         evaluator.evaluate(unit, globals_, out_, &registry_, &trait_impls_);

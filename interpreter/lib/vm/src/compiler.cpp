@@ -63,14 +63,31 @@ public:
     CompilerEnvironment* parent = nullptr;
     CompilerContext* context = nullptr;
     bool top_level_scope = false;
-    std::unordered_map<std::string, uint32_t> locals;
+    struct LocalInfo {
+        uint32_t slot;
+        bool is_final;
+    };
+    std::unordered_map<std::string, LocalInfo> locals;
 
     CompilerEnvironment(CompilerContext* current_context, CompilerEnvironment* parent_env = nullptr, bool top_level = false)
         : parent(parent_env), context(current_context), top_level_scope(top_level) {}
 
+    bool isFinal(const std::string& name, const std::unordered_set<std::string>* global_finals) {
+        if (auto local = locals.find(name); local != locals.end()) {
+            return local->second.is_final;
+        }
+        if (parent) {
+            return parent->isFinal(name, global_finals);
+        }
+        if (global_finals) {
+            return global_finals->count(name) > 0;
+        }
+        return false;
+    }
+
     VariableRef resolve(const std::string& name) {
         if (auto local = locals.find(name); local != locals.end()) {
-            return {VariableRef::Kind::Local, local->second};
+            return {VariableRef::Kind::Local, local->second.slot};
         }
 
         if (auto capture = context->findCapture(name)) {
@@ -108,9 +125,10 @@ public:
     CompilerEnvironment* env;
     std::vector<CleanupScope> cleanup_scopes;
     std::vector<size_t> break_targets;
+    std::unordered_set<std::string>* global_final_bindings;
 
-    CompilerVisitor(std::shared_ptr<ProgramUnit> current_unit, CompilerEnvironment* current_env)
-        : unit(std::move(current_unit)), env(current_env) {}
+    CompilerVisitor(std::shared_ptr<ProgramUnit> current_unit, CompilerEnvironment* current_env, std::unordered_set<std::string>* global_finals = nullptr)
+        : unit(std::move(current_unit)), env(current_env), global_final_bindings(global_finals) {}
 
     void compileStatements(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) {
         for (const auto& stmt : stmts) {
@@ -148,7 +166,7 @@ public:
         auto expr_unit = std::make_shared<ProgramUnit>();
         CompilerContext expr_context(env->context);
         CompilerEnvironment expr_env(&expr_context, env, false);
-        CompilerVisitor expr_visitor(expr_unit, &expr_env);
+        CompilerVisitor expr_visitor(expr_unit, &expr_env, global_final_bindings);
         expr_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
         expr_visitor.emitOperand(expr);
         expr_unit->num_locals = expr_context.next_local;
@@ -160,9 +178,13 @@ public:
         auto predicate_unit = std::make_shared<ProgramUnit>();
         CompilerContext predicate_context(env->context);
         CompilerEnvironment predicate_env(&predicate_context, env, false);
-        predicate_unit->parameter_names.push_back(std::string(binding.name.lexeme));
-        predicate_env.locals.emplace(std::string(binding.name.lexeme), predicate_context.allocateLocal());
-        CompilerVisitor predicate_visitor(predicate_unit, &predicate_env);
+        std::string name(binding.name.lexeme);
+        if (env->isFinal(name, global_final_bindings)) {
+            throw std::runtime_error("Identifier '" + name + "' cannot shadow final binding");
+        }
+        predicate_unit->parameter_names.push_back(name);
+        predicate_env.locals.emplace(name, CompilerEnvironment::LocalInfo{predicate_context.allocateLocal(), binding.is_final});
+        CompilerVisitor predicate_visitor(predicate_unit, &predicate_env, global_final_bindings);
         predicate_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
         predicate_visitor.emitOperand(expr);
         predicate_unit->num_locals = predicate_context.next_local;
@@ -307,16 +329,29 @@ public:
             throw std::runtime_error("LetStmt without initializer is not supported in the VM");
         }
 
+        std::string name(stmt.binding.name.lexeme);
+
+        if (env->locals.find(name) != env->locals.end()) {
+            throw std::runtime_error("Identifier '" + name + "' is already defined in this scope");
+        }
+
+        if (env->isFinal(name, global_final_bindings)) {
+            throw std::runtime_error("Identifier '" + name + "' cannot shadow final binding");
+        }
+
         unit->emit(encodeInstruction(Opcode::Let, Domain::Generic));
 
         if (env->top_level_scope) {
+            if (stmt.binding.is_final && global_final_bindings) {
+                global_final_bindings->insert(name);
+            }
             unit->emit(static_cast<uint8_t>(OperandType::Identifier));
-            emitStringIndex(std::string(stmt.binding.name.lexeme));
+            emitStringIndex(name);
         } else {
             uint32_t slot = env->context->allocateLocal();
             unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
             emitU32(slot);
-            env->locals.emplace(std::string(stmt.binding.name.lexeme), slot);
+            env->locals.emplace(name, CompilerEnvironment::LocalInfo{slot, stmt.binding.is_final});
             recordCleanupBinding({VariableRef::Kind::Local, slot});
         }
 
@@ -584,11 +619,18 @@ public:
         CompilerEnvironment lambda_env(&lambda_context, env, false);
 
         for (const auto& param : expr.parameters) {
-            lambda_unit->parameter_names.push_back(std::string(param.name.lexeme));
-            lambda_env.locals.emplace(std::string(param.name.lexeme), lambda_context.allocateLocal());
+            std::string name(param.name.lexeme);
+            if (env->isFinal(name, global_final_bindings)) {
+                throw std::runtime_error("Identifier '" + name + "' cannot shadow final binding");
+            }
+            if (lambda_env.locals.find(name) != lambda_env.locals.end()) {
+                throw std::runtime_error("Identifier '" + name + "' is already defined in this scope");
+            }
+            lambda_unit->parameter_names.push_back(name);
+            lambda_env.locals.emplace(name, CompilerEnvironment::LocalInfo{lambda_context.allocateLocal(), param.is_final});
         }
 
-        CompilerVisitor lambda_visitor(lambda_unit, &lambda_env);
+        CompilerVisitor lambda_visitor(lambda_unit, &lambda_env, global_final_bindings);
         lambda_unit->emit(encodeInstruction(Opcode::Return, Domain::Generic));
         lambda_visitor.emitOperand(*expr.body);
         lambda_unit->num_locals = lambda_context.next_local;
@@ -739,8 +781,13 @@ public:
         emitU32(slot);
         break_targets.push_back(cleanup_scopes.size());
 
+        std::string name(expr.iterator_binding.name.lexeme);
+        if (env->isFinal(name, global_final_bindings)) {
+            throw std::runtime_error("Identifier '" + name + "' cannot shadow final binding");
+        }
+
         CompilerEnvironment loop_env(env->context, env, false);
-        loop_env.locals.emplace(std::string(expr.iterator_binding.name.lexeme), slot);
+        loop_env.locals.emplace(name, CompilerEnvironment::LocalInfo{slot, expr.iterator_binding.is_final});
 
         CompilerEnvironment* saved_env = env;
         env = &loop_env;
@@ -928,7 +975,7 @@ std::shared_ptr<ProgramUnit> Compiler::compile(const std::vector<std::unique_ptr
     auto unit = std::make_shared<ProgramUnit>();
     CompilerContext root_context(nullptr, true);
     CompilerEnvironment root_env(&root_context, nullptr, true);
-    CompilerVisitor visitor(unit, &root_env);
+    CompilerVisitor visitor(unit, &root_env, global_final_bindings_);
     visitor.compileStatements(stmts);
     unit->num_locals = root_context.next_local;
     return unit;
