@@ -100,8 +100,14 @@ public:
 
 class CompilerVisitor : public frontend::ASTVisitor, public frontend::StmtVisitor {
 public:
+    struct CleanupScope {
+        std::vector<VariableRef> bindings;
+    };
+
     std::shared_ptr<ProgramUnit> unit;
     CompilerEnvironment* env;
+    std::vector<CleanupScope> cleanup_scopes;
+    std::vector<size_t> break_targets;
 
     CompilerVisitor(std::shared_ptr<ProgramUnit> current_unit, CompilerEnvironment* current_env)
         : unit(std::move(current_unit)), env(current_env) {}
@@ -166,6 +172,10 @@ public:
 
     void emitResolvedVariableOperand(const std::string& name) {
         VariableRef ref = env->resolve(name);
+        emitVariableOperand(ref, name);
+    }
+
+    void emitVariableOperand(const VariableRef& ref, const std::string& global_name = "") {
         switch (ref.kind) {
             case VariableRef::Kind::Local:
                 unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
@@ -177,8 +187,79 @@ public:
                 break;
             case VariableRef::Kind::Global:
                 unit->emit(static_cast<uint8_t>(OperandType::Identifier));
-                emitStringIndex(name);
+                emitStringIndex(global_name);
                 break;
+        }
+    }
+
+    void emitDropBinding(const VariableRef& ref, const std::string& global_name = "") {
+        unit->emit(encodeInstruction(Opcode::DropBinding, Domain::Generic));
+        emitVariableOperand(ref, global_name);
+    }
+
+    void recordCleanupBinding(const VariableRef& ref) {
+        if (cleanup_scopes.empty()) {
+            return;
+        }
+        cleanup_scopes.back().bindings.push_back(ref);
+    }
+
+    static bool sameBinding(const VariableRef& left, const VariableRef& right) {
+        return left.kind == right.kind && left.index == right.index;
+    }
+
+    std::optional<VariableRef> terminalBindingFromBreakValue(const frontend::BreakStmt& stmt) {
+        if (!stmt.value) {
+            return std::nullopt;
+        }
+        if (auto* ident = dynamic_cast<const frontend::IdentifierExpr*>(stmt.value.get())) {
+            return env->resolve(std::string(ident->name));
+        }
+        return std::nullopt;
+    }
+
+    void emitCleanupScope(const CleanupScope& scope, const std::optional<VariableRef>& terminal = std::nullopt) {
+        for (auto it = scope.bindings.rbegin(); it != scope.bindings.rend(); ++it) {
+            if (terminal.has_value() && sameBinding(*it, *terminal)) {
+                continue;
+            }
+            emitDropBinding(*it);
+        }
+    }
+
+    void emitCleanupFromBase(size_t base, const std::optional<VariableRef>& terminal = std::nullopt) {
+        for (size_t i = cleanup_scopes.size(); i > base; --i) {
+            emitCleanupScope(cleanup_scopes[i - 1], terminal);
+        }
+    }
+
+    std::vector<VariableRef> collectCleanupBindingsFromBase(size_t base, const std::optional<VariableRef>& terminal = std::nullopt) {
+        std::vector<VariableRef> bindings;
+        for (size_t i = cleanup_scopes.size(); i > base; --i) {
+            const auto& scope = cleanup_scopes[i - 1];
+            for (auto it = scope.bindings.rbegin(); it != scope.bindings.rend(); ++it) {
+                if (terminal.has_value() && sameBinding(*it, *terminal)) {
+                    continue;
+                }
+                bindings.push_back(*it);
+            }
+        }
+        return bindings;
+    }
+
+    void emitBreakInstruction(const frontend::Expr* value_expr,
+                              size_t cleanup_base,
+                              const std::optional<VariableRef>& terminal = std::nullopt) {
+        unit->emit(encodeInstruction(Opcode::Break, Domain::Generic));
+        if (value_expr) {
+            emitOperand(*value_expr);
+        } else {
+            unit->emit(static_cast<uint8_t>(OperandType::ImmNull));
+        }
+        auto cleanup_bindings = collectCleanupBindingsFromBase(cleanup_base, terminal);
+        emitU32(static_cast<uint32_t>(cleanup_bindings.size()));
+        for (const auto& binding : cleanup_bindings) {
+            emitVariableOperand(binding);
         }
     }
 
@@ -236,18 +317,18 @@ public:
             unit->emit(static_cast<uint8_t>(OperandType::StackLocal));
             emitU32(slot);
             env->locals.emplace(std::string(stmt.binding.name.lexeme), slot);
+            recordCleanupBinding({VariableRef::Kind::Local, slot});
         }
 
         emitOperand(*stmt.binding.initializer);
     }
 
     void visit(const frontend::BreakStmt& stmt) override {
-        unit->emit(encodeInstruction(Opcode::Break, Domain::Generic));
-        if (stmt.value) {
-            emitOperand(*stmt.value);
-        } else {
-            unit->emit(static_cast<uint8_t>(OperandType::ImmNull));
+        if (break_targets.empty()) {
+            throw std::runtime_error("BreakStmt outside of a breakable region is not supported in the VM");
         }
+        std::optional<VariableRef> terminal = terminalBindingFromBreakValue(stmt);
+        emitBreakInstruction(stmt.value.get(), break_targets.back(), terminal);
     }
 
     void visit(const frontend::AssignStmt& stmt) override {
@@ -316,9 +397,16 @@ public:
     void visit(const frontend::DebugStmt& stmt) override {
         unit->emit(encodeInstruction(Opcode::Block, Domain::Generic));
         emitU32(static_cast<uint32_t>(stmt.statements.size()));
-        for (const auto& s : stmt.statements) {
-            s->accept(*this);
+        break_targets.push_back(cleanup_scopes.size());
+        try {
+            for (const auto& s : stmt.statements) {
+                s->accept(*this);
+            }
+        } catch (...) {
+            break_targets.pop_back();
+            throw;
         }
+        break_targets.pop_back();
     }
 
     void visit(const frontend::BinaryExpr& expr) override {
@@ -604,39 +692,44 @@ public:
         size_t loop_body_len_offset = unit->bytecode.size();
         emitU32(0);
         size_t loop_start = unit->bytecode.size();
-        
-        unit->emit(static_cast<uint8_t>(OperandType::Inline));
-        unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
-        emitOperand(*expr.condition);
-        
-        size_t true_len_offset = unit->bytecode.size();
-        emitU32(0);
-        size_t true_start = unit->bytecode.size();
-        
-        emitOperand(*expr.body);
-        
-        uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
-        for (int i = 0; i < 4; ++i) {
-            unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+        break_targets.push_back(cleanup_scopes.size());
+        try {
+            unit->emit(static_cast<uint8_t>(OperandType::Inline));
+            unit->emit(encodeInstruction(Opcode::If, Domain::Generic));
+            emitOperand(*expr.condition);
+            
+            size_t true_len_offset = unit->bytecode.size();
+            emitU32(0);
+            size_t true_start = unit->bytecode.size();
+            
+            emitOperand(*expr.body);
+            
+            uint32_t true_len = static_cast<uint32_t>(unit->bytecode.size() - true_start);
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[true_len_offset + i] = static_cast<uint8_t>((true_len >> (i * 8)) & 0xFF);
+            }
+            
+            size_t false_len_offset = unit->bytecode.size();
+            emitU32(0);
+            size_t false_start = unit->bytecode.size();
+            
+            unit->emit(static_cast<uint8_t>(OperandType::Inline));
+            emitBreakInstruction(nullptr, break_targets.back());
+            
+            uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
+            }
+            
+            uint32_t loop_len = static_cast<uint32_t>(unit->bytecode.size() - loop_start);
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[loop_body_len_offset + i] = static_cast<uint8_t>((loop_len >> (i * 8)) & 0xFF);
+            }
+        } catch (...) {
+            break_targets.pop_back();
+            throw;
         }
-        
-        size_t false_len_offset = unit->bytecode.size();
-        emitU32(0);
-        size_t false_start = unit->bytecode.size();
-        
-        unit->emit(static_cast<uint8_t>(OperandType::Inline));
-        unit->emit(encodeInstruction(Opcode::Break, Domain::Generic));
-        unit->emit(static_cast<uint8_t>(OperandType::ImmNull));
-        
-        uint32_t false_len = static_cast<uint32_t>(unit->bytecode.size() - false_start);
-        for (int i = 0; i < 4; ++i) {
-            unit->bytecode[false_len_offset + i] = static_cast<uint8_t>((false_len >> (i * 8)) & 0xFF);
-        }
-        
-        uint32_t loop_len = static_cast<uint32_t>(unit->bytecode.size() - loop_start);
-        for (int i = 0; i < 4; ++i) {
-            unit->bytecode[loop_body_len_offset + i] = static_cast<uint8_t>((loop_len >> (i * 8)) & 0xFF);
-        }
+        break_targets.pop_back();
     }
 
     void visit(const frontend::ForExpr& expr) override {
@@ -644,6 +737,7 @@ public:
         emitOperand(*expr.iterable);
         uint32_t slot = env->context->allocateLocal();
         emitU32(slot);
+        break_targets.push_back(cleanup_scopes.size());
 
         CompilerEnvironment loop_env(env->context, env, false);
         loop_env.locals.emplace(std::string(expr.iterator_binding.name.lexeme), slot);
@@ -662,8 +756,10 @@ public:
             env = saved_env;
         } catch (...) {
             env = saved_env;
+            break_targets.pop_back();
             throw;
         }
+        break_targets.pop_back();
     }
 
     void visit(const frontend::SignatureExpr& expr) override {
@@ -688,20 +784,32 @@ public:
 
     void visit(const frontend::BlockExpr& expr) override {
         unit->emit(encodeInstruction(Opcode::Block, Domain::Generic));
-        emitU32(static_cast<uint32_t>(expr.statements.size()));
+        size_t stmt_count_offset = unit->bytecode.size();
+        emitU32(0);
 
         CompilerEnvironment block_env(env->context, env, false);
         CompilerEnvironment* saved_env = env;
+        cleanup_scopes.push_back(CleanupScope{});
+        break_targets.push_back(cleanup_scopes.size() - 1);
         env = &block_env;
         try {
             for (const auto& stmt : expr.statements) {
                 stmt->accept(*this);
             }
+            uint32_t stmt_count = static_cast<uint32_t>(expr.statements.size() + cleanup_scopes.back().bindings.size());
+            emitCleanupScope(cleanup_scopes.back());
+            for (int i = 0; i < 4; ++i) {
+                unit->bytecode[stmt_count_offset + i] = static_cast<uint8_t>((stmt_count >> (i * 8)) & 0xFF);
+            }
             env = saved_env;
         } catch (...) {
             env = saved_env;
+            break_targets.pop_back();
+            cleanup_scopes.pop_back();
             throw;
         }
+        break_targets.pop_back();
+        cleanup_scopes.pop_back();
     }
 
     void visit(const frontend::StructExpr& expr) override {

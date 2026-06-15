@@ -18,11 +18,16 @@ struct BreakSignal {
     Value value;
 };
 
+struct BindingSlot {
+    Value value;
+    bool initialized = false;
+};
+
 class ExecutionState {
 public:
     std::shared_ptr<ProgramUnit> unit;
     size_t pc = 0;
-    std::vector<Value> locals;
+    std::vector<BindingSlot> locals;
     const std::vector<Value>* captures = nullptr;
     std::unordered_map<std::string, Value>& globals;
     std::ostream& out;
@@ -176,6 +181,26 @@ public:
         return Value::Symbol("unknown");
     }
 
+    bool isSharedHeapAllocation(const Value& value) const {
+        if (value.type != ValueType::Heap) {
+            return false;
+        }
+        auto it = globals.find("__heap_shared_allocation_type");
+        return it != globals.end() &&
+            it->second.type == ValueType::TypeValue &&
+            value.as_type_value == it->second.as_type_value;
+    }
+
+    void retainOwnedValue(const Value& value) {
+        if (!isSharedHeapAllocation(value)) {
+            return;
+        }
+        if (value.as_heap == nullptr || value.as_heap->destroyed) {
+            throw std::runtime_error("Cannot retain destroyed shared heap allocation");
+        }
+        ++value.as_heap->strong_count;
+    }
+
     static int64_t requireInt64(const BigInt& value, const std::string& message) {
         if (!value.fits_int64()) {
             throw std::runtime_error(message);
@@ -238,6 +263,89 @@ public:
         return &it->second;
     }
 
+    void dropValue(const Value& value) {
+        const Value* drop_trait = registeredItem("traits.drop");
+        if (drop_trait == nullptr) {
+            return;
+        }
+        const Value* impl = registeredImplementation(*drop_trait, typeOf(value));
+        if (impl == nullptr) {
+            return;
+        }
+        const Value* drop_fn = structField(*impl, "drop");
+        if (drop_fn == nullptr) {
+            throw std::runtime_error("Drop implementation missing drop");
+        }
+        Value result = invokeValue(*drop_fn, {CallArgument{std::nullopt, value}});
+        if (result.type != ValueType::Null) {
+            throw std::runtime_error("Drop implementation must return void");
+        }
+    }
+
+    Value readLocal(uint32_t slot) const {
+        const auto& local = locals.at(slot);
+        return local.initialized ? local.value : Value();
+    }
+
+    void assignLocal(uint32_t slot, Value value) {
+        retainOwnedValue(value);
+        auto& local = locals.at(slot);
+        if (local.initialized) {
+            dropValue(local.value);
+        }
+        local.value = std::move(value);
+        local.initialized = true;
+    }
+
+    void dropLocal(uint32_t slot) {
+        auto& local = locals.at(slot);
+        if (!local.initialized) {
+            return;
+        }
+        dropValue(local.value);
+        local.value = Value();
+        local.initialized = false;
+    }
+
+    void assignCapture(uint32_t slot, Value value) {
+        if (captures == nullptr) {
+            throw std::runtime_error("Assignment to capture with no closure environment");
+        }
+        retainOwnedValue(value);
+        auto* mutable_captures = const_cast<std::vector<Value>*>(captures);
+        dropValue(mutable_captures->at(slot));
+        mutable_captures->at(slot) = std::move(value);
+    }
+
+    void dropCapture(uint32_t slot) {
+        if (captures == nullptr) {
+            throw std::runtime_error("Drop of capture with no closure environment");
+        }
+        auto* mutable_captures = const_cast<std::vector<Value>*>(captures);
+        dropValue(mutable_captures->at(slot));
+        mutable_captures->at(slot) = Value();
+    }
+
+    void assignGlobal(const std::string& name, Value value) {
+        retainOwnedValue(value);
+        auto found = globals.find(name);
+        if (found != globals.end()) {
+            dropValue(found->second);
+            found->second = std::move(value);
+            return;
+        }
+        globals.emplace(name, std::move(value));
+    }
+
+    void dropGlobal(const std::string& name) {
+        auto found = globals.find(name);
+        if (found == globals.end()) {
+            return;
+        }
+        dropValue(found->second);
+        globals.erase(found);
+    }
+
     Value evalOperand() {
         OperandType type = static_cast<OperandType>(read8());
         switch (type) {
@@ -256,7 +364,7 @@ public:
             case OperandType::Inline:
                 return evalInstruction();
             case OperandType::StackLocal:
-                return locals.at(read32());
+                return readLocal(read32());
             case OperandType::Capture:
                 if (captures == nullptr) {
                     throw std::runtime_error("Capture read with no closure environment");
@@ -359,7 +467,7 @@ public:
         for (const auto& capture : child->captures) {
             switch (capture.kind) {
                 case CaptureSourceKind::Local:
-                    captured_values.push_back(locals.at(capture.index));
+                    captured_values.push_back(readLocal(capture.index));
                     break;
                 case CaptureSourceKind::Capture:
                     if (captures == nullptr) {
@@ -368,6 +476,7 @@ public:
                     captured_values.push_back(captures->at(capture.index));
                     break;
             }
+            retainOwnedValue(captured_values.back());
         }
         return std::make_shared<Closure>(Closure{std::move(child), std::move(captured_values)});
     }
@@ -375,7 +484,8 @@ public:
     Value invokeClosure(const Closure& closure, std::vector<Value> args = {}) {
         ExecutionState call_state(closure.unit, globals, out, registry, trait_impls, &closure.captures);
         for (size_t i = 0; i < args.size() && i < call_state.locals.size(); ++i) {
-            call_state.locals[i] = std::move(args[i]);
+            call_state.locals[i].value = std::move(args[i]);
+            call_state.locals[i].initialized = true;
         }
         return call_state.run();
     }
@@ -448,6 +558,9 @@ public:
             if (pointer.as_heap == nullptr || pointer.as_heap->destroyed) {
                 throw std::runtime_error("Cannot assign through destroyed heap allocation");
             }
+            retainOwnedValue(new_value);
+            Value old_value = pointer.as_heap->stored;
+            dropValue(old_value);
             pointer.as_heap->stored = new_value;
             return new_value;
         }
@@ -779,7 +892,27 @@ public:
                 }
             }
             case Opcode::Break:
-                throw BreakSignal{evalOperand()};
+            {
+                Value result = evalOperand();
+                uint32_t cleanup_count = read32();
+                for (uint32_t i = 0; i < cleanup_count; ++i) {
+                    OperandType dest_type = static_cast<OperandType>(read8());
+                    switch (dest_type) {
+                        case OperandType::StackLocal:
+                            dropLocal(read32());
+                            break;
+                        case OperandType::Capture:
+                            dropCapture(read32());
+                            break;
+                        case OperandType::Identifier:
+                            dropGlobal(unit->constant_strings.at(read32()));
+                            break;
+                        default:
+                            throw std::runtime_error("Break cleanup requires a local, capture, or global destination");
+                    }
+                }
+                throw BreakSignal{std::move(result)};
+            }
             case Opcode::Loop: {
                 uint32_t loop_len = read32();
                 size_t loop_start_pc = pc;
@@ -1209,10 +1342,20 @@ public:
                 uint32_t body_len = read32();
                 size_t body_start = pc;
                 size_t body_end = body_start + body_len;
-                for (const auto& value : finiteElements(iterable)) {
-                    locals.at(slot) = value;
-                    evalOperandAt(body_start, body_end);
+                try {
+                    for (const auto& value : finiteElements(iterable)) {
+                        assignLocal(slot, value);
+                        evalOperandAt(body_start, body_end);
+                    }
+                } catch (BreakSignal& signal) {
+                    dropLocal(slot);
+                    pc = body_end;
+                    return std::move(signal.value);
+                } catch (...) {
+                    dropLocal(slot);
+                    throw;
                 }
+                dropLocal(slot);
                 pc = body_end;
                 return Value();
             }
@@ -1223,13 +1366,13 @@ public:
                     case OperandType::StackLocal: {
                         uint32_t slot = read32();
                         Value value = evalOperand();
-                        locals.at(slot) = value;
+                        assignLocal(slot, value);
                         return value;
                     }
                     case OperandType::Identifier: {
                         std::string name = unit->constant_strings.at(read32());
                         Value value = evalOperand();
-                        globals[name] = value;
+                        assignGlobal(name, value);
                         return value;
                     }
                     default:
@@ -1243,26 +1386,39 @@ public:
                     case OperandType::StackLocal: {
                         uint32_t slot = read32();
                         Value value = evalOperand();
-                        locals.at(slot) = value;
+                        assignLocal(slot, value);
                         return value;
                     }
                     case OperandType::Capture: {
-                        if (captures == nullptr) {
-                            throw std::runtime_error("Assignment to capture with no closure environment");
-                        }
                         uint32_t slot = read32();
                         Value value = evalOperand();
-                        const_cast<std::vector<Value>*>(captures)->at(slot) = value;
+                        assignCapture(slot, value);
                         return value;
                     }
                     case OperandType::Identifier: {
                         std::string name = unit->constant_strings.at(read32());
                         Value value = evalOperand();
-                        globals[name] = value;
+                        assignGlobal(name, value);
                         return value;
                     }
                     default:
                         throw std::runtime_error("Assign instruction requires a local, capture, or global destination");
+                }
+            }
+            case Opcode::DropBinding: {
+                OperandType dest_type = static_cast<OperandType>(read8());
+                switch (dest_type) {
+                    case OperandType::StackLocal:
+                        dropLocal(read32());
+                        return Value();
+                    case OperandType::Capture:
+                        dropCapture(read32());
+                        return Value();
+                    case OperandType::Identifier:
+                        dropGlobal(unit->constant_strings.at(read32()));
+                        return Value();
+                    default:
+                        throw std::runtime_error("DropBinding instruction requires a local, capture, or global destination");
                 }
             }
             case Opcode::StoreDeref: {

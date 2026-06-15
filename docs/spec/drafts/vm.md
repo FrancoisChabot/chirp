@@ -59,11 +59,11 @@ This is particularly relevant for `Call` and `MakeAnonStruct` instructions. When
 
 The subroutines execute and write their results *directly* into their final resting place in memory. This zero-copy approach ensures the VM never needs an unbounded operand stack. The number of transient, floating values at any given point is rigidly capped (usually 1 or 2 pointers). The C++ call stack remains lightweight, simply passing destination pointers down the evaluation tree.
 
-### Proposed Semantic Instructions (5-bit Opcode Space)
+### Proposed Semantic Instructions (6-bit Opcode Space)
 
-5 bits is *tight*. And we're already bundling binops as instruction groups. But the more per-lambda domains, the better. We're definitely going to have to benchmark that though (32-64 root instructions vs 4-8 domains).
+6 bits is roomy enough for the current grouped instruction plan while still leaving space for growth. With 2-bit domains, the VM keeps a small specialized-domain escape hatch without forcing the root semantic instruction set to stay artificially cramped.
 
-With 5 bits, we have room for exactly 32 base semantics. The VM uses a unified instruction set for both expressions and statements, but it explicitly distinguishes between the two evaluation contexts (expression vs block statement). To reflect this boundary, statement-only operations are pushed to the very end of the opcode range.
+With 6 bits, we have room for 64 base semantics. The VM uses a unified instruction set for both expressions and statements, but it explicitly distinguishes between the two evaluation contexts (expression vs block statement). To reflect this boundary, statement-only operations can still live near the end of the opcode range without exhausting the space.
 
 #### 1. Control Flow & Scope
 - `Block` (0x01): Evaluates a sequence of instructions. Pushes a new lexical scope.
@@ -124,4 +124,4 @@ These instructions do not yield a value and are only valid in statement executio
 - `Let` (0x1E / 30): Declares a new binding in the current scope with an initial value and optional constraint (`fc`).
 - `Assign` (0x1F / 31): Mutates an existing binding or memory location.
 
-*Total: 29 instructions used. 3 remaining slots (0x1C, 0x1D, 0x00) in the 5-bit space.*
+*Total: 29 instructions used. The 6-bit space leaves ample room for follow-on instructions such as explicit cleanup/drop operations without another encoding migration.*

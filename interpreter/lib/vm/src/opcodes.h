@@ -4,7 +4,7 @@
 namespace chirp::vm {
 
 enum class Domain : uint8_t {
-    Generic = 0b000,
+    Generic = 0b00,
     // Add specific domains later
 };
 
@@ -50,7 +50,8 @@ enum class Opcode : uint8_t {
     Let = 0x1E,
     Assign = 0x1F,
     MakeArray = 0x20,
-    MakeFString = 0x21
+    MakeFString = 0x21,
+    DropBinding = 0x22
 };
 
 enum class OperandType : uint8_t {
@@ -79,15 +80,15 @@ enum class CompareOp : uint8_t {
 };
 
 inline uint8_t encodeInstruction(Opcode op, Domain dom) {
-    return (static_cast<uint8_t>(op) << 3) | static_cast<uint8_t>(dom);
+    return (static_cast<uint8_t>(op) << 2) | static_cast<uint8_t>(dom);
 }
 
 inline Opcode decodeOpcode(uint8_t instr) {
-    return static_cast<Opcode>(instr >> 3);
+    return static_cast<Opcode>(instr >> 2);
 }
 
 inline Domain decodeDomain(uint8_t instr) {
-    return static_cast<Domain>(instr & 0b111);
+    return static_cast<Domain>(instr & 0b11);
 }
 
 } // namespace chirp::vm

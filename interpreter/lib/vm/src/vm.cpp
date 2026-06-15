@@ -256,6 +256,51 @@ std::vector<Value> finite_elements(const Value& set) {
     throw std::runtime_error("Set is not finitely enumerable");
 }
 
+void drop_value_vm(const Value& value,
+                   std::unordered_map<std::string, Value>& globals,
+                   std::ostream& out,
+                   const std::unordered_map<std::string, Value>* registry,
+                   const std::unordered_map<uint64_t, std::unordered_map<std::string, Value>>* trait_impls) {
+    if (registry == nullptr || trait_impls == nullptr) {
+        return;
+    }
+    auto trait_it = registry->find("traits.drop");
+    if (trait_it == registry->end()) {
+        return;
+    }
+    Value subject_type = type_of_value(value, globals);
+    if (trait_it->second.type != ValueType::Trait ||
+        (subject_type.type != ValueType::TypeValue && subject_type.type != ValueType::StructType)) {
+        return;
+    }
+    auto impls_for_trait = trait_impls->find(trait_it->second.as_trait->id);
+    if (impls_for_trait == trait_impls->end()) {
+        return;
+    }
+    auto impl_it = impls_for_trait->second.find(type_key(subject_type));
+    if (impl_it == impls_for_trait->second.end()) {
+        return;
+    }
+    if (impl_it->second.type != ValueType::Struct || impl_it->second.as_struct == nullptr) {
+        throw std::runtime_error("Drop implementation must be a struct instance");
+    }
+    auto drop_fn = impl_it->second.as_struct->find("drop");
+    if (drop_fn == impl_it->second.as_struct->end()) {
+        throw std::runtime_error("Drop implementation missing drop");
+    }
+    Evaluator evaluator;
+    Value result = evaluator.invoke_value(
+        drop_fn->second,
+        {CallArgument{std::nullopt, value}},
+        globals,
+        out,
+        registry,
+        trait_impls);
+    if (result.type != ValueType::Null) {
+        throw std::runtime_error("Drop implementation must return void");
+    }
+}
+
 } // namespace
 
 class VmSession : public backend::Session {
@@ -545,14 +590,19 @@ private:
             }
 
             if (key == "\"memory.heap_destroy\"") {
-                return Value(NativeFunc([](const std::vector<CallArgument>& heap_args) -> Value {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
                     if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
                         throw std::runtime_error("`heap_destroy expects one positional argument");
                     }
                     if (heap_args[0].value.type != ValueType::Heap || heap_args[0].value.as_heap == nullptr) {
                         throw std::runtime_error("`heap_destroy expects a heap allocation");
                     }
+                    if (heap_args[0].value.as_heap->destroyed) {
+                        return Value();
+                    }
+                    Value stored = heap_args[0].value.as_heap->stored;
                     heap_args[0].value.as_heap->destroyed = true;
+                    drop_value_vm(stored, globals_, out_, &registry_, &trait_impls_);
                     return Value();
                 }));
             }
@@ -566,13 +616,15 @@ private:
                     state->id = next_heap_id_++;
                     state->stored = heap_args[0].value;
                     state->shared = true;
-                    state->strong_count = 1;
+                    // Fresh shared allocations are produced as unbound owning temporaries.
+                    // The first binding/capture store retains them up to 1.
+                    state->strong_count = 0;
                     return Value::Heap(std::move(state), globals_.at("__heap_shared_allocation_type").as_type_value);
                 }));
             }
 
             if (key == "\"memory.heap_shared_destroy\"") {
-                return Value(NativeFunc([](const std::vector<CallArgument>& heap_args) -> Value {
+                return Value(NativeFunc([this](const std::vector<CallArgument>& heap_args) -> Value {
                     if (heap_args.size() != 1 || heap_args[0].name.has_value()) {
                         throw std::runtime_error("`heap_shared_destroy expects one positional argument");
                     }
@@ -583,7 +635,9 @@ private:
                         --heap_args[0].value.as_heap->strong_count;
                     }
                     if (heap_args[0].value.as_heap->strong_count == 0) {
+                        Value stored = heap_args[0].value.as_heap->stored;
                         heap_args[0].value.as_heap->destroyed = true;
+                        drop_value_vm(stored, globals_, out_, &registry_, &trait_impls_);
                     }
                     return Value();
                 }));

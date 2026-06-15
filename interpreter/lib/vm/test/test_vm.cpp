@@ -254,6 +254,52 @@ TEST(VmTest, HeapDerefAssignmentWorks) {
         "7\n");
 }
 
+TEST(VmTest, BlockScopeExitRunsRegisteredDrop) {
+    EXPECT_EQ(
+        run_vm("let make_trait = `import(\"traits.make\", \"__chirp_boot\"); "
+               "let implement = `import(\"traits.implement\", \"__chirp_boot\"); "
+               "let register = `import(\"system.register\", \"__chirp_boot\"); "
+               "let print = `import(\"io.print\", \"__chirp_boot\"); "
+               "let Drop = make_trait(struct { drop: (self) -> void }); "
+               "register(\"traits.drop\", Drop); "
+               "let Token = struct {}; "
+               "implement(trait=Drop, on=Token, impl={drop=(self) => print(\"drop\")}); "
+               "do { let t = Token(); };\n"),
+        "drop\n");
+}
+
+TEST(VmTest, OverwriteDropsPreviousBindingValue) {
+    EXPECT_EQ(
+        run_vm("let make_trait = `import(\"traits.make\", \"__chirp_boot\"); "
+               "let implement = `import(\"traits.implement\", \"__chirp_boot\"); "
+               "let register = `import(\"system.register\", \"__chirp_boot\"); "
+               "let print = `import(\"io.print\", \"__chirp_boot\"); "
+               "let Drop = make_trait(struct { drop: (self) -> void }); "
+               "register(\"traits.drop\", Drop); "
+               "let Token = struct {}; "
+               "implement(trait=Drop, on=Token, impl={drop=(self) => print(\"drop\")}); "
+               "do { let mut t = Token(); t = Token(); print(\"after\"); };\n"),
+        "drop\nafter\ndrop\n");
+}
+
+TEST(VmTest, SharedHeapCopiesRetainUntilLastDrop) {
+    EXPECT_EQ(
+        run_vm("let make_trait = `import(\"traits.make\", \"__chirp_boot\"); "
+               "let implement = `import(\"traits.implement\", \"__chirp_boot\"); "
+               "let register = `import(\"system.register\", \"__chirp_boot\"); "
+               "let print = `import(\"io.print\", \"__chirp_boot\"); "
+               "let heap_shared_allocation = `import(\"memory.heap_shared_allocation\", \"__chirp_boot\"); "
+               "let heap_shared_create = `import(\"memory.heap_shared_create\", \"__chirp_boot\"); "
+               "let heap_shared_destroy = `import(\"memory.heap_shared_destroy\", \"__chirp_boot\"); "
+               "let Drop = make_trait(struct { drop: (self) -> void }); "
+               "register(\"traits.drop\", Drop); "
+               "implement(trait=Drop, on=heap_shared_allocation, impl={drop=(self) => heap_shared_destroy(self)}); "
+               "let Token = struct {}; "
+               "implement(trait=Drop, on=Token, impl={drop=(self) => print(\"drop\")}); "
+               "do { let p = heap_shared_create(Token()); do { let q = p; print(\"inner done\"); }; };\n"),
+        "inner done\ndrop\n");
+}
+
 TEST(VmTest, SignatureFieldConstraintAcceptsMatchingLambda) {
     EXPECT_EQ(
         run_vm("let Iface = struct { deref: (self) -> any }; let x = Iface(deref=(self) => self); 1;\n"),
