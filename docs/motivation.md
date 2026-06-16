@@ -115,10 +115,10 @@ That's basically a trait (Rust)/interface (Java)/protocol (ObjC) etc... I know t
 
 So... What **if** sets weren't a *thing*, and set-ness was instead a capability that certain Types provide for their instances? Then types don't have to be sets, they only need to supply belonging behavior when used as sets. It would also mean that sets don't have to be types either. Let's keep pulling on that thread and see what happens.
 
-We can start laying down some rules.
+We can start laying down some rules. But first, let's ditch the word "Type" altogether. Since we are breaking appart variable constraints and value identity as completely orthogonal concepts, "type" has too many preconceptions associated with it. We'll use **Nature** to describe a value's intrinsic identity.
 
-- Every Value has an intrinsic type
-- Sets are values whose intrinsic Type supplies a `bp`, roughly a function from `(this, v: any) : bool` (that's what "does something belong to a set" reduces down to at the end of the day...)
+- Every Value has an intrinsic Nature
+- Sets are values whose intrinsic Nature supplies a `bp`, roughly a function from `(this, v: any) : bool` (that's what "does something belong to a set" reduces down to at the end of the day...)
 - Variables (or whatever the fundamental building block they are made of, let's call that **bindings**) have a *current value* and *a set of values they can have*
 
 ### Bindings
@@ -151,7 +151,7 @@ I wonder what else I can generalize with this model? If I combine it with the se
 
 From here, we can plausibly satisfy contraint #1:
 
-"If the set of values a Binding can hold just happens to be of a single type, then the compiler can treat it the same way C treats a variable."
+"If the set of values a Binding can hold just happens to be of a single Nature, then the compiler can treat it the same way C treats a variable."
 
 ## Where do values come from?
 
@@ -207,7 +207,7 @@ match (v ∈ S) {
 
 To better understand what the implications of this are, let's have a glance at [04_conveniences.chirp](../lib/chirp/boot/04_conveniences.chirp), which is a file that the chirp interpreter loads before anything else.
 
-The role of the portion we are going to look at is to imbue the `int`, `bool`, and `string` types with set-ness so that we can use their values directly in places like match arms:
+The role of the portion we are going to look at is to imbue the `int`, `bool`, and `string` natures with set-ness so that we can use their values directly in places like match arms:
 ```chirp
 let str = match v {
   1 => "one",        //  <------- having to write {1} here would be ugly.
@@ -218,7 +218,7 @@ let str = match v {
 
 ```chirp
 //...
-let final make_type_a_self_set(t) = do {
+let final make_nature_a_self_set(t) = do {
     `implement(
         trait=`Set,
         on=t,
@@ -232,9 +232,9 @@ let final make_type_a_self_set(t) = do {
     );
 };
 
-make_type_a_self_set(bool);
-make_type_a_self_set(int);
-make_type_a_self_set(string);
+make_nature_a_self_set(bool);
+make_nature_a_self_set(int);
+make_nature_a_self_set(string);
 ```
 
 If you zero-in on the `br` portion: `belongs_range`:
@@ -267,7 +267,7 @@ Putting all of that together, we end up with an architecture that looks like thi
                 │      ││   │ bp tests values               │ ▼      │   │
                 │      ▼│is └─────────────────────────┌─────────┐    │   │
                 │  ┌─────────┐                        │ SETNESS │────│───┘ is
-                │  │  TYPE   │-----------------------►└─────────┘    │
+                │  │ Nature  │-----------------------►└─────────┘    │
                 │  └─────────┘ can implement                         │
                 └────────────────────────────────────────────────────┘
 ```
