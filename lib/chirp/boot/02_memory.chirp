@@ -36,14 +36,14 @@ let ReferenceSet = struct {
     target: `Set,
     mutable: bool
 };
-register("types.reference_set", ReferenceSet);
+register("natures.reference_set", ReferenceSet);
 
 `implement(
     trait=`Set,
     on=ReferenceSet,
     impl={
         belongs = (self, v) => do {
-            let t = `type_of(v);
+            let t = `nature_of(v);
             if (!`implements(`Dereferenceable, t)) false
             else if (self.mutable && !`implements(`DereferenceableMut, t)) false
             else *v ∈ self.target

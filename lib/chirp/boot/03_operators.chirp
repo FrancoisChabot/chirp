@@ -24,7 +24,7 @@
 //
 // - Bootstrap v1 restriction:
 //   user-defined operator dispatch is only defined for operands of the same
-//   runtime type. Mixed-type operator semantics are intentionally out of scope
+//   runtime nature. Mixed-nature operator semantics are intentionally out of scope
 //   for now.
 //
 // - The concrete operators derive from compare(a, b) like this:
@@ -44,7 +44,7 @@
 //   - a >= b is false
 //   - a != b is true
 //
-// - Unless a type explicitly models self-unordered values, compare(a, a) should
+// - Unless a nature explicitly models self-unordered values, compare(a, a) should
 //   evaluate to `equal.
 let ComparisonResult = enum { Less, Equal, Greater, Unordered };
 
@@ -164,7 +164,7 @@ let pub final `Indexable = `make_trait(struct {
     // - index_space/result_space are expected to be semantically pure.
     // - For now, violating that contract is UB rather than something the
     //   interpreter can reliably reject.
-    index_space: `pure_fn ∩ (self) -> `struct_type,
+    index_space: `pure_fn ∩ (self) -> `struct_nature,
     result_space: `pure_fn ∩ (self, at: `Set) -> `Set,
     read: (self, at) -> `any
 });
@@ -174,7 +174,7 @@ let pub final `IndexAssignable = `make_trait(struct {
     // - index_space/value_space are expected to be semantically pure.
     // - For now, violating that contract is UB rather than something the
     //   interpreter can reliably reject.
-    index_space: `pure_fn ∩ (self) -> `struct_type,
+    index_space: `pure_fn ∩ (self) -> `struct_nature,
     value_space: `pure_fn ∩ (self, at: `Set) -> `Set,
     write: (self, at, value) -> void
 });

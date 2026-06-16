@@ -4,8 +4,8 @@
 `print(undecided);
 `expect(undecided == undecided);
 `expect(!(undecided != undecided));
-`expect(undecided ∈ `type_of(undecided));
-`expect(true ∉ `type_of(undecided));
-`expect(`type_of(undecided) ∈ `Set);
+`expect(undecided ∈ `nature_of(undecided));
+`expect(true ∉ `nature_of(undecided));
+`expect(`nature_of(undecided) ∈ `Set);
 `expect(undecided ∈ `Set);
 `expect(undecided ∉ bool);

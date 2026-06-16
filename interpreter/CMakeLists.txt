@@ -19,6 +19,7 @@ endif()
 add_subdirectory(lib/bigint)
 add_subdirectory(lib/frontend)
 add_subdirectory(lib/interpreter)
+add_subdirectory(lib/vm)
 
 add_executable(chirp app/main.cpp)
 target_link_libraries(chirp PRIVATE chirp_frontend chirp_interpreter)

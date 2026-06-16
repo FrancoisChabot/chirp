@@ -12,9 +12,9 @@
 //                 v
 //let some_var : int64 = 3;
 //
-// Is NOT a type. It's a constraint, in the form of a value whose type implements the set trait.
+// Is NOT a nature. It's a constraint, in the form of a value whose nature implements the set trait.
 //
-// - Types are intrinsic properties of values. A 3 is an integer, not matter what 
+// - Natures are intrinsic properties of values. A 3 is an integer, not matter what 
 // the constraint of the variable it's assigned to.
 
 // During bootstrap, the interpreter still knows how to parse and construct
@@ -38,46 +38,46 @@ let pub `same = `import("values.same", "__chirp_boot");
 
 // ------------------ Typing ------------------ //
 
-// Get the type of a value
-// - Types implements the Set trait such that all of its values belong to it.
-let pub `type_of = `import("types.type_of", "__chirp_boot");
+// Get the nature of a value
+// - Natures implements the Set trait such that all of its values belong to it.
+let pub `nature_of = `import("nature.nature_of", "__chirp_boot");
 
-// Lock down base types/values
-let pub final int = `type_of(1);
-let pub final char = `type_of('a');
-let pub final string = `type_of("");
-let pub final symbol = `type_of(#foo);
+// Lock down base natures/values
+let pub final int = `nature_of(1);
+let pub final char = `nature_of('a');
+let pub final string = `nature_of("");
+let pub final symbol = `nature_of(#foo);
 let pub final void = do {};
 
 let pub final true = `same(0, 0);
 let pub final false = `same(0, 1);
-let pub final bool = `type_of(true);
+let pub final bool = `nature_of(true);
 
-// Creates a new type with n distinct values and returns a struct with two members:
-// type: `type
-// values: type[]
+// Creates a new nature with n distinct values and returns a struct with two members:
+// nature: `nature
+// values: nature[]
 // The order of the values in the array doesn't mean anything.
-// mint_finite(0) is valid and returns a type for which no value exists
-let pub `mint_finite = `import("types.mint_finite", "__chirp_boot");
+// mint_finite(0) is valid and returns a nature for which no value exists
+let pub `mint_finite = `import("natures.mint_finite", "__chirp_boot");
 
-// Checks if a type is a struct (TODO: Maybe introduce the notion of "type categories" if we ever need more of these)
-let pub `is_struct_type = `import("types.is_struct_type", "__chirp_boot");
+// Checks if a nature is a struct (TODO: Maybe introduce the notion of "nature categories" if we ever need more of these)
+let pub `is_struct_nature = `import("natures.is_struct_nature", "__chirp_boot");
 
 // ------------------ Traits ------------------ //
 
-// Creates a trait (taking the trait interface in the form of a struct type as parameter)
+// Creates a trait (taking the trait interface in the form of a struct nature as parameter)
 let pub `make_trait = `import("traits.make", "__chirp_boot");
 
 // Reclaims the interface of a trait
 let pub `interface_of = `import("traits.interface", "__chirp_boot");
 
-// Implements a trait for a type.
+// Implements a trait for a nature.
 let pub `implement = `import("traits.implement", "__chirp_boot");
 
-// Checks if a trait has a registered implementation for a given type
+// Checks if a trait has a registered implementation for a given nature
 let pub `implements = `import("traits.implements", "__chirp_boot");
 
-// Gets the implementation of a trait for a given type
+// Gets the implementation of a trait for a given nature
 let pub `implementation = `import("traits.implementation", "__chirp_boot");
 
 // ------------------ Fundamental values ------------------ //
@@ -87,14 +87,14 @@ let pub `implementation = `import("traits.implementation", "__chirp_boot");
 let pub final undecided = `mint_finite(1).values[0];
 register("values.undecided", undecided);
 
-let pub final `type = `type_of(bool);
+let pub final `nature = `nature_of(bool);
 
-let pub `struct_type = {v: `type | `is_struct_type(v)};
+let pub `struct_nature = {v: `nature | `is_struct_nature(v)};
 
 // ------------------ Computation, part 1 ------------------ //
 
 // The core computation primitive.
-let pub `lambda = `type_of((args) => true);
+let pub `lambda = `nature_of((args) => true);
 
 // Invoke a lambda with a struct as argument list
 let pub `invoke = `import("compute.invoke", "__chirp_boot");
@@ -104,13 +104,13 @@ let pub `is_pure = `import("compute.is_pure", "__chirp_boot");
 let pub `pure_fn = { v | `is_pure(v) };
 
 // ------------------ Sets ------------------ //
-// Returns a set of the types possibly present in a given set.
+// Returns a set of the natures possibly present in a given set.
 // - Membership queries against the resulting set are always decidable:
 //   its belongs_range never contains `undecided`.
-// - It never omits possible types, but it may overestimate.
+// - It never omits possible natures, but it may overestimate.
 // - The resulting set is not necessarily enumerable.
-// - The resulting set is always a subset of `type`.
-let pub `types_in_set = `import("sets.types_in_set", "__chirp_boot");
+// - The resulting set is always a subset of `nature`.
+let pub `natures_in_set = `import("sets.natures_in_set", "__chirp_boot");
 
 // Returns whether a set is enumerable or not.
 let pub `is_enumerable = `import("sets.enumerable", "__chirp_boot");
@@ -163,7 +163,7 @@ let pub final `empty = `mint_finite(1).values[0];
 
 `implement(
     trait=`Set,
-    on=`type_of(`any),
+    on=`nature_of(`any),
     impl={
         belongs = (this, v) => true,
         belongs_range = (this, candidates) => {true}
@@ -172,27 +172,27 @@ let pub final `empty = `mint_finite(1).values[0];
 
 `implement(
     trait=`Set,
-    on=`type_of(`empty),
+    on=`nature_of(`empty),
     impl={
         belongs = (this, v) => false,
         belongs_range = (this, candidates) => {false}
     }
 );
 
-// --------- Define trait and type setness ---------
+// --------- Define trait and nature setness ---------
 
-let pub `trait = `type_of(`Set);
+let pub `trait = `nature_of(`Set);
 
-// traits behave as sets that contain all values whose type implements that trait
+// traits behave as sets that contain all values whose nature implements that trait
 `implement(
     trait=`Set,
     on=`trait,
     impl={
-        belongs=(self: `trait, v) => `implements(self, `type_of(v)),
+        belongs=(self: `trait, v) => `implements(self, `nature_of(v)),
 
         // belongs always resolve to true or false, so undecided doesn't need to show up
         belongs_range=(self: `trait, candidates: `Set) => do {
-            let ts = `types_in_set(candidates);
+            let ts = `natures_in_set(candidates);
 
             if(`is_enumerable(ts)) do {
                 let mut saw_true : bool = false;
@@ -217,13 +217,13 @@ let pub `trait = `type_of(`Set);
 
 `implement(
     trait=`Set,
-    on=`type,
+    on=`nature,
     impl={
-        belongs=(self: `type, v) => `same(`type_of(v), self),
+        belongs=(self: `nature, v) => `same(`nature_of(v), self),
 
         // belongs always resolve to true or false, so undecided doesn't need to show up
-        belongs_range=(self: `type, candidates: `Set) => do {
-            let ts = `types_in_set(candidates);
+        belongs_range=(self: `nature, candidates: `Set) => do {
+            let ts = `natures_in_set(candidates);
 
             if(self ∈ ts)
                 if(`coextensive(ts, {self})) {true}
@@ -248,7 +248,7 @@ let pub `Callable = `make_trait(struct {
     // - param_space/result_space are expected to be semantically pure.
     // - For now, violating that contract is UB rather than something the interpreter
     //   can reliably reject.
-    param_space: (self)-> `struct_type,
+    param_space: (self)-> `struct_nature,
     
     // returns the set of possible results given a set of possible arguments
     result_space: (self, params: `Set)->`Set,
@@ -273,20 +273,20 @@ let lambda_result_space = `import("compute.lambda_result_space", "__chirp_boot")
     }
 );
 
-let construction_args = `import("types.construction_args", "__chirp_boot");
-let construct = `import("types.construct", "__chirp_boot");
+let construction_args = `import("natures.construction_args", "__chirp_boot");
+let construct = `import("natures.construct", "__chirp_boot");
 
-// Make types constructors (structs need this)
+// Make natures constructors (structs need this)
 `implement(
     trait=`Callable,
-    on=`type,
+    on=`nature,
     impl={
-        param_space = (self: `type) => construction_args(self),
+        param_space = (self: `nature) => construction_args(self),
 
-        // self is a type, and types implement Set as the set of their instances.
-        // Therefore, the result space of invoking a type is the type itself.
-        result_space = (self: `type, params) => self,
-        invoke=(self: `type, params) => construct(self, params)
+        // self is a nature, and natures implement Set as the set of their instances.
+        // Therefore, the result space of invoking a nature is the nature itself.
+        result_space = (self: `nature, params) => self,
+        invoke=(self: `nature, params) => construct(self, params)
     }
 );
 

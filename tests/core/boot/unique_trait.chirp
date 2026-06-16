@@ -1,11 +1,11 @@
 `expect_exit(0);
 
 
-// Basic types should not be unique by default
+// Basic natures should not be unique by default
 `expect(1 ∉ `Unique);
 `expect("" ∉ `Unique);
 `expect(true ∉ `Unique);
 
 // The trait itself isn't a unique value
 `expect(`Unique ∉ `Unique);
-`expect(`Unique ∈ `type_of(`Unique));
+`expect(`Unique ∈ `nature_of(`Unique));

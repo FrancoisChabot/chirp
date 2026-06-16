@@ -1,11 +1,11 @@
 `expect_exit(0);
 
 `expect_stdout("int\n");
-`print(`type_of(42));
+`print(`nature_of(42));
 `expect_stdout("bool\n");
-`print(`type_of(true));
+`print(`nature_of(true));
 `expect_stdout("MintType(1)\n");
-`print(`type_of(undecided));
-`expect_stdout("Type\n");
-`print(`type_of(`type_of(42)));
-`expect(42 ∈ `type_of(42));
+`print(`nature_of(undecided));
+`expect_stdout("Nature\n");
+`print(`nature_of(`nature_of(42)));
+`expect(42 ∈ `nature_of(42));

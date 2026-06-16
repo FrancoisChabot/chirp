@@ -26,7 +26,7 @@ let pub final uint64 = 0..=18446744073709551615;
 // }
 //
 
-// This makes each instance of a type a set of itself, which is really convenient for match arms.
+// This makes each instance of a nature a set of itself, which is really convenient for match arms.
 let final make_type_a_self_set(t) = do {
     `implement(
         trait=`Set,
@@ -46,8 +46,8 @@ make_type_a_self_set(int);
 make_type_a_self_set(char);
 make_type_a_self_set(string);
 make_type_a_self_set(symbol);
-make_type_a_self_set(`type_of(void));
-make_type_a_self_set(`type_of(undecided));
+make_type_a_self_set(`nature_of(void));
+make_type_a_self_set(`nature_of(undecided));
 
 
 // We could just force returning from main. But being able to bail out is nice and easy to implement, 

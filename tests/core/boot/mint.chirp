@@ -3,16 +3,16 @@
 let a = `mint_finite(1).values[0];
 let same = a;
 let b = `mint_finite(1).values[0];
-let constrained : `type_of(a) = a;
+let constrained : `nature_of(a) = a;
 
 `expect(a == same);
 `expect(a != b);
-`expect(`type_of(a) == `type_of(same));
-`expect(`type_of(a) != `type_of(b));
-`expect(a ∈ `type_of(a));
-`expect(a ∉ `type_of(b));
-`expect(b ∈ `type_of(b));
+`expect(`nature_of(a) == `nature_of(same));
+`expect(`nature_of(a) != `nature_of(b));
+`expect(a ∈ `nature_of(a));
+`expect(a ∉ `nature_of(b));
+`expect(b ∈ `nature_of(b));
 `expect(a ∉ `Set);
-`expect(`type_of(a) ∈ `type);
-`expect(`type_of(a) ∈ `Set);
+`expect(`nature_of(a) ∈ `nature);
+`expect(`nature_of(a) ∈ `Set);
 `expect(constrained == a);

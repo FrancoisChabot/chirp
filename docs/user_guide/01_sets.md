@@ -1,8 +1,8 @@
 # Chirp - User Guide - Sets
 
 Sets are all over the place in chirp and get first billing syntax-wise. Being a set
-in chirp is a ``trait` a type can have. Any value that implements it can be used as 
-a set. This includes literals, types, predicates, function signatures, traits, ranges and really 
+in chirp is a ``trait` a nature can have. Any value that implements it can be used as 
+a set. This includes literals, natures, predicates, function signatures, traits, ranges and really 
 anything for which "is this value part of what you represent?" is a sensible question.
 
 ## Set Literals
@@ -83,9 +83,9 @@ inclusive end bound.
 'a'..='d' // 'a', 'b', 'c', 'd'
 ```
 
-### Types
+### Natures
 
-Types are sets of their instances.
+Natures are sets of their instances.
 
 ```chirp
 `expect(3 ∈ int);
@@ -108,7 +108,7 @@ let Color = enum { Red, Green, Blue };
 
 ### Traits 
 
-Traits act as sets of the values whose type implements the trait.
+Traits act as sets of the values whose nature implements the trait.
 
 ```chirp
 let f : `Callable = (x) => x;
@@ -211,7 +211,7 @@ That works because:
 
 - enumerated sets are sets
 - ranges are sets
-- types are sets
+- natures are sets
 - enum families are sets
 - traits are sets
 

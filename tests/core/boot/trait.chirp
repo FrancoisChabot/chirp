@@ -28,4 +28,4 @@ let constrained : Marker = 5;
 
 `expect(constrained == 5);
 
-`expect(Marker ∈ `type_of(Marker));
+`expect(Marker ∈ `nature_of(Marker));

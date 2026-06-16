@@ -88,31 +88,31 @@ let x : constraint = 2;
 
 A **Value** is an immutable package of data that can occupy the temporal domain (`cv`) of a Binding. 
 
-### Types
+### Natures
 
-Notice how **types** weren't mentioned at all until the previous section? That's because while types are critical to Chirp, the fundamental logic of Bindings and Sets doesn't strictly depend on them. Mathematically speaking, the rules of `lc ⊆ fc` and `cv ∈ lc` would remain perfectly sound even if our universe of values was just an amorphous, untyped pile of data.
+Notice how **natures** weren't mentioned at all until the previous section? That's because while natures are critical to Chirp, the fundamental logic of Bindings and Sets doesn't strictly depend on them. Mathematically speaking, the rules of `lc ⊆ fc` and `cv ∈ lc` would remain perfectly sound even if our universe of values was just an amorphous, untyped pile of data.
 
 But Chirp isn't just a mathematical theorem; it's a systems programming language. We can't execute abstract math on a CPU. To make this constraint system real, we need two things:
 
 1. **Physical Reality**: We need to know the physical memory layouts of our values so we can compile down to machine code.
 2. **Capability Dispatch**: We need a mechanical dispatch system to evaluate *how* a specific value behaves when used as a set.
 
-This is exactly the dual-purpose role of **Types**.
+This is exactly the dual-purpose role of **Natures**.
 
-In Chirp, every **Value** has exactly one intrinsic **Type** tag associated with it, denoted by `typeof(v)`.
+In Chirp, every **Value** has exactly one intrinsic **Nature** tag associated with it, denoted by `natureof(v)`.
 
-#### Types as Capability Dispatchers
+#### Natures as Capability Dispatchers
 
-Recall that in the Sets section, we said a set is just a capability that a value *can* have. The way a value gains that capability is through its Type.
+Recall that in the Sets section, we said a set is just a capability that a value *can* have. The way a value gains that capability is through its Nature.
 
-When you write the set-belonging check `v ∈ S`, you are not invoking a magic property on `S`. The `∈` operator is actually syntactic sugar that dispatches the belonging check to the **Type** of `S`. 
+When you write the set-belonging check `v ∈ S`, you are not invoking a magic property on `S`. The `∈` operator is actually syntactic sugar that dispatches the belonging check to the **Nature** of `S`. 
 
 Specifically, it desugars to:
 ```chirp
-typeof(S).bp(S, v)
+nature_of(S).bp(S, v)
 ```
 
-If `typeof(S)` does not define a `bp` (belonging predicate), then `S` simply cannot be used as a set, and attempting to do so is a an error.
+If `natureof(S)` does not define a `bp` (belonging predicate), then `S` simply cannot be used as a set, and attempting to do so is a an error.
 
 This is where the elegance of the system crystallizes. Let's look at how the sets from our earlier examples actually work under the hood:
 
@@ -120,38 +120,38 @@ This is where the elegance of the system crystallizes. Let's look at how the set
 // Example 1: The range value
 let x : 0..3 = 2;
 
-// `0..3` is a value of type `IntRange`. 
+// `0..3` is a value of nature `IntRange`. 
 // `IntRange` implements `bp(range, v)` as `v ∈ int && v >= range.start && v < range.end`.
 // So `2 ∈ 0..3` desugars to:
-typeof(0..3).bp(0..3, 2)
+nature_of(0..3).bp(0..3, 2)
 ```
 
-#### Types as Sets
+#### Natures as Sets
 
-If types are values, then types themselves must have a type! In Chirp, the type of every type tag is the special value `Type`. 
+If natures are values, then natures themselves must have a nature! In Chirp, the nature of every nature tag is the special value `Nature`. 
 
-This unlocks one of Chirp's most powerful emergent behaviors: **Types can be used as sets themselves.**
+This unlocks one of Chirp's most powerful emergent behaviors: **Natures can be used as sets themselves.**
 
-How? Because `Type` (the type of all types) defines its own `bp`. 
+How? Because `Nature` (the nature of all natures) defines its own `bp`. 
 
-When you use a type like `int` as a constraint, the exact same desugaring rules apply:
+When you use a nature like `int` as a constraint, the exact same desugaring rules apply:
 ```chirp
 let x : int = 5;
 
 // The belonging check `5 ∈ int` desugars to:
-typeof(int).bp(int, 5)
+nature_of(int).bp(int, 5)
 
-// Since typeof(int) is `Type`, this evaluates to:
-Type.bp(int, 5)
+// Since nature_of(int) is `Nature`, this evaluates to:
+Nature.bp(int, 5)
 ```
 
-The `bp` implementation for `Type` is trivial: it simply checks if the value's intrinsic type tag matches the instance. 
+The `bp` implementation for `Nature` is trivial: it simply checks if the value's intrinsic nature tag matches the instance. 
 ```chirp
-// Conceptual implementation of Type's bp:
-Type.bp = (type_instance, v) => typeof(v) == type_instance;
+// Conceptual implementation of Nature's bp:
+Nature.bp = (type_instance, v) => nature_of(v) == type_instance;
 ```
 
-This means "types as sets" requires absolutely zero special casing in the compiler. A type acts as a set of its own instances strictly as a natural consequence of the universal `v ∈ S` dispatch rule.
+This means "natures as sets" requires absolutely zero special casing in the compiler. A nature acts as a set of its own instances strictly as a natural consequence of the universal `v ∈ S` dispatch rule.
 
 ### Binding Semantics 
 
@@ -196,7 +196,7 @@ b ∈ S ≜ τ(S).bp(S, b.cv : b.lc ⊆ b.fc) : τ(S).br(S, b.lc) ⊆ {true, fal
 We can now finally unpack it.
 
 - `b.cv : b.lc ⊆ b.fc` : That's the binding funnel. A binding has a current value which belongs to the spatial constraint, which in turn is a subset of the fundamental constraint.
-- `b ∈ S ≜ τ(S).bp(...)` : This is set-ness formalized. Checking if a value belongs to a set is indirected via the set's type. 
+- `b ∈ S ≜ τ(S).bp(...)` : This is set-ness formalized. Checking if a value belongs to a set is indirected via the set's nature. 
 - `: τ(S).br(S, b.lc)` : This says that the result of `bp` must belong to the set obtained when evaluating the `br` preflight check.
 - `⊆ {true, false, undecided}` : This says that the `br` preflight check must return a subset of `{true, false, undecided}`.
 

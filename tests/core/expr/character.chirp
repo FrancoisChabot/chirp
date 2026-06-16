@@ -22,9 +22,9 @@ let c_hex = '\u00AB';
 `expect_stdout("'«'\n");
 `print(c_hex);
 
-// 3. Types and Identity
-`expect(`type_of('a') == char);
-`expect(`type_of('😀') == char);
+// 3. Natures and Identity
+`expect(`nature_of('a') == char);
+`expect(`nature_of('😀') == char);
 `expect('a' == 'a');
 `expect('a' != 'b');
 `expect('😀' == '😀');

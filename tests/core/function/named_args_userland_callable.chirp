@@ -4,7 +4,7 @@ let Token = `mint_finite(1).values[0];
 
 `implement(
     trait=`Callable,
-    on=`type_of(Token),
+    on=`nature_of(Token),
     impl={
         param_space = (this) => struct {x: int, y: int},
         result_space = (this, params) => int,

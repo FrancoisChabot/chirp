@@ -1730,12 +1730,12 @@ private:
         if (is_name(name, "testing.inject_stdin")) return Value::make_host_function(Value::HostFunction::InjectStdin);
         if (is_name(name, "compute.invoke")) return Value::make_host_function(Value::HostFunction::Invoke);
         if (is_name(name, "compute.function_args")) return Value::make_host_function(Value::HostFunction::FunctionArgs);
-        if (is_name(name, "types.type_of")) return Value::make_host_function(Value::HostFunction::TypeOf);
+        if (is_name(name, "nature.nature_of") || is_name(name, "natures.nature_of") || is_name(name, "types.type_of")) return Value::make_host_function(Value::HostFunction::TypeOf);
         if (is_name(name, "values.same")) return Value::make_host_function(Value::HostFunction::Same);
         if (is_name(name, "system.exit")) return Value::make_host_function(Value::HostFunction::Exit);
 
-        if (is_name(name, "types.mint_finite")) return Value::make_host_function(Value::HostFunction::MintFinite);
-        if (is_name(name, "types.is_struct_type")) return Value::make_host_function(Value::HostFunction::IsStructType);
+        if (is_name(name, "natures.mint_finite") || is_name(name, "types.mint_finite")) return Value::make_host_function(Value::HostFunction::MintFinite);
+        if (is_name(name, "natures.is_struct_nature") || is_name(name, "types.is_struct_type")) return Value::make_host_function(Value::HostFunction::IsStructType);
 
         if (is_name(name, "traits.make")) return Value::make_host_function(Value::HostFunction::MakeTrait);
         if (is_name(name, "traits.interface")) return Value::make_host_function(Value::HostFunction::Interface);
@@ -1763,9 +1763,9 @@ private:
         if (is_name(name, "compute.is_pure")) return Value::make_host_function(Value::HostFunction::IsPure);
         if (is_name(name, "compute.lambda_param_space")) return Value::make_host_function(Value::HostFunction::LambdaParamSpace);
         if (is_name(name, "compute.lambda_result_space")) return Value::make_host_function(Value::HostFunction::LambdaResultSpace);
-        if (is_name(name, "types.construction_args")) return Value::make_host_function(Value::HostFunction::ConstructionArgs);
-        if (is_name(name, "types.construct")) return Value::make_host_function(Value::HostFunction::Construct);
-        if (is_name(name, "sets.types_in_set")) return Value::make_host_function(Value::HostFunction::TypesInSet);
+        if (is_name(name, "natures.construction_args") || is_name(name, "types.construction_args")) return Value::make_host_function(Value::HostFunction::ConstructionArgs);
+        if (is_name(name, "natures.construct") || is_name(name, "types.construct")) return Value::make_host_function(Value::HostFunction::Construct);
+        if (is_name(name, "sets.natures_in_set") || is_name(name, "sets.types_in_set")) return Value::make_host_function(Value::HostFunction::TypesInSet);
         if (is_name(name, "sets.enumerable")) return Value::make_host_function(Value::HostFunction::IsEnumerable);
         if (is_name(name, "sets.coextensive")) return Value::make_host_function(Value::HostFunction::Coextensive);
         fail(diag, "Unknown boot binding '" + to_key(name) + "'");
@@ -2103,14 +2103,14 @@ private:
                 }
 
                 std::vector<OrderedStructFieldSpec> fields = {
-                    OrderedStructFieldSpec{"type"},
+                    OrderedStructFieldSpec{"nature"},
                     OrderedStructFieldSpec{"values"}
                 };
                 auto result_type = std::make_shared<RuntimeStructType>(std::move(fields));
                 return Value::make_struct_instance(
                     std::move(result_type),
                     {
-                        {"type", Value::make_type(minted_type)},
+                        {"nature", Value::make_type(minted_type)},
                         {"values", Value::make_list(std::move(values))}
                     }
                 );
@@ -2837,7 +2837,11 @@ private:
     }
 
     std::shared_ptr<const Type> reference_set_type(const token& diag) const {
-        if (const Value* set_type = get_registered_item("types.reference_set")) {
+        const Value* set_type = get_registered_item("natures.reference_set");
+        if (!set_type) {
+            set_type = get_registered_item("types.reference_set");
+        }
+        if (set_type) {
             if (set_type->isType() && is_struct_type(set_type->asType())) {
                 return set_type->asType();
             }

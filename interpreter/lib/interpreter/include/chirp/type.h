@@ -35,7 +35,7 @@ public:
 // Subclass for the type of all types (Type)
 class MetaType : public Type {
 public:
-    std::string_view name() const override { return "Type"; }
+    std::string_view name() const override { return "Nature"; }
     bool hasSetness() const override { return true; }
     Value belongs(const Value& S, const Value& v) const override;
     Value belongs_approx(const Value& S, const Value& lc) const override;

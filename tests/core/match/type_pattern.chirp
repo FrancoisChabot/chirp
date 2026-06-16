@@ -1,5 +1,5 @@
-// Types are sets of their instances. Using a type like `int` as a match
-// pattern tests `subject ∈ int`, i.e. `type_of(subject) == int`.
+// Natures are sets of their instances. Using a nature like `int` as a match
+// pattern tests `subject ∈ int`, i.e. `nature_of(subject) == int`.
 `expect_exit(0);
 
 let describe(v) = match v {

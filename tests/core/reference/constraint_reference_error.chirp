@@ -3,5 +3,5 @@
 let mut x : int = 10;
 let mut y : bool = true;
 
-// Mismatched target type should fail constraint checking
+// Mismatched target nature should fail constraint checking
 let p : -> bool = &x;

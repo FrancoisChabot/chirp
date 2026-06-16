@@ -1,15 +1,15 @@
 `expect_exit(0);
 
-`expect_stdout("--- Type Identities ---\n");
-`print("--- Type Identities ---");
-`expect(`type_of(true) == bool);
-`expect(`type_of(false) == bool);
-`expect(`type_of(1) == int);
-`expect(`type_of("") == string);
-`expect(`type_of(bool) == `type);
-`expect(`type_of(int) == `type);
-`expect(`type_of(string) == `type);
-`expect(`type_of(`type) == `type);
+`expect_stdout("--- Nature Identities ---\n");
+`print("--- Nature Identities ---");
+`expect(`nature_of(true) == bool);
+`expect(`nature_of(false) == bool);
+`expect(`nature_of(1) == int);
+`expect(`nature_of("") == string);
+`expect(`nature_of(bool) == `nature);
+`expect(`nature_of(int) == `nature);
+`expect(`nature_of(string) == `nature);
+`expect(`nature_of(`nature) == `nature);
 
 `expect_stdout("--- Membership Relations ---\n");
 `print("--- Membership Relations ---");
@@ -17,17 +17,17 @@
 `expect(false ∈ bool);
 `expect(1 ∈ int);
 `expect("" ∈ string);
-`expect(bool ∈ `type);
-`expect(int ∈ `type);
-`expect(string ∈ `type);
-`expect(`type ∈ `type);
+`expect(bool ∈ `nature);
+`expect(int ∈ `nature);
+`expect(string ∈ `nature);
+`expect(`nature ∈ `nature);
 
 `expect_stdout("--- Set Capability Relations ---\n");
 `print("--- Set Capability Relations ---");
 `expect(bool ∈ `Set);
 `expect(int ∈ `Set);
 `expect(string ∈ `Set);
-`expect(`type ∈ `Set);
+`expect(`nature ∈ `Set);
 `expect(`any ∈ `Set);
 `expect(`empty ∈ `Set);
 `expect(`Set ∈ `Set);
@@ -40,10 +40,10 @@
 `expect(true ∈ `any);
 `expect(1 ∈ `any);
 `expect("" ∈ `any);
-`expect(`type ∈ `any);
+`expect(`nature ∈ `any);
 `expect(`any ∈ `any);
 `expect(true ∉ `empty);
 `expect(1 ∉ `empty);
 `expect("" ∉ `empty);
-`expect(`type ∉ `empty);
+`expect(`nature ∉ `empty);
 `expect(`empty ∉ `empty);

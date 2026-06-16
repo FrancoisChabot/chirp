@@ -2,7 +2,7 @@
 
 ## Structs
 
-Struct definitions are expressions that produce struct types. The most common
+Struct definitions are expressions that produce struct natures. The most common
 field shape is:
 
 ```ebnf

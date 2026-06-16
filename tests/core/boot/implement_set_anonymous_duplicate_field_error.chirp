@@ -4,7 +4,7 @@ let Token = `mint_finite(1).values[0];
 
 `implement(
     trait=`Set,
-    on=`type_of(Token),
+    on=`nature_of(Token),
     impl={
         bp = (this, v) => false,
         bp = (this, v) => true,

@@ -167,7 +167,7 @@ The current token set is:
 | `..` | range |
 | `..=` | inclusive-end range |
 | `;` | statement terminator |
-| `:` | bounds and field/type annotations |
+| `:` | bounds and field/nature annotations |
 | `|` | constructed-set separator |
 | `=` | initializer / assignment / named-argument separator |
 | `==` | equality |
@@ -181,7 +181,7 @@ The current token set is:
 | `&` | address-of |
 | `&mut` | mutable address-of |
 | `->` | pointer/signature arrow |
-| `->mut` | mutable pointer-type operator |
+| `->mut` | mutable pointer-nature operator |
 | `=>` | lambda and match-arm arrow |
 | `∈` or `` `in `` | membership |
 | `∉` or `` `notin `` | negated membership |

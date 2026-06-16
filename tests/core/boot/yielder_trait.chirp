@@ -1,6 +1,6 @@
 
 `expect(((x) => x) ∈ `Callable);
-`expect(`type_of ∈ `Callable);
+`expect(`nature_of ∈ `Callable);
 
 let f: `Callable = (x) => x;
-let h: `Callable = `type_of;
+let h: `Callable = `nature_of;

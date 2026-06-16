@@ -250,5 +250,5 @@ Notes:
 - A block's trailing expression is implicitly lowered to `break expr`.
 - A block with no trailing expression implicitly yields `void`.
 - Anonymous struct literals require a concrete struct context at evaluation
-  time, such as a bound, parameter constraint, or constructor field type.
+  time, such as a bound, parameter constraint, or constructor field nature.
 - `Point { x: 1 }` is not part of the grammar.

@@ -3,7 +3,7 @@
 let mut x : int = 10;
 let mut y : bool = true;
 
-// Correct type bindings
+// Correct nature bindings
 let p : -> int = &x;
 let p_mut : ->mut int = &mut x;
 

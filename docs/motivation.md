@@ -50,21 +50,32 @@ I think of it as a gradient descent through the design space.
 
 ## The Journey
 
+### The Baggage of Types
+
+Because we are straddling the line between C-like systems programming and TypeScript's expressiveness, we will run into a wall: the word "Type."
+
+I am ditching the word entirely because it carries contradictory baggage. Depending on your background, "Type" means one of two very different things:
+
+- **Nature** (Intrinsic Identity): To a C programmer, a nature is what a value physically is in memory. `true` is a boolean, `3` is an integer.
+- **Constraint** (Allowed Values): To a TypeScript programmer, a nature is the rule for what values are allowed in a specific place. foo(v: int | bool) means the argument v is constrained to be either an integer or a boolean.
+
+From here on out, values have **Natures**, and bindings have **Constraints**.
+
 ### The red herring
 
 Off the get-go, Constraint 2 forces our hand:
 
-**If we need a variable to act differently based on what happens to be stored in it (polymorphism), then it can hold values of different types.**
+**If we need a variable to act differently based on what happens to be stored in it (polymorphism), then it can hold values of different natures.**
 
-Taking this to the extreme would be "any variable can hold a value of any type" which is JavaScript/Python and... just... **NO**.
+Taking this to the extreme would be "any variable can hold a value of any nature" which is JavaScript/Python and... just... **NO**.
 
 Walking it back a bit would be "A variable can hold some values, but not necessarily all of them", which is really just a fancy way to say that a variable has a **set** of values it's allowed to have. That's nice because it allows for anything between a single value (a const), all the way to `any` if we ever need it. 
 
-Nevertheless, practically speaking (constraint 1), I still need to have control over the type of a variable. I must be able to say `let x: int64 = 3;` and be able to *trust* that this optimizes all the way down to registers. So... types are sets, I guess.  
+Nevertheless, practically speaking (constraint 1), I still need to have control over the constraints of a variable. I must be able to say `let x: int64 = 3;` and be able to *trust* that this optimizes all the way down to registers. So... constraints are sets, I guess.  
 
-Leaning into types-as-sets, we can immediately see `let x: int64 ∪ bool = foo();` as a pretty sweet syntax for declaring unions. 
+Leaning into constraints-as-sets, we can immediately see `let x: int64 ∪ bool = foo();` as a pretty sweet syntax for declaring unions. 
 
-Actually... if we also assume types are values (which is sort-of required for constraint 3 anyways), we get:
+Actually... if we also assume constraints are values (which is sort-of required for constraint 3 anyways), we get:
 
 ```
 let int_or_bool = int64 ∪ bool;
@@ -72,7 +83,7 @@ let int_or_bool = int64 ∪ bool;
 let x: int_or_bool = foo();
 ```
 
-No need for a union keyword! That's a win, we can probably generalize that to type definitions at large:
+No need for a union keyword! That's a win, we can probably generalize that to constraints definitions at large:
 
 ```
 let Point = struct {
@@ -88,7 +99,7 @@ let v : point_list = point_list(); // Roughly
 
 Nothing new under the sun here. We are in clear TypeScript land. But I do like the look and feel of it, and constraint 3 is on the right track. The compilation rules needed for this to bake down reliably to machine code will be tricky, but them's the breaks. If I want constraint 3, I'll have to reckon with that sooner or later, so there's no reason to toss this. I *like* it.
 
-If `int_or_bool` is *just* a set by joining two types, can we just generalize and throw in arbitrary sets where a type normally fits?
+If `int_or_bool` is *just* a set by joining two constraints, can we just generalize and throw in arbitrary sets where a constraint normally fits?
 
 ```
 let u : {1,2,3} = 1;
@@ -101,21 +112,19 @@ Looks like it! And it looks *slick*. I can already see the curly brace set liter
 
 This is a complete local minimum. We have to get over a hill.
 
-### The epiphany: Actually types are NOT sets (except when we need them to be)
+### The epiphany: Actually constraints are NOT sets (except when we need them to be)
 
-You know what? This whole Type <-> Set equivalency is suspect. 
+You know what? Treating "Sets" as some magical, foundational language primitive is suspect.
 
-It doesn't even make practical sense. There are a myriad of situations where I'd use a set as a value instead of a type. So sets are value-like first and foremost, using them in a type-ish context is secondary. But at the same time, I still need to be able to express "the set of all ints" cleanly, and types are well suited for that. 
+It doesn't even make practical sense. There are a myriad of situations where I'd use a set as a value instead of a constraint. So sets are value-like first and foremost, using them in a constraint-ish context is secondary. But at the same time, I still need to be able to express "the set of all ints" cleanly, and natures are well suited for that. 
 
-Let's pull on that: `{1,2,3}` is a *value*, which means it has a *type* (that type being StaticallyEnumeratedSet or something along these lines). Same goes for `0..9`, which is a *value* of *type* IntRange or whatever. So right off the bat, I have two different types whose values behave like sets, so I need these types to have a property that allows their instances to be used as sets. A sort of set-ness, defined by a function that determines if a value belongs to the set: A *Belonging Predicate* (`bp`). 
+Let's pull on that: `{1,2,3}` is a *value*, which means it has a *nature* (that nature being StaticallyEnumeratedSet or something along these lines). Same goes for `0..9`, which is a *value* of *nature* IntRange or whatever. So right off the bat, I have two different natures whose values behave like sets, so I need these natures to have a property that allows their instances to be used as sets. A sort of set-ness, defined by a function that determines if a value belongs to the set: A *Belonging Predicate* (`bp`). 
 
 SPOILERS: Later we'll realize this can't be a predicate in every single case, but we'll stick to it by convention.
 
 That's basically a trait (Rust)/interface (Java)/protocol (ObjC) etc... I know those! And they are explicitly something I'm supposed to support eventually (see Constraint #2). Nothing stops me from recursively using trait-like capabilities as part of the definition of the system itself, as long as the loop closes. That's not any different than a garden-variety recursive function.
 
-So... What **if** sets weren't a *thing*, and set-ness was instead a capability that certain Types provide for their instances? Then types don't have to be sets, they only need to supply belonging behavior when used as sets. It would also mean that sets don't have to be types either. Let's keep pulling on that thread and see what happens.
-
-We can start laying down some rules. But first, let's ditch the word "Type" altogether. Since we are breaking appart variable constraints and value identity as completely orthogonal concepts, "type" has too many preconceptions associated with it. We'll use **Nature** to describe a value's intrinsic identity.
+So... What **if** sets weren't a *thing*, and set-ness was instead a capability that certain natures provide for their instances? Then constraints don't have to be sets, they only need to supply belonging behavior when used as sets. It would also mean that sets don't have to be constraints either. Let's keep pulling on that thread and see what happens.
 
 - Every Value has an intrinsic Nature
 - Sets are values whose intrinsic Nature supplies a `bp`, roughly a function from `(this, v: any) : bool` (that's what "does something belong to a set" reduces down to at the end of the day...)

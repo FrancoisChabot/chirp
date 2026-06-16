@@ -6,13 +6,13 @@
 
 
 // ---------- Capabilities ----------
-// Destructor. Executes when a binding holding a value of that type goes out of scope without a terminal move.
+// Destructor. Executes when a binding holding a value of that nature goes out of scope without a terminal move.
 let pub final `Drop = `make_trait(struct {
     drop: (self)->void
 });
 register("traits.drop", `Drop);
 
-// A marker trait indicating that a type opts out of default copyability.
-// Assignments of unique types are restricted to Terminal Move Semantics.
+// A marker trait indicating that a nature opts out of default copyability.
+// Assignments of unique natures are restricted to Terminal Move Semantics.
 let pub final `Unique = `make_trait(void);
 register("traits.unique", `Unique);

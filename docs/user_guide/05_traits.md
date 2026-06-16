@@ -6,10 +6,10 @@ The two most important things to know are:
 
 - a trait is a set of values
 - a trait can also carry an interface describing the implementation data
-  attached to a type
+  attached to a nature
 
 In practice, the most important use of that interface is as a vtable: an
-implementation value that stores the operations for a type.
+implementation value that stores the operations for a nature.
 
 That is why traits work naturally as constraints:
 
@@ -36,7 +36,7 @@ let Marker = `make_trait(void);
 ```
 
 This says: implementations of `Marker` carry no extra data beyond the fact that
-the type implements the trait.
+the nature implements the trait.
 
 ### Traits With Data
 
@@ -52,7 +52,7 @@ Now an implementation must provide a value belonging to that interface.
 
 ## Implementing A Trait
 
-Use `` `implement `` to attach a trait implementation to a type.
+Use `` `implement `` to attach a trait implementation to a nature.
 
 ```ebnf
 ImplementCall =
@@ -87,7 +87,7 @@ let Tagged = `make_trait(struct { tag: bool });
 
 Important points:
 
-- `on=` is usually a type value such as `int` or a struct type.
+- `on=` is usually a nature value such as `int` or a struct nature.
 - `impl=` must belong to the trait's interface.
 - only one implementation may exist for a given `(trait, on)` pair.
 
@@ -95,8 +95,8 @@ Important points:
 
 This is the most important day-to-day use of traits.
 
-When a trait's interface is a struct type, the implementation value acts like a
-vtable for the target type: it stores the functions that define that behavior.
+When a trait's interface is a struct nature, the implementation value acts like a
+vtable for the target nature: it stores the functions that define that behavior.
 
 ```chirp
 let Show = `make_trait(struct {
@@ -114,7 +114,7 @@ let Point = struct { x: int, y: int };
 );
 
 let render(x : Show) = do {
-    let impl = `implementation(Show, `type_of(x));
+    let impl = `implementation(Show, `nature_of(x));
     impl.show(x)
 };
 
@@ -126,7 +126,7 @@ let render(x : Show) = do {
 
 ## Traits As Sets
 
-A trait behaves as the set of values whose type implements that trait.
+A trait behaves as the set of values whose nature implements that trait.
 
 ```chirp
 let Marker = `make_trait(void);
@@ -157,7 +157,7 @@ let describe(v) = match v {
 The basic helper functions are:
 
 - `` `interface_of(trait) ``: returns the trait's interface
-- `` `implements(trait, on) ``: checks whether a type has an implementation
+- `` `implements(trait, on) ``: checks whether a nature has an implementation
 - `` `implementation(trait, on) ``: returns the registered implementation value
 
 Example:
