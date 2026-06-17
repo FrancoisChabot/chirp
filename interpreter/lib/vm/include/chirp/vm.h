@@ -1,10 +1,17 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
+#include <string>
 
 namespace chirp {
 
-class vm_Impl;
+class Nature;
+class Value;
+class compute_unit;
+
+using nature_key = std::string;
+using NatureRef = const Nature*;
 
 class vm {
 public:
@@ -19,10 +26,25 @@ public:
     vm(vm&&) noexcept;
     vm& operator=(vm&&) noexcept;
 
-private:
-    friend class vm_accessor;
+    NatureRef get_int_nature() const { return int_nature_cache_; }
+    NatureRef get_bool_nature() const { return bool_nature_cache_; }
+    NatureRef get_string_nature() const { return string_nature_cache_; }
+    NatureRef get_intrinsic_nature() const { return intrinsic_nature_cache_; }
+    NatureRef get_nature_nature() const { return nature_nature_cache_; }
 
-    std::unique_ptr<vm_Impl> impl_;
+    class compute_unit& get_compute_unit();
+    const class compute_unit& get_compute_unit() const;
+
+private:
+    std::unordered_map<nature_key, std::unique_ptr<Nature>> natures_;
+
+    NatureRef int_nature_cache_ = nullptr;
+    NatureRef bool_nature_cache_ = nullptr;
+    NatureRef string_nature_cache_ = nullptr;
+    NatureRef intrinsic_nature_cache_ = nullptr;
+    NatureRef nature_nature_cache_ = nullptr;
+
+    std::unique_ptr<class compute_unit> compute_unit_;
 };
 
 } // namespace chirp

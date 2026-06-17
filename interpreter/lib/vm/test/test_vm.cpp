@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include "chirp/vm.h"
+#include "compute_unit.h"
 #include "Value.h"
 #include "nature.h"
 #include "intrinsics.h"
-#include "vm_accessor.h"
 #include <span>
 #include <vector>
 
@@ -104,41 +104,52 @@ TEST(ValueTest, Equality) {
 
 TEST(VMTest, PreallocatedNaturesAndCaches) {
     vm virtual_machine;
-    auto& vm_impl = vm_accessor::get_impl(virtual_machine);
 
-    EXPECT_NE(vm_impl.get_int_nature(), nullptr);
-    EXPECT_NE(vm_impl.get_bool_nature(), nullptr);
-    EXPECT_NE(vm_impl.get_string_nature(), nullptr);
-    EXPECT_NE(vm_impl.get_nature_nature(), nullptr);
+    EXPECT_NE(virtual_machine.get_int_nature(), nullptr);
+    EXPECT_NE(virtual_machine.get_bool_nature(), nullptr);
+    EXPECT_NE(virtual_machine.get_string_nature(), nullptr);
+    EXPECT_NE(virtual_machine.get_nature_nature(), nullptr);
+}
+
+TEST(VMTest, ComputeUnitInstructions) {
+    vm virtual_machine;
+
+    auto& cu = virtual_machine.get_compute_unit();
+    EXPECT_TRUE(cu.instructions.empty());
+
+    instruction inst;
+    inst.op = opcode::noop;
+    cu.instructions.push_back(inst);
+
+    EXPECT_EQ(cu.instructions.size(), 1);
+    EXPECT_EQ(cu.instructions[0].op, opcode::noop);
 }
 
 TEST(IntrinsicTest, NatureOfIntrinsic) {
     vm virtual_machine;
-    auto& vm_impl = vm_accessor::get_impl(virtual_machine);
 
     // Arg to nature_of (uses cached int nature)
-    Value arg(42, vm_impl.get_int_nature());
+    Value arg(42, virtual_machine.get_int_nature());
     std::vector<Value> args = {arg};
     std::span<const Value> args_span(args);
 
-    Value result = intrinsic_nature_of(vm_impl, args_span);
+    Value result = intrinsic_nature_of(virtual_machine, args_span);
     EXPECT_TRUE(result.isNature());
-    EXPECT_EQ(result.asNature(), vm_impl.get_int_nature());
-    EXPECT_EQ(result.getNature(), vm_impl.get_nature_nature());
+    EXPECT_EQ(result.asNature(), virtual_machine.get_int_nature());
+    EXPECT_EQ(result.getNature(), virtual_machine.get_nature_nature());
 }
 
 TEST(IntrinsicTest, ImportIntrinsic) {
     vm virtual_machine;
-    auto& vm_impl = vm_accessor::get_impl(virtual_machine);
 
-    Value key("nature.nature_of", vm_impl.get_string_nature());
-    Value format("__chirp_boot", vm_impl.get_string_nature());
+    Value key("nature.nature_of", virtual_machine.get_string_nature());
+    Value format("__chirp_boot", virtual_machine.get_string_nature());
 
     std::vector<Value> args = {key, format};
     std::span<const Value> args_span(args);
 
-    Value imported = intrinsic_import(vm_impl, args_span);
+    Value imported = intrinsic_import(virtual_machine, args_span);
     EXPECT_TRUE(imported.isIntrinsicFunction());
     EXPECT_EQ(imported.asIntrinsicFunction(), intrinsic_nature_of);
-    EXPECT_EQ(imported.getNature(), vm_impl.get_intrinsic_nature());
+    EXPECT_EQ(imported.getNature(), virtual_machine.get_intrinsic_nature());
 }

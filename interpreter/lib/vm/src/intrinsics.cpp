@@ -1,19 +1,19 @@
 #include "intrinsics.h"
-#include "vm_impl.h"
+#include "chirp/vm.h"
 #include <cassert>
 #include <stdexcept>
 
 namespace chirp {
 
-Value intrinsic_register(vm_Impl& machine, std::span<const Value> args) {
-
+Value intrinsic_register(vm& machine, std::span<const Value> args) {
+    return Value(); // Return a default void Value (or whatever register returns)
 }
 
-Value intrinsic_same(vm_Impl& machine, std::span<const Value> args) {
+Value intrinsic_same(vm& machine, std::span<const Value> args) {
     return Value(false, machine.get_bool_nature());
 }
 
-Value intrinsic_nature_of(vm_Impl& machine, std::span<const Value> args) {
+Value intrinsic_nature_of(vm& machine, std::span<const Value> args) {
     assert(args.size() == 1);
     
     // Get the nature of the passed argument
@@ -25,7 +25,7 @@ Value intrinsic_nature_of(vm_Impl& machine, std::span<const Value> args) {
     return Value(arg_nature, nature_nature);
 }
 
-Value intrinsic_import(vm_Impl& machine, std::span<const Value> args) {
+Value intrinsic_import(vm& machine, std::span<const Value> args) {
     assert(args.size() == 2);
 
     const Value& key_v = args[0];
@@ -41,7 +41,5 @@ Value intrinsic_import(vm_Impl& machine, std::span<const Value> args) {
     
     throw std::runtime_error("unknown import format");
 }
-
-
 
 } // namespace chirp

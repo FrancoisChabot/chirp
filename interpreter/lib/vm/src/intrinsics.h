@@ -6,13 +6,13 @@
 
 namespace chirp {
 
-class vm_Impl;
+class vm;
 
-Value intrinsic_import(vm_Impl& machine, std::span<const Value> args);
+Value intrinsic_import(vm& machine, std::span<const Value> args);
 
-Value intrinsic_register(vm_Impl& machine, std::span<const Value> args);
-Value intrinsic_nature_of(vm_Impl& machine, std::span<const Value> args);
-Value intrinsic_same(vm_Impl& machine, std::span<const Value> args);
+Value intrinsic_register(vm& machine, std::span<const Value> args);
+Value intrinsic_nature_of(vm& machine, std::span<const Value> args);
+Value intrinsic_same(vm& machine, std::span<const Value> args);
 
 
 } // namespace chirp

@@ -1,12 +1,12 @@
 #include "chirp/vm.h"
-#include "vm_impl.h"
 #include "Value.h"
 #include "nature.h"
+#include "compute_unit.h"
 #include <stdexcept>
 
 namespace chirp {
 
-vm_Impl::vm_Impl() {
+vm::vm() : compute_unit_(std::make_unique<class compute_unit>()) {
     auto int_n = std::make_unique<IntNature>();
     auto bool_n = std::make_unique<BoolNature>();
     auto string_n = std::make_unique<StringNature>();
@@ -26,10 +26,17 @@ vm_Impl::vm_Impl() {
     natures_["IntrinsicFunction"] = std::move(intrinsic_n);
 }
 
-vm::vm() : impl_(std::make_unique<vm_Impl>()) {}
 vm::~vm() = default;
 
 vm::vm(vm&&) noexcept = default;
 vm& vm::operator=(vm&&) noexcept = default;
+
+compute_unit& vm::get_compute_unit() {
+    return *compute_unit_;
+}
+
+const compute_unit& vm::get_compute_unit() const {
+    return *compute_unit_;
+}
 
 } // namespace chirp

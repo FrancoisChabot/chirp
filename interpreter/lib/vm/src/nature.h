@@ -6,11 +6,11 @@
 
 namespace chirp {
 
-class vm_Impl;
+class vm;
 class Value;
 class Nature;
 
-using IntrinsicFunctionPtr = Value(*)(vm_Impl&, std::span<const Value>);
+using IntrinsicFunctionPtr = Value(*)(vm&, std::span<const Value>);
 using nature_key = std::string;
 using NatureRef = const Nature*;
 
