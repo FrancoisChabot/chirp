@@ -27,8 +27,6 @@ private:
     NatureRef string_nature_cache_ = nullptr;
     NatureRef intrinsic_nature_cache_ = nullptr;
     NatureRef nature_nature_cache_ = nullptr;
-
-    std::vector<Value> stack_;
 };
 
 } // namespace chirp

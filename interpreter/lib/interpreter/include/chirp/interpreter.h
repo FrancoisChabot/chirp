@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chirp/backend.h"
 #include "value.h"
 #include "type.h"
 #include "binding.h"
@@ -76,32 +77,23 @@ Value belongsTo(const Value& S, const Value& v);
 // Set range helper: typeof(S).br(S, lc)
 Value belongsRange(const Value& S, const Value& lc);
 
-struct SessionExpectations {
-    std::optional<std::string> expected_stdout;
-    std::optional<std::string> expected_stderr;
-    std::optional<int> expected_exit;
-    bool expect_test_failure = false;
-    int expectation_checks = 0;
-    bool has_expectations = false;
-};
-
-class Session {
+class Session : public BackendSession {
 public:
     explicit Session(std::ostream& out, bool testing_enabled = false);
-    ~Session();
+    ~Session() override;
 
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
     Session(Session&&) noexcept;
     Session& operator=(Session&&) noexcept;
 
-    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts);
-    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label);
-    void execute_source(std::string source, std::string label);
-    void execute_boot_source(std::string source, std::string label);
-    void set_chirp_root(std::string path);
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts) override;
+    void execute(const std::vector<std::unique_ptr<frontend::Stmt>>& stmts, std::string label) override;
+    void execute_source(std::string source, std::string label) override;
+    void execute_boot_source(std::string source, std::string label) override;
+    void set_chirp_root(std::string path) override;
 
-    SessionExpectations getExpectations() const;
+    SessionExpectations getExpectations() const override;
 
 private:
     class Impl;

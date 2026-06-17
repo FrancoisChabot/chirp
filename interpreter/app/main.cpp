@@ -1,5 +1,7 @@
 #include "chirp/frontend.h"
+#include "chirp/backend.h"
 #include "chirp/interpreter.h"
+#include "chirp/vm_session.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -44,22 +46,33 @@ struct Options {
     bool ast_dump = false;
     bool format = false;
     bool test = false;
+    std::string backend = "interpreter";
     std::optional<std::string> root_dir;
     std::optional<std::string> run_report;
     std::string script_path;
 };
 
 void printUsage(std::ostream& out) {
-    out << "Usage: chirp [--ast-dump] [--format] [--test] [--root-dir DIR] [--run-report PATH] [script]\n"
+    out << "Usage: chirp [--ast-dump] [--format] [--test] [--backend BACKEND] [--root-dir DIR] [--run-report PATH] [script]\n"
         << "\n"
         << "Options:\n"
         << "  --ast-dump      Parse the input and print its AST.\n"
         << "  --format        Rewrite ASCII operator aliases to Unicode in-place.\n"
         << "  --test          Enable test harness and assertions (`expect` functions).\n"
+        << "  --backend BACKEND\n"
+        << "                  Select execution backend: 'interpreter' or 'vm' (default: 'interpreter').\n"
         << "  --root-dir DIR  Load Chirp libraries from DIR, which must contain boot/ and std/.\n"
         << "  --run-report PATH\n"
         << "                  Write a structured JSON report for a script run.\n"
         << "  --help          Show this help message.\n";
+}
+
+std::unique_ptr<chirp::BackendSession> createSession(std::ostream& out, const Options& options) {
+    if (options.backend == "vm") {
+        return std::make_unique<chirp::VMSession>(out, options.test);
+    } else {
+        return std::make_unique<chirp::interpreter::Session>(out, options.test);
+    }
 }
 
 std::string readFile(const fs::path& path) {
@@ -222,13 +235,13 @@ std::vector<fs::path> findBootFiles(const fs::path& boot_dir) {
     return files;
 }
 
-void loadBoot(chirp::interpreter::Session& session, const fs::path& boot_dir) {
+void loadBoot(chirp::BackendSession& session, const fs::path& boot_dir) {
     for (const auto& file : findBootFiles(boot_dir)) {
         session.execute_boot_source(readFile(file), file.string());
     }
 }
 
-void loadConfiguredBoot(chirp::interpreter::Session& session, const Options& options) {
+void loadConfiguredBoot(chirp::BackendSession& session, const Options& options) {
     if (auto root_dir = findRootDir(options)) {
         session.set_chirp_root(root_dir->string());
         loadBoot(session, *root_dir / "boot");
@@ -250,9 +263,9 @@ bool runAstDump(const fs::path& path) {
 
 int runFile(const fs::path& path, const Options& options) {
     try {
-        chirp::interpreter::Session session(std::cout, options.test);
-        loadConfiguredBoot(session, options);
-        session.execute_source(readFile(path), path.string());
+        auto session = createSession(std::cout, options);
+        loadConfiguredBoot(*session, options);
+        session->execute_source(readFile(path), path.string());
         return 0;
     } catch (const chirp::interpreter::ScriptExit& e) {
         return e.code();
@@ -373,10 +386,10 @@ int runFileWithReport(const fs::path& path, const Options& options) {
     }
 
     try {
-        chirp::interpreter::Session session(std::cout, options.test);
+        auto session = createSession(std::cout, options);
 
         try {
-            loadConfiguredBoot(session, options);
+            loadConfiguredBoot(*session, options);
         } catch (const std::exception& e) {
             report.outcome = "boot_failure";
             report.diagnostics.push_back({"boot", e.what(), ""});
@@ -414,7 +427,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
         if (parsed && report.diagnostics.empty()) {
             try {
-                session.execute(stmts, path.string());
+                session->execute(stmts, path.string());
             } catch (const chirp::interpreter::ScriptExit& e) {
                 report.outcome = "script_exit";
                 report.script_exit = e.code();
@@ -425,7 +438,7 @@ int runFileWithReport(const fs::path& path, const Options& options) {
                 process_exit = 1;
             }
 
-            auto dynamic_expectations = session.getExpectations();
+            auto dynamic_expectations = session->getExpectations();
             if (dynamic_expectations.has_expectations) {
                 report.expected_stdout = dynamic_expectations.expected_stdout;
                 report.expected_stderr = dynamic_expectations.expected_stderr;
@@ -450,8 +463,8 @@ int runFileWithReport(const fs::path& path, const Options& options) {
 
 bool runPrompt(const Options& options) {
     try {
-        chirp::interpreter::Session session(std::cout, options.test);
-        loadConfiguredBoot(session, options);
+        auto session = createSession(std::cout, options);
+        loadConfiguredBoot(*session, options);
 
         std::string line;
         std::cout << "Chirp REPL (Experimental Syntax Stub)\n"
@@ -467,7 +480,7 @@ bool runPrompt(const Options& options) {
             if (line.empty()) continue;
 
             try {
-                session.execute_source(line, "<repl>");
+                session->execute_source(line, "<repl>");
             } catch (const std::exception& e) {
                 std::cerr << "Error: " << e.what() << "\n";
             }
@@ -499,6 +512,21 @@ std::optional<Options> parseArgs(int argc, char* argv[]) {
         }
         if (arg == "--test") {
             options.test = true;
+            continue;
+        }
+        if (arg == "--backend") {
+            if (i + 1 >= args.size()) {
+                std::cerr << "Error: --backend requires a backend name.\n";
+                printUsage(std::cerr);
+                return std::nullopt;
+            }
+            std::string backend_val = args[++i];
+            if (backend_val != "interpreter" && backend_val != "vm") {
+                std::cerr << "Error: unsupported backend: " << backend_val << ". Supported options: 'interpreter', 'vm'.\n";
+                printUsage(std::cerr);
+                return std::nullopt;
+            }
+            options.backend = backend_val;
             continue;
         }
         if (arg == "--root-dir") {

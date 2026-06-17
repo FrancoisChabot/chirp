@@ -101,22 +101,6 @@ TEST(ValueTest, Equality) {
     EXPECT_NE(v4, v5);
 }
 
-TEST(VMTest, BasicStackOperations) {
-    vm virtual_machine;
-    EXPECT_EQ(virtual_machine.stack_size(), 0);
-
-    virtual_machine.push_int(100);
-    virtual_machine.push_bool(true);
-    EXPECT_EQ(virtual_machine.stack_size(), 2);
-
-    EXPECT_TRUE(virtual_machine.pop_bool());
-    EXPECT_EQ(virtual_machine.stack_size(), 1);
-
-    EXPECT_EQ(virtual_machine.pop_int(), 100);
-    EXPECT_EQ(virtual_machine.stack_size(), 0);
-
-    EXPECT_THROW(virtual_machine.pop_int(), std::runtime_error);
-}
 
 TEST(VMTest, PreallocatedNaturesAndCaches) {
     vm virtual_machine;
