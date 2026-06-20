@@ -2,11 +2,14 @@
 #include "Value.h"
 #include "nature.h"
 #include "compute_unit.h"
+#include "bindings_table.h"
 #include <stdexcept>
 
 namespace chirp {
 
-vm::vm() : compute_unit_(std::make_unique<class compute_unit>()) {
+vm::vm()
+    : compute_unit_(std::make_unique<class compute_unit>()),
+      bindings_table_(std::make_unique<class bindings_table>()) {
     auto int_n = std::make_unique<IntNature>();
     auto bool_n = std::make_unique<BoolNature>();
     auto string_n = std::make_unique<StringNature>();
@@ -37,6 +40,14 @@ compute_unit& vm::get_compute_unit() {
 
 const compute_unit& vm::get_compute_unit() const {
     return *compute_unit_;
+}
+
+bindings_table& vm::get_bindings_table() {
+    return *bindings_table_;
+}
+
+const bindings_table& vm::get_bindings_table() const {
+    return *bindings_table_;
 }
 
 } // namespace chirp

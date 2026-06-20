@@ -9,6 +9,7 @@ namespace chirp {
 class Nature;
 class Value;
 class compute_unit;
+class bindings_table;
 
 using nature_key = std::string;
 using NatureRef = const Nature*;
@@ -35,6 +36,9 @@ public:
     class compute_unit& get_compute_unit();
     const class compute_unit& get_compute_unit() const;
 
+    class bindings_table& get_bindings_table();
+    const class bindings_table& get_bindings_table() const;
+
 private:
     std::unordered_map<nature_key, std::unique_ptr<Nature>> natures_;
 
@@ -45,6 +49,7 @@ private:
     NatureRef nature_nature_cache_ = nullptr;
 
     std::unique_ptr<class compute_unit> compute_unit_;
+    std::unique_ptr<class bindings_table> bindings_table_;
 };
 
 } // namespace chirp

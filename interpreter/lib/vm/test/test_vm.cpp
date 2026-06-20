@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "chirp/vm.h"
 #include "compute_unit.h"
+#include "bindings_table.h"
 #include "Value.h"
 #include "nature.h"
 #include "intrinsics.h"
@@ -152,4 +153,38 @@ TEST(IntrinsicTest, ImportIntrinsic) {
     EXPECT_TRUE(imported.isIntrinsicFunction());
     EXPECT_EQ(imported.asIntrinsicFunction(), intrinsic_nature_of);
     EXPECT_EQ(imported.getNature(), virtual_machine.get_intrinsic_nature());
+}
+
+TEST(VMTest, BindingsTable) {
+    vm virtual_machine;
+
+    auto& table = virtual_machine.get_bindings_table();
+    EXPECT_EQ(table.size(), 0);
+
+    Value v1(42, virtual_machine.get_int_nature());
+    Value v2(true, virtual_machine.get_bool_nature());
+
+    size_t idx1 = table.register_binding("hello", v1);
+    size_t idx2 = table.register_binding("world", v2);
+    size_t idx3 = table.register_binding("hello", v2);
+
+    EXPECT_EQ(idx1, 0);
+    EXPECT_EQ(idx2, 1);
+    EXPECT_EQ(idx3, 0);
+    EXPECT_EQ(table.size(), 2);
+
+    EXPECT_EQ(table.get_value(0), v1);
+    EXPECT_EQ(table.get_value(1), v2);
+    EXPECT_THROW(table.get_value(2), std::out_of_range);
+
+    // Update value
+    table.set_value(0, v2);
+    EXPECT_EQ(table.get_value(0), v2);
+
+    auto opt1 = table.lookup_index("hello");
+    auto opt2 = table.lookup_index("foo");
+
+    EXPECT_TRUE(opt1.has_value());
+    EXPECT_EQ(*opt1, 0);
+    EXPECT_FALSE(opt2.has_value());
 }
