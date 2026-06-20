@@ -9,10 +9,12 @@ namespace chirp {
 class vm;
 class Value;
 class Nature;
+class Trait;
 
 using IntrinsicFunctionPtr = Value(*)(vm&, std::span<const Value>);
 using nature_key = std::string;
 using NatureRef = const Nature*;
+using TraitRef = const Trait*;
 
 class Nature {
 public:
@@ -38,6 +40,11 @@ public:
 class NatureNature : public Nature {
 public:
     std::string_view name() const override { return "nature"; }
+};
+
+class TraitNature : public Nature {
+public:
+    std::string_view name() const override { return "trait"; }
 };
 
 class IntrinsicFunctionNature : public Nature {

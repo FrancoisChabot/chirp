@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Value.h"
+#include "Binding.h"
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -14,14 +14,14 @@ public:
     bindings_table() = default;
     ~bindings_table() = default;
 
-    // Register a binding name with an initial Value. If it already exists, it returns the existing index.
-    size_t register_binding(const std::string& name, const Value& val) {
+    // Register a binding name with an initial Binding. If it already exists, it returns the existing index.
+    size_t register_binding(const std::string& name, const Binding& binding) {
         auto it = index_.find(name);
         if (it != index_.end()) {
             return it->second;
         }
-        size_t idx = values_.size();
-        values_.push_back(val);
+        size_t idx = bindings_.size();
+        bindings_.push_back(binding);
         index_[name] = idx;
         return idx;
     }
@@ -35,23 +35,23 @@ public:
         return std::nullopt;
     }
 
-    // Retrieve a value by its index.
-    const Value& get_value(size_t index) const {
-        return values_.at(index);
+    // Retrieve a binding by its index.
+    const Binding& get_binding(size_t index) const {
+        return bindings_.at(index);
     }
 
-    // Update the value at a given index.
-    void set_value(size_t index, const Value& val) {
-        values_.at(index) = val;
+    // Update the binding at a given index.
+    void set_binding(size_t index, const Binding& binding) {
+        bindings_.at(index) = binding;
     }
 
     // Get the total number of registered bindings.
     size_t size() const {
-        return values_.size();
+        return bindings_.size();
     }
 
 private:
-    std::vector<Value> values_;
+    std::vector<Binding> bindings_;
     std::unordered_map<std::string, size_t> index_;
 };
 

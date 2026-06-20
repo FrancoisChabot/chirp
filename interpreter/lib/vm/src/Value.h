@@ -16,6 +16,7 @@ public:
     Value(std::string val, NatureRef nature);
     Value(const char* val, NatureRef nature);
     Value(NatureRef nature_val, NatureRef nature_nature);
+    Value(TraitRef trait_val, NatureRef trait_nature);
     Value(IntrinsicFunctionPtr func, NatureRef nature_nature);
 
     bool isInt() const;
@@ -30,6 +31,9 @@ public:
     bool isNature() const;
     NatureRef asNature() const;
 
+    bool isTrait() const;
+    TraitRef asTrait() const;
+
     bool isIntrinsicFunction() const;
     IntrinsicFunctionPtr asIntrinsicFunction() const;
 
@@ -38,7 +42,7 @@ public:
     bool operator==(const Value& other) const;
 
 private:
-    std::variant<int, bool, std::string, NatureRef, IntrinsicFunctionPtr> storage_;
+    std::variant<int, bool, std::string, NatureRef, TraitRef, IntrinsicFunctionPtr> storage_;
     NatureRef nature_;
 };
 

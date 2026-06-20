@@ -16,6 +16,9 @@ Value::Value(const char* val, NatureRef nature) : storage_(std::string(val)), na
 Value::Value(NatureRef nature_val, NatureRef nature_nature)
     : storage_(nature_val), nature_(nature_nature) {}
 
+Value::Value(TraitRef trait_val, NatureRef trait_nature)
+    : storage_(trait_val), nature_(trait_nature) {}
+
 Value::Value(IntrinsicFunctionPtr func, NatureRef nature_nature)
     : storage_(func), nature_(nature_nature) {}
 
@@ -57,6 +60,17 @@ NatureRef Value::asNature() const {
     throw std::runtime_error("Value is not a nature");
   }
   return std::get<NatureRef>(storage_);
+}
+
+bool Value::isTrait() const {
+  return std::holds_alternative<TraitRef>(storage_);
+}
+
+TraitRef Value::asTrait() const {
+  if (!isTrait()) {
+    throw std::runtime_error("Value is not a trait");
+  }
+  return std::get<TraitRef>(storage_);
 }
 
 bool Value::isIntrinsicFunction() const {

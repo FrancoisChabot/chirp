@@ -1,5 +1,7 @@
 add_library(chirp_vm
   src/nature.cpp
+  src/Trait.cpp
+  src/traits_table.cpp
   src/Value.cpp
   src/vm.cpp
   src/intrinsics.cpp
